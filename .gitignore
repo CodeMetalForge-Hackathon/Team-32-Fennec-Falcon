@@ -2,3 +2,5 @@
 __pycache__/
 captures/
 *.pyc
+diag_frames/
+diag_log.txt
