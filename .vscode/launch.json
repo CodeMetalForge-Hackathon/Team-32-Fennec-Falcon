@@ -1,0 +1,7 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    { "name": "Stream camera", "type": "debugpy", "request": "launch", "program": "${workspaceFolder}/stream.py", "console": "integratedTerminal" },
+    { "name": "Find cameras", "type": "debugpy", "request": "launch", "program": "${workspaceFolder}/find_cameras.py", "console": "integratedTerminal" }
+  ]
+}
