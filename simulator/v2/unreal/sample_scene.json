@@ -1,0 +1,278 @@
+{
+  "units": "m",
+  "up": "+Y (three.js, right-handed; north = -Z, east = +X)",
+  "unreal_note": "Unreal is cm, Z-up, left-handed: X_ue = -z*100 (north), Y_ue = x*100 (east), Z_ue = y*100; Yaw_ue = heading_deg",
+  "hour": 2,
+  "weather": "clear",
+  "sun": {
+    "azimuth_deg": 34,
+    "elevation_deg": -37.2
+  },
+  "fog": {
+    "type": "exp2_height",
+    "density": 0.00218,
+    "color": "#101c24",
+    "thicker_below_m": 60
+  },
+  "canopy": {
+    "LAI": 4.5,
+    "height_m": 15,
+    "trees": 1764
+  },
+  "terrain": {
+    "size_m": 800,
+    "valley": "east-west, stream along z=0, ridges at z=-250 (+140 m) and z=+250 (+110 m)"
+  },
+  "camera": {
+    "position": [
+      -59.5,
+      60.19,
+      -82.6
+    ],
+    "target": [
+      -48.86,
+      41.18,
+      -63.39
+    ],
+    "fov_deg": 48
+  },
+  "model": {
+    "status": "REPORTED",
+    "decision": "TRANSMIT",
+    "chosen_output": "moveAway",
+    "error_m": 10.1
+  },
+  "actors": [
+    {
+      "id": "eagle-1",
+      "kind": "eagle_perched",
+      "x": -56.5,
+      "y": 58.69,
+      "z": -78.6,
+      "yaw_deg": 27,
+      "heading_deg": 153,
+      "perch": "subcanopy",
+      "perch_h_m": 8
+    },
+    {
+      "id": "operator",
+      "kind": "operator",
+      "x": -48.86,
+      "y": 41.18,
+      "z": -63.39,
+      "yaw_deg": -112,
+      "heading_deg": 292,
+      "posture": "lying",
+      "state": "injured",
+      "carries": "nothing"
+    },
+    {
+      "id": "patrol-a-1",
+      "kind": "patrol",
+      "x": -47.27,
+      "y": 97.13,
+      "z": 189.03,
+      "yaw_deg": -98,
+      "heading_deg": 278
+    },
+    {
+      "id": "patrol-a-2",
+      "kind": "patrol",
+      "x": -51.73,
+      "y": 99.6,
+      "z": 188.44,
+      "yaw_deg": -98,
+      "heading_deg": 278
+    },
+    {
+      "id": "patrol-a-3",
+      "kind": "patrol",
+      "x": -56.19,
+      "y": 102.09,
+      "z": 187.85,
+      "yaw_deg": -98,
+      "heading_deg": 278
+    },
+    {
+      "id": "patrol-a-4",
+      "kind": "patrol",
+      "x": -60.65,
+      "y": 104.62,
+      "z": 187.25,
+      "yaw_deg": -98,
+      "heading_deg": 278
+    },
+    {
+      "id": "troop-1",
+      "kind": "troop",
+      "x": 309,
+      "y": 114.02,
+      "z": 288,
+      "yaw_deg": 115,
+      "heading_deg": 65
+    },
+    {
+      "id": "troop-2",
+      "kind": "troop",
+      "x": 308.48,
+      "y": 113.27,
+      "z": 294.07,
+      "yaw_deg": 175,
+      "heading_deg": 5
+    },
+    {
+      "id": "troop-3",
+      "kind": "troop",
+      "x": 299.95,
+      "y": 113.19,
+      "z": 296.63,
+      "yaw_deg": 235,
+      "heading_deg": 305
+    },
+    {
+      "id": "outpost",
+      "kind": "outpost",
+      "x": 305,
+      "y": 114.1,
+      "z": 288,
+      "yaw_deg": 0,
+      "heading_deg": 180
+    },
+    {
+      "id": "df-mast",
+      "kind": "df_mast",
+      "x": 308,
+      "y": 130.84,
+      "z": 285,
+      "yaw_deg": 0,
+      "heading_deg": 0
+    },
+    {
+      "id": "relay",
+      "kind": "relay_bird",
+      "x": -171.59,
+      "y": 429.5,
+      "z": -329.19,
+      "yaw_deg": -1,
+      "heading_deg": 181,
+      "altitude_m": 300
+    },
+    {
+      "id": "parachute",
+      "kind": "parachute_lkl",
+      "x": 90,
+      "y": 122.93,
+      "z": -150,
+      "yaw_deg": 0,
+      "heading_deg": 180
+    },
+    {
+      "id": "local-1",
+      "kind": "local",
+      "x": 202,
+      "y": 81.07,
+      "z": 199,
+      "yaw_deg": 57,
+      "heading_deg": 123
+    },
+    {
+      "id": "local-2",
+      "kind": "local",
+      "x": 211,
+      "y": 84.29,
+      "z": 204,
+      "yaw_deg": 172,
+      "heading_deg": 8
+    },
+    {
+      "id": "muntjac-1",
+      "kind": "muntjac",
+      "x": -34.95,
+      "y": 31.65,
+      "z": -53.1,
+      "yaw_deg": -34,
+      "heading_deg": 214
+    },
+    {
+      "id": "muntjac-2",
+      "kind": "muntjac",
+      "x": 60,
+      "y": 1.53,
+      "z": 24.85,
+      "yaw_deg": 82,
+      "heading_deg": 98
+    },
+    {
+      "id": "muntjac-3",
+      "kind": "muntjac",
+      "x": -150,
+      "y": 17.45,
+      "z": 62,
+      "yaw_deg": 181,
+      "heading_deg": 359
+    },
+    {
+      "id": "macaque-1",
+      "kind": "macaque",
+      "x": 41.56,
+      "y": 96.64,
+      "z": -142.49,
+      "yaw_deg": 0,
+      "heading_deg": 180
+    },
+    {
+      "id": "macaque-2",
+      "kind": "macaque",
+      "x": 26.23,
+      "y": 101.83,
+      "z": -145.22,
+      "yaw_deg": 75,
+      "heading_deg": 105
+    },
+    {
+      "id": "macaque-3",
+      "kind": "macaque",
+      "x": 43.31,
+      "y": 102.81,
+      "z": -163.82,
+      "yaw_deg": 149,
+      "heading_deg": 31
+    },
+    {
+      "id": "macaque-4",
+      "kind": "macaque",
+      "x": 41.7,
+      "y": 101,
+      "z": -167.66,
+      "yaw_deg": 224,
+      "heading_deg": 316
+    },
+    {
+      "id": "macaque-5",
+      "kind": "macaque",
+      "x": 11.06,
+      "y": 106.38,
+      "z": -153.16,
+      "yaw_deg": 298,
+      "heading_deg": 242
+    },
+    {
+      "id": "boar",
+      "kind": "wild_boar",
+      "x": 120,
+      "y": 0.09,
+      "z": 16.15,
+      "yaw_deg": 46,
+      "heading_deg": 134
+    },
+    {
+      "id": "sambar",
+      "kind": "sambar",
+      "x": -210,
+      "y": -1.45,
+      "z": 4.17,
+      "yaw_deg": 109,
+      "heading_deg": 71
+    }
+  ]
+}
