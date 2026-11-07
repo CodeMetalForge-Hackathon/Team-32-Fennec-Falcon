@@ -13,8 +13,8 @@ plain Python and is tested without Unreal. Technical reference: [docs/unreal-sim
 | Item | Notes |
 |---|---|
 | Windows PC with a gaming-class GPU | Unreal 5 with Lumen. About 60 GB free for the engine |
-| Unreal Engine **5.7** | Epic Games Launcher → Unreal Engine → Library → **+** → 5.7 → Install. 5.6 and 5.8 should also work (Cesium for Unreal supports all three); open the project with whichever you have |
-| **Cesium for Unreal** plugin | Free on Fab. Add it to your library, then Launcher → Library → Fab Library → Cesium for Unreal → **Install to Engine** (5.7) |
+| Unreal Engine **5.8** | Epic Games Launcher → Unreal Engine → **Install Engine** (5.8 is the default) → Install. 5.6 and 5.7 should also work (Cesium for Unreal supports them); open the project with whichever you have |
+| **Cesium for Unreal** plugin | Free on Fab. Add it to your library, then Launcher → Library → Fab Library → Cesium for Unreal → **Install to Engine** (5.8) |
 | Free **Cesium ion** account | Streams Google Photorealistic 3D Tiles (ion asset 2275207). Sign up at ion.cesium.com |
 | Internet | Terrain streams the first time; Cesium then keeps a disk cache |
 | ATAK (optional) | ATAK-CIV on an Android phone, or WinTAK, on the same network as the PC |
@@ -22,7 +22,7 @@ plain Python and is tested without Unreal. Technical reference: [docs/unreal-sim
 ## First run (about 20 minutes, mostly installs and shader compiling)
 
 1. **Open the project.** Double-click `unreal-sim/EagleSim/EagleSim.uproject`. If Windows asks which
-   engine, pick 5.7. The first open compiles shaders for several minutes.
+   engine, pick 5.8. The first open compiles shaders for several minutes.
 2. **Sign in to Cesium ion.** Click **Cesium** in the toolbar (or Window → Cesium), then **Connect to
    Cesium ion** and approve it in the browser. When asked about a token, let it create a project
    default token. If Cesium later reports that asset 2275207 is not in your account, add **Google

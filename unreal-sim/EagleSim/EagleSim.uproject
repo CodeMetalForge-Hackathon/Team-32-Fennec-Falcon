@@ -1,6 +1,6 @@
 {
 	"FileVersion": 3,
-	"EngineAssociation": "5.7",
+	"EngineAssociation": "5.8",
 	"Category": "",
 	"Description": "Eagle hawk-eagle thermal search demo for the Code Metal hackathon, Team 32",
 	"Plugins": [
