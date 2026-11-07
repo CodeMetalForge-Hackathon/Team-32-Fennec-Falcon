@@ -106,7 +106,8 @@ RSSI or hash of a bystander's device is kept anywhere.
 ## Verification
 
 - `python -m pytest -q` in `eagle-kit/`: 183 passed, 1 skipped (the skipped test needs a YAMNet
-  model file), about 26 s.
+  model file), about 26 s, with the optional `pyroomacoustics` and `pymap3d` installed. Without
+  them, their two tests skip as well.
 - The firmware sketches are compiled and run on the host against stub libraries
   (`tests/firmware_host/`), and `tests/test_firmware_layout.py` checks their byte layouts against
   `protocol.py`.
