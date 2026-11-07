@@ -11,6 +11,15 @@ echo "== packages"
 apt-get update
 apt-get install -y ffmpeg python3-opencv python3-numpy v4l-utils
 
+echo "== uvcvideo quirk for the HikCamera"
+# Without UVC_QUIRK_PROBE_MINMAX (0x2) the camera stalls on probe-control queries
+# ("Failed to query (130) UVC probe control : -32") and never delivers frames on Linux.
+echo "options uvcvideo quirks=0x2" > /etc/modprobe.d/uvcvideo-hikcamera.conf
+if [ "$(cat /sys/module/uvcvideo/parameters/quirks 2>/dev/null)" != "2" ]; then
+  modprobe -r uvcvideo 2>/dev/null && modprobe uvcvideo && sleep 3 \
+    || echo "   uvcvideo is in use; the quirk applies after a reboot or camera replug"
+fi
+
 echo "== MediaMTX $MTX_VER"
 case "$(uname -m)" in
   aarch64) ARCH=linux_arm64 ;;

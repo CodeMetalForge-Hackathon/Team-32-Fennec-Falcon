@@ -16,14 +16,23 @@ HTI imager --USB--> Pi: thermal_rtsp.py --> FFmpeg H.264 --> MediaMTX --> RTSP /
 |---|---|
 | `thermal_rtsp.py` | Capture, temperature conversion, warm-body detection, overlay, encode, publish. Reconnects on its own if the camera or MediaMTX drops. |
 | `mediamtx.yml` | MediaMTX config: RTSP, WebRTC, HLS, records to `/home/thermal_recordings` in 10-minute MP4s, kept 3 days. Only the Pi can publish; anyone on the network can watch. |
-| `setup_pi.sh` | One-time install (needs internet): FFmpeg, OpenCV, v4l-utils, MediaMTX v1.21.3, boot services. |
+| `setup_pi.sh` | One-time install (needs internet): FFmpeg, OpenCV, v4l-utils, the uvcvideo quirk, MediaMTX v1.21.3, boot services. |
 | `hotspot_on.sh` / `hotspot_off.sh` | Field Wi-Fi hotspot `THERMAL-PI` (password `thermal1234`). Pi is `10.42.0.1`. |
 
 ## Steps
 
 1. Copy this folder to the Pi (e.g. `scp -r pi <user>@<pi-ip>:~/thermal`).
 2. Plug the imager into the Pi and check it: `v4l2-ctl --list-devices`
-3. Test capture without installing services:
+3. Apply the uvcvideo quirk (`setup_pi.sh` also does this, permanently). Without it Linux's
+   UVC driver fails stream negotiation (`dmesg`: `Failed to query (130) UVC probe control : -32`)
+   and no frames arrive, even though the camera works on Windows:
+   ```
+   echo "options uvcvideo quirks=0x2" | sudo tee /etc/modprobe.d/uvcvideo-hikcamera.conf
+   sudo modprobe -r uvcvideo && sudo modprobe uvcvideo
+   ```
+   If `modprobe -r` says the module is in use (WirePlumber holds the camera on desktop
+   images), run `systemctl --user stop wireplumber` first, or just reboot.
+   Test capture without installing services:
    `sudo apt install -y python3-opencv python3-numpy ffmpeg v4l-utils && python3 ~/thermal/thermal_rtsp.py --check`
    It should print five lines with plausible temperatures (room ~20 C, your hand ~33 C).
 4. Install: `cd ~/thermal && sudo bash setup_pi.sh`. Services start now and on every boot.
