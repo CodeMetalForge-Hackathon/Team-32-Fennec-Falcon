@@ -127,6 +127,19 @@ arrays:
       - [ 0.000,  0.032, 0.0]
     notes: Flash 6_channels_firmware.bin (Seeed wiki) - the 1-channel firmware has no raw mics.
 
+  respeaker_xvf3800:
+    description: Seeed reSpeaker XVF3800 USB 4-Mic Array, 6-channel firmware (ch0 conference, ch1 ASR, ch2-5 raw mics 0-3)
+    verified: false              # geometry from the device, channel order NOT verified: do the clap test (0 and 90 deg left)
+    fs: 16000                    # 6-channel USB firmware: 16 kHz, 32-bit (Seeed wiki)
+    device_channels: 6
+    channels: [2, 3, 4, 5]       # raw mic 0..3 per the Seeed wiki's 6-channel layout
+    positions_m:                 # AEC_MIC_ARRAY_GEO read from the XVF3800 (xvf_host), metres, mic 0..3
+      - [ 0.033, -0.033, 0.0]
+      - [ 0.033,  0.033, 0.0]
+      - [-0.033,  0.033, 0.0]
+      - [-0.033, -0.033, 0.0]
+    notes: Flash respeaker_xvf3800_usb_dfu_firmware_6chl (the 2-channel firmware has no raw mics). Channel-to-mic order is unverified until the clap test on hardware; if 90 deg left reads ~270 set audio.mirror_y, if it is off by 90/180 deg the channel list is rotated.
+
   respeaker_6mic_hat:
     description: Seeed ReSpeaker 6-Mic Circular Array kit for Raspberry Pi (2 x AC108), 8 capture channels
     verified: true

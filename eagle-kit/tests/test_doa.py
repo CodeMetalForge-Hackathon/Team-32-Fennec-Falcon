@@ -6,7 +6,7 @@ from eagle.doa import (SrpPhat, gcc_phat, speed_of_sound, srp_phat, unit_vector,
                        vector_to_az_el, wrap180)
 from eagle.sim import band_noise, simulate_array_capture
 
-PRESETS = ["respeaker_usb_v2", "respeaker_6mic_hat", "minidsp_uma16_v2", "diy_tetra_4", "diy_cross_4"]
+PRESETS = ["respeaker_usb_v2", "respeaker_xvf3800", "respeaker_6mic_hat", "minidsp_uma16_v2", "diy_tetra_4", "diy_cross_4"]
 DIRECTIONS = [(37.0, -25.0), (205.0, -40.0), (300.0, -15.0)]
 
 
@@ -155,3 +155,13 @@ def test_cross_check_with_pyroomacoustics_room(cfg):
     # pyroomacoustics searches azimuth in the horizontal plane only (source is ~25 deg below),
     # so allow it a little more slack; both must land near the truth
     assert abs(wrap180(np.degrees(doa.azimuth_recon[0]) - az)) <= 6.0
+
+
+def test_respeaker_xvf3800_preset(cfg):
+    """6-channel firmware: raw mics on ch2-5, geometry from AEC_MIC_ARRAY_GEO, order unverified."""
+    g = array_geometry(cfg, "respeaker_xvf3800")
+    assert g.fs == 16000 and g.device_channels == 6 and g.channels == [2, 3, 4, 5]
+    assert g.verified is False and "clap test" in g.notes
+    assert np.allclose(g.positions, [[0.033, -0.033, 0], [0.033, 0.033, 0], [-0.033, 0.033, 0], [-0.033, -0.033, 0]])
+    block = np.arange(12, dtype=float).reshape(2, 6)            # 2 samples x 6 device channels
+    assert np.array_equal(g.select(block), [[2, 8], [3, 9], [4, 10], [5, 11]])

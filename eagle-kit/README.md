@@ -34,6 +34,7 @@ Serial ports: Linux `/dev/ttyUSB0` (add yourself to `dialout`), macOS `/dev/cu.u
 | Preset | Mics / rate | Geometry source | Status |
 |---|---|---|---|
 | `respeaker_usb_v2` | 4 raw of 6 ch, 16 kHz | ODAS cfg, radius 32 mm; Seeed wiki ch1-4 = raw mics | verified (needs 6-channel firmware) |
+| `respeaker_xvf3800` | 4 raw of 6 ch, 16 kHz | AEC_MIC_ARRAY_GEO from the device, 66 mm square; Seeed wiki ch2-5 = raw mics | **channel order not verified: clap test** (needs 6-channel firmware) |
 | `respeaker_6mic_hat` | 6 of 8 ch, 16 kHz (max 48) | ODAS cfg, radius 46.3 mm; ch0-5 mics | verified |
 | `minidsp_uma16_v2` | 16 ch, 48 kHz | Acoular xml, 4x4 grid, 42 mm pitch, USB channel order | **partial**: which board edge is +x is not verified |
 | `diy_tetra_4` / `diy_cross_4` | 4-input USB interface | placeholders | **not verified: measure** |
