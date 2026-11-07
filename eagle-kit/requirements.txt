@@ -1,0 +1,19 @@
+# runtime
+numpy>=1.23
+cryptography>=41
+pyyaml>=6.0
+pyserial>=3.5
+sounddevice>=0.4.6      # Linux also needs PortAudio: sudo apt install libportaudio2
+
+# optional - uncomment what you need
+# matplotlib            # sim_demo floor plot (PNG)
+# pymap3d               # exact ENU <-> WGS84 (the built-in approximation is ~cm over 1 km)
+# meshtastic            # MeshtasticTransport
+# pytest                # python -m pytest -q
+# pyroomacoustics       # only for the DOA cross-check test (skipped if absent)
+# signs of life (section 9) - all optional, every driver says what to install when it is missing
+# scipy                          # faster connected components (numpy fallback built in)
+# opencv-python                  # PureThermal UVC Y16 / 8-bit cameras
+# adafruit-circuitpython-mlx90640  # MLX90640 on the Pi's I2C
+# bleak                          # BLE allowlist scan
+# ai-edge-litert                 # YAMNet TFLite (or tflite-runtime / tensorflow)

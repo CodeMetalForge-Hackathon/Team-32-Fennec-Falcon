@@ -1,0 +1,277 @@
+# Eagle example configuration. Copy to config/local.yaml and edit at the venue:
+#   cp config/example.yaml config/local.yaml
+# Units: metres, degrees, dBm, Hz. "heading" = compass degrees clockwise from TRUE north.
+# Local frame: ENU metres (x = east, y = north, z = up) around site.origin.
+
+eagle:
+  id: 1                          # 1..255, unique per node; sent in every frame header
+  callsign: EAGLE-1
+  state_file: ~/.eagle/state-1.json   # persistent frame counter. Never delete it with the same keys.
+
+site:
+  origin: {lat: 42.355000, lon: -71.065500, hae_m: 10.0}   # ENU (0,0,0) - example only; survey your own
+  floor_z: 0.0                   # floor / ground height in the ENU frame
+  source_height_m: 0.5           # assumed mouth (or tag) height above the floor
+  dem: null                      # optional .npy height grid (see eagle/locate.py dem_height for layout)
+  dem_origin: [0.0, 0.0]         # ENU x, y of dem[0, 0]
+  dem_spacing_m: 1.0
+
+perch:
+  enu_m: [0.0, 0.0, 8.0]         # array position; z = height above the floor (MEASURE IT: tape or laser)
+  heading_deg: 30.0              # compass heading of the array's 0 deg mark (body +x)
+  az_offset_deg: 0.0             # body azimuth reported for a clap ON the 0 deg mark (clap test)
+  pitch_deg: 0.0                 # + = 0 deg mark tilted up
+  roll_deg: 0.0                  # + = left side tilted up
+
+audio:
+  preset: respeaker_usb_v2       # one of the arrays below
+  device: null                   # sounddevice index or name substring; see --list-devices
+  fs: null                       # null = preset default
+  mirror_y: false                # true if the clap test shows left and right swapped
+  window_s: 8.0                  # live: analysis window
+  step_s: 1.0                    # live: re-analyse every step
+  settle_s: 1.5                  # live: report a code only after 1.5 s of quiet (lets longer codes finish)
+  temperature_c: 10.0            # speed of sound = 331.3*sqrt(1+T/273.15)
+
+detect:
+  whistle: {enabled: true, band: [800, 4000], tonal_db: 12.0, snr_db: 3.0, min_dur_s: 0.15, max_dur_s: 4.0}
+  tap: {enabled: true, band: [300, 6000], on_db: 12.0, rise_db: 9.0, max_dur_s: 0.15}
+  energy: {enabled: false}
+
+# Briefed codes, most specific first (overlapping matches keep the earlier entry).
+# Optional "status" maps a code to status bits sent to the Nest.
+codes:
+  - {name: long_short_short, kind: whistle, rhythm: LSS, long_min_s: 0.6, short_max_s: 0.45, max_gap_s: 1.5, status: [injured]}
+  - {name: three_whistles, kind: whistle, count: 3, within_s: 5.0}
+  - {name: tap_2_3, kind: tap, groups: [2, 3], group_gap_s: 0.6, max_gap_s: 2.0}
+  - {name: three_taps, kind: tap, count: 3, within_s: 3.0}
+
+doa:
+  band_hz: [300, 6000]
+  hemisphere: lower              # level planar array looking down; null to search both
+  el_range_deg: [-90, 20]
+  az_step_deg: 3.0
+  el_step_deg: 3.0
+  frame_s: 0.064
+  onset_s: null                  # null = whole whistles (best outdoors / in noise); 0.1 = first 100 ms of
+                                 # each whistle only (best in echoey halls: reverb pulls planar-array
+                                 # elevation steeper). Check with a person at a taped distance.
+  el_bias_deg: 0.0               # added to every elevation; set from that known-distance check
+  min_confidence: 0.3            # below this the node logs the bearing but sends nothing
+  sigma_az_deg: 2.0              # 1-sigma errors for ce / ellipses: measure with repeated claps
+  sigma_el_deg: 3.0
+
+radio:
+  transport: serial              # serial | udp | meshtastic   (sim_demo always uses the mock)
+  serial_port: /dev/ttyUSB0      # macOS: /dev/cu.usbserial-XXXX or /dev/cu.SLAB_USBtoUART
+  baud: 115200
+  freq_mhz: 915.0                # US ISM 902-928 MHz
+  sf: 7
+  bw_khz: 250                    # 250 kHz halves airtime vs 125 (48-byte FIX: 48.8 ms vs 97.5 ms)
+  cr: 5                          # coding rate 4/5
+  min_dbm: -9                    # SX1262 limits in RadioLib
+  max_dbm: 22
+  margin_db: 10.0                # link margin on top of sensitivity
+  force_dbm: null                # DEMO ONLY: fixed power for every burst (e.g. 22 to show the SDR contrast)
+  noise_figure_db: 6.0
+  path_loss: {pl_d0_db: 31.7, exponent: 3.0, d0_m: 1.0}   # log-distance model at 915 MHz
+  nest_link: {distance_m: 800.0, path_loss_db: null}      # fallback when no Nest BEACON heard
+  beacon_max_age_s: 300
+  udp: {bind: "127.0.0.1:47001", peer: "127.0.0.1:47002", path_loss_db: 100.0}  # nest swaps bind/peer
+  meshtastic: {dev_path: null, channel_index: 0, destination: "^all", hop_limit: 0}
+
+poll:
+  enabled: true                  # after an acoustic fix, challenge the tag once
+  reply_window_ms: 500
+  every_s: 0                     # > 0: also poll blind every N s (tag-only, RSSI-range fix)
+  tag_sens_dbm: null             # null = computed from sf/bw
+
+keys:                            # TEST KEYS. Regenerate: python apps/keygen.py
+  tag_hmac: ee6cef5ee4a09a99cdff155c20f723799db18882a3653cbe79ef45932d6ad885
+  fix_aes: 54a27fe66a44539aa0186d30196e784fda6028093ac588e476dc7a7a29aa7404
+  covert: c5c9ae2ec2a0236af498d48d1373cf2985f3a1553a1c42f1e720eae43116aa2c   # tags + Nest ONLY; set null on Eagles
+
+nest:
+  id: 1
+  callsign: NEST
+  state_file: ~/.eagle/nest-beacon.json
+  replay_window: 64
+  max_age_s: 600                 # reject FIX older than this (0 = off; needs synced clocks)
+  beacon_every_s: 0              # > 0: send a BEACON so Eagles can measure path loss
+  beacon_dbm: 10
+
+cot:
+  how: m-f
+  stale_s: 300
+  uid_prefix: eagle
+  unconfirmed_type: a-u-G        # acoustic only
+  authenticated_type: a-f-G-U-C  # tag REPLY verified
+  unicast: {enabled: false, host: 192.168.1.50, port: 4242}   # an ATAK phone's IP
+  multicast: {enabled: true, group: 239.2.3.1, port: 6969, ttl: 1, interface: null}
+  tcp: {enabled: false, host: 127.0.0.1, port: 8087}          # TAK server plain-TCP input
+
+# Microphone arrays. positions_m are in the array frame (x, y, z) and listed in the order
+# of `channels` (0-based input channels of the audio device). Verify orientation with the
+# clap test (README) no matter what: boards can be mounted rotated or mirrored.
+arrays:
+  respeaker_usb_v2:
+    description: Seeed ReSpeaker USB Mic Array v2.0, 6-channel firmware (ch0 processed, ch1-4 raw mics, ch5 playback)
+    verified: true
+    fs: 16000                    # wiki: max sample rate 16 kHz
+    device_channels: 6
+    channels: [1, 2, 3, 4]
+    positions_m:                 # ODAS config respeaker_usb_4_mic_array.cfg (radius 32 mm)
+      - [-0.032,  0.000, 0.0]
+      - [ 0.000, -0.032, 0.0]
+      - [ 0.032,  0.000, 0.0]
+      - [ 0.000,  0.032, 0.0]
+    notes: Flash 6_channels_firmware.bin (Seeed wiki) - the 1-channel firmware has no raw mics.
+
+  respeaker_6mic_hat:
+    description: Seeed ReSpeaker 6-Mic Circular Array kit for Raspberry Pi (2 x AC108), 8 capture channels
+    verified: true
+    fs: 16000                    # wiki examples use 16 kHz; spec max 48 kHz
+    device_channels: 8           # ch0-5 mics, ch6-7 playback loopback
+    channels: [0, 1, 2, 3, 4, 5]
+    positions_m:                 # ODAS config respeaker_6_mic_array.cfg (radius 46.3 mm)
+      - [-0.0232,  0.0401, 0.0]
+      - [-0.0463,  0.0000, 0.0]
+      - [-0.0232, -0.0401, 0.0]
+      - [ 0.0232, -0.0401, 0.0]
+      - [ 0.0463,  0.0000, 0.0]
+      - [ 0.0232,  0.0401, 0.0]
+    notes: Start capture before playback or channel order can be disordered (Seeed wiki).
+
+  minidsp_uma16_v2:
+    description: miniDSP UMA-16 v2, 16 MEMS mics, uniform rectangular array, USB Audio Class 2
+    verified: partial            # 4x4 grid, 42 mm pitch, USB channel order from Acoular; board orientation not verified
+    fs: 48000                    # vendor: up to 48 kHz
+    device_channels: 16
+    channels: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+    positions_m:                 # acoular/xml/minidsp_uma-16.xml (x corrected after Acoular 24.03, issue #63)
+      - [ 0.021, -0.063, 0.0]
+      - [ 0.063, -0.063, 0.0]
+      - [ 0.021, -0.021, 0.0]
+      - [ 0.063, -0.021, 0.0]
+      - [ 0.021,  0.021, 0.0]
+      - [ 0.063,  0.021, 0.0]
+      - [ 0.021,  0.063, 0.0]
+      - [ 0.063,  0.063, 0.0]
+      - [-0.063,  0.063, 0.0]
+      - [-0.021,  0.063, 0.0]
+      - [-0.063,  0.021, 0.0]
+      - [-0.021,  0.021, 0.0]
+      - [-0.063, -0.021, 0.0]
+      - [-0.021, -0.021, 0.0]
+      - [-0.063, -0.063, 0.0]
+      - [-0.021, -0.063, 0.0]
+    notes: miniDSP states the array indexing differs from its channel assignment; which board edge is +x is NOT verified - do the clap test (0 deg and 90 deg left) and set perch.az_offset_deg / audio.mirror_y.
+
+  diy_tetra_4:
+    description: DIY 4-mic tetrahedron (3 mics on a ring + 1 below the centre) on a 4-input USB audio interface
+    verified: false              # YOU MUST MEASURE: positions below are a 10 cm regular tetrahedron
+    fs: 48000
+    device_channels: 4
+    channels: [0, 1, 2, 3]
+    positions_m:
+      - [ 0.0577,  0.0000, 0.0]
+      - [-0.0289,  0.0500, 0.0]
+      - [-0.0289, -0.0500, 0.0]
+      - [ 0.0000,  0.0000, -0.0816]
+    notes: Measure each capsule centre from a common point to +-2 mm; mic 1 on the 0 deg mark. Non-planar, so elevation needs no hemisphere guess.
+
+  diy_cross_4:
+    description: DIY 4-mic cross (plus sign, 5 cm arms) on a 4-input USB audio interface
+    verified: false              # YOU MUST MEASURE
+    fs: 48000
+    device_channels: 4
+    channels: [0, 1, 2, 3]
+    positions_m:
+      - [ 0.05,  0.00, 0.0]
+      - [ 0.00,  0.05, 0.0]
+      - [-0.05,  0.00, 0.0]
+      - [ 0.00, -0.05, 0.0]
+    notes: Planar; keep it level and use hemisphere lower. Match preamp gains.
+
+# ---- Signs of life: multi-sensor, multi-person (apps/life_demo.py, apps/life_node.py) ----------
+# Every module is optional: life_node runs whatever is configured AND importable, and logs why
+# a module is off. Positions are ENU metres like everything above.
+life:
+  modules: [audio, thermal, vitals, rf, vision]   # which ones life_node tries to start
+  report:
+    every_s: 30.0                # LIFE burst at least this often ...
+    on_change: true              # ... and whenever a status / flag / track changes
+    min_gap_s: 5.0               # never two bursts closer than this
+    max_frame_bytes: 128         # longer lists are split into several LIFE frames
+  audio:
+    every_s: 4.0                 # analyse the last audio.window_s every N s (uses audio/doa/codes above)
+  thermal:
+    source: synthetic            # synthetic | mlx90640 | uvc_y16 | gray8 | none
+    every_s: 2.0
+    camera:                      # pinhole model of the thermal camera. MEASURE the mount.
+      hfov_deg: 57.0             # PureThermal + Lepton 3.x: check your Lepton's datasheet;
+      width: 160                 # MLX90640: 32 x 24, hfov 55 (55x35 version) or 110 (110x75)
+      height: 120
+      vfov_deg: null             # null = square pixels (vfov from hfov and the aspect ratio)
+      mount: {enu_m: null, heading_deg: 0.0, tilt_down_deg: 35.0, roll_deg: 0.0}  # enu_m null = perch.enu_m
+    mlx90640: {refresh_hz: 4, i2c_hz: 800000, flip_h: false, flip_v: false}
+    uvc: {device: 0, width: 160, height: 120}
+    synthetic:                   # used when source = synthetic (bench test without a camera)
+      background_c: 20.0
+      noise_c: 0.2
+      bodies: [{xy: [1.0, 6.0], posture: lying, yaw_deg: 30.0, temp_c: 31.0}]
+    detector:
+      delta_c: 3.0               # warmer than the fitted background by this much (grey levels for gray8)
+      abs_window_c: [24.0, 40.0] # radiometric sources only: skin / clothing, not heaters or hot drinks
+      min_area_m2: 0.12          # floor footprint gate: a person ~0.3-1 m^2, a mug ~0.02 m^2
+      max_area_m2: 3.0
+      max_width_m: 2.2
+      target_height_m: 0.15      # height of a lying body's centre above the floor
+      sigma_heading_deg: 1.0     # mount pose uncertainty -> covariance
+      sigma_tilt_deg: 1.0
+      sigma_mount_height_m: 0.05
+      sigma_target_height_m: 0.1
+      sigma_body_m: 0.25
+  vitals:
+    port: null                   # serial port of firmware/radar_bridge or a vendor module, e.g. /dev/ttyACM0
+    baud: 115200
+    fs_hz: 50                    # RADAR <adc> sample rate of the bridge
+    window_s: 30                 # breathing estimate window
+    every_s: 10.0
+    enu_m: null                  # where that radar pellet lies (null = under the perch)
+    pellet_sigma_m: 1.0          # association radius (1-sigma) around a pellet
+    pellet_range_m: 1.5          # simulation: vital-sign range of a pellet (Seeed MR60BHA2 wiki: 1.5 m)
+  sounds:
+    yamnet_model: null           # path to yamnet.tflite (README "Model downloads"); null = heuristic
+    class_map: null              # null = eagle/data/yamnet_class_map.csv (vendored, Apache-2.0)
+    threshold: 0.15              # min YAMNet category score
+    mapping: null                # null = eagle.sounds.YAMNET_MAP (category -> exact class names)
+  rf:
+    source: bleak                # bleak | sim
+    scan_s: 4.0
+    every_s: 20.0
+    rssi_1m_dbm: -59.0           # MEASURE: your own device's RSSI at 1 m
+    exponent: 2.0                # 2 free space; ~2.5-3.5 indoors or through bodies
+    shadow_db: 6.0               # 1-sigma RSSI spread -> wide range uncertainty
+    allowlist:                   # ONLY these are ever reported or stored; all else is an anonymous count
+      - {name: TEAM-RADIO, label: TEAM-RADIO}
+      # - {address: "AA:BB:CC:DD:EE:FF", label: TAG-7}
+  vision:
+    jsonl: null                  # file a person detector appends {"t":..,"boxes":[[x1,y1,x2,y2,score],..]} lines to
+    every_s: 1.0
+    min_score: 0.4
+    posture: auto                # auto | upright | lying
+    camera: {hfov_deg: 66.0, width: 640, height: 480,
+             mount: {enu_m: null, heading_deg: 0.0, tilt_down_deg: 30.0, roll_deg: 0.0}}
+  fusion:
+    max_tracks: 12
+    gate_chi2: 9.21              # 2 dof, 99 %
+    bearing_gate_sigma: 3.0
+    rf_gate_sigma: 3.0
+    q_m2_per_s: 0.0025           # random-walk process noise (people barely move)
+    death_s: 600                 # drop a track after this long without evidence
+    rf_death_s: 300
+    warm_timeout_s: 30           # heat with no sign of life for this long -> WARM_ONLY
+    responsive_window_s: 300
+    life_window_s: 300
+    score_tau_s: 300
