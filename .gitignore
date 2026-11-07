@@ -4,3 +4,5 @@ captures/
 *.pyc
 diag_frames/
 diag_log.txt
+pi_check_log.txt
+detector/data/
