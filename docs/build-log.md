@@ -4,6 +4,58 @@ Every build gets an entry here: what we built, why, how it works, what we decide
 
 ---
 
+## 2026-11-07 · Eagle Jungle Simulator v2: the person carries nothing
+
+**Files:** [`simulator/v2/`](../simulator/v2/) · **Docs:** [simulator-v2.md](simulator-v2.md), [simulator/v2/unreal/README.md](../simulator/v2/unreal/README.md)
+
+![Simulator v2 at 02:00, mission running: the Eagle cam, the evidence chart and the four ways out](images/sim-v2-mission-night.jpg)
+
+### What
+A second version of the simulator in which the isolated person carries nothing that transmits. The Eagle finds him with its thermal camera (primary) and microphone array (secondary). An onboard evidence gate decides when it is sure it has found him, and the model picks the safest of four ways to get one 48-byte report out: a burst from the perch, a whisper to the relay overhead, flying 3 km before transmitting, or carrying the fix out. The page shows this as input, processing and output panels over a 3D jungle with a ridge outpost, patrols, local farmers and wildlife, plays a mission for each way out, and exports the scene for Unreal Engine.
+
+### Why
+Version 1 assumes a tag. In the case we design for, the person may carry nothing that works, and every transmission near him is a risk. The mentors' recurring question was what evidence justifies claiming he has been found before anything is sent. Version 2 makes that claim explicit, as a probability that must reach 0.95, and makes the risk of every emission visible.
+
+### How it works
+- `model.js` is one pure function with no dependencies: heat contrast and canopy line of sight; sound levels and foliage loss against ambient noise; a Bayesian evidence gate (prior odds × one likelihood ratio per clue); four ways out, scored on latency, where the emission happens and how far away it can be heard; position error; search time.
+- Radio loss: plane-earth plus Weissberger through the trees; ITU-R P.833-10 with one end above the canopy.
+- `index.src.html` is the page; `build.js` inlines the model, so the numbers on screen are the model's.
+- **Export to Unreal** writes the scene as JSON; `unreal/ue_import_scene.py` places it in an Unreal Engine 5 level.
+
+Full detail: [simulator-v2.md](simulator-v2.md).
+
+### Key results (modelled)
+- **02:00 night, injured, taps the briefed code:** TRANSMIT at 10 min (P 0.99), flies 3 km and bursts, ATAK marker at 14.5 min, fix error 10.1 m.
+- **A burst from the perch would be heard 246 m away**, past the patrol 230 m from the perch.
+- **Silent, only coughs:** 80 min to decide. **Unconscious:** the gate holds at P 0.92 and sends nothing, unless a radar pellet confirms breathing (120 min).
+- **14:00 cicada chorus:** heat fails (-0.7 °C contrast against a 2.3 °C threshold), the tap code is heard to 26 m instead of 94 m, and the search needs 13 times as many perch stops.
+- **Error budget:** 10 of the 10.1 m is the Eagle's own position without GPS; with a magnetometer alone it is 30.1 m, missing the 30 m target.
+
+### Decisions and trade-offs
+| Decision | Why | Cost |
+|---|---|---|
+| No tag: heat and sound only | The realistic worst case; nothing on him can give him away | Slower, less certain decisions; an unconscious, silent person may never be reported |
+| A probability gate (P ≥ 0.95) before any emission | Answers "how do you know it's him?" with a number and its evidence | The likelihood ratios are assumptions until tuned on recorded data |
+| Never transmit from the perch by default | The burst is heard beyond the nearest patrol | 4.5 min more to the marker |
+| Briefed tap code every 30 min after dark | A cheap signal that carries no radio and counts ×100 as evidence | He must be conscious and briefed |
+| Model inlined into the page by a build step | The page cannot drift from the model; `model.js` still runs in Node | `index.html` must be rebuilt after edits |
+| Separate v2 folder; v1 kept | v1 (with a tag) stays documented and runnable | Two simulators to maintain |
+
+### Verification
+- `node simulator/v2/model_table.js` runs all 5 presets and 7 what-if cases; the numbers above come from it.
+- In-forest radio loss is within 2 dB of a LoRa range measurement in Brazilian rainforest.
+- Page loaded in headless Chromium with software WebGL: no console errors except the Google Fonts request the test sandbox blocks, no horizontal scroll at 1280 px or 390 px; presets, all four missions, the cinematic and the export exercised.
+- The page's real export (`unreal/sample_scene.json`, 25 actors) passes `python unreal/test_ue_import.py`.
+
+### Open issues / next
+- Tune the likelihood ratios and sound levels on recorded data (tap code under canopy, cicada chorus, rain).
+- Detection probability and false-alarm rates instead of pass/fail ranges.
+- Frame rate on a real GPU; Safari and iOS.
+- Run the scene import inside the Unreal Editor.
+- Feed v2's thermal contrast into the Unreal live thermal demo.
+
+---
+
 ## 2026-11-07 · Unreal live thermal demo v1
 
 **Files:** [`unreal-sim/`](../unreal-sim/) · **Docs:** [unreal-sim.md](unreal-sim.md), [unreal-sim/README.md](../unreal-sim/README.md)
@@ -118,6 +170,82 @@ Full detail: [simulator.md](simulator.md).
 - Detection probability and false-alarm modelling (wildlife as decoys).
 - Vendor three.js and fonts so the simulator runs fully offline.
 - Field-validate: acoustic ranges, thermal contrast and LoRa path loss under real canopy.
+
+---
+
+## 2026-11-07 · Thermal camera probe v1
+
+**Files:** [`thermal-probe/`](../thermal-probe/) · **Docs:** [thermal-probe.md](thermal-probe.md)
+
+### What
+A command-line tool that finds a working mode for a USB thermal camera, shows a live false-colour view with hot-spot boxes, and streams it as H.264 to other screens.
+
+### Why
+Our HTI thermal imager shows up as a USB camera, but OpenCV could not open it with default settings, which blocked every thermal demo. Low-cost thermal cores often need one particular backend, size or pixel format, and some stack the picture and the raw data in one frame.
+
+### How it works
+- Tries every camera × backend (DirectShow, Media Foundation, V4L2) × size × format (YUY2, Y16, colour conversion on and off) and ranks the modes that work, preferring ones that carry raw 16-bit data.
+- Decodes double-height frames (picture above 16-bit raw data).
+- Falls back to ffmpeg when OpenCV cannot open the camera; streams H.264 to MediaMTX for WebRTC or VLC.
+- Prints a config block for the Eagle kit's thermal input.
+
+### Key results
+- With a simulated camera: the split-frame mode is found and decoded, hot spots are boxed, and the H.264 output runs at 768 × 576. No measurements with the real camera yet.
+
+### Decisions and trade-offs
+| Decision | Why | Cost |
+|---|---|---|
+| Scan every combination instead of writing a driver per camera | Works with an unknown camera at the venue table | Slower than opening a known mode (`--quick` tries the likely ones) |
+| OpenCV first, ffmpeg as the fallback | OpenCV gives raw frames on most cameras; ffmpeg opens the rest | Two code paths |
+| MediaMTX for streaming | One small server gives both WebRTC and RTSP | One more program to run |
+
+### Verification
+- `python thermal-probe/test_probe.py`: a simulated camera plus real ffmpeg; covers decoding, mode selection, hot spots, the ffmpeg reader and the H.264 output.
+
+### Open issues / next
+- Run it on Windows with the HTI imager and record the working mode.
+- Calibrate raw values to °C for that camera.
+
+---
+
+## 2026-11-07 · Eagle starter kit v2: find loop, encrypted link and signs of life
+
+**Files:** [`eagle-kit/`](../eagle-kit/) · **Docs:** [eagle-kit.md](eagle-kit.md), [eagle-kit/README.md](../eagle-kit/README.md)
+
+### What
+The software for a real perch and base station. Version 1: the perch hears a briefed whistle or tap code, measures its direction with a microphone array, turns bearing and perch height into a position, can poll the person's tag, and sends one 48-byte FIX, encrypted with AES-256-GCM, by LoRa to the Nest, which puts a Cursor-on-Target marker on ATAK. Version 2 adds signs of life: a status for each of up to ten people (RESPONSIVE, BREATHING, MOVING, WARM_ONLY, RF_ONLY, UNKNOWN) from thermal, sound, radar, Bluetooth and vision, sent home in LIFE frames of 128 bytes or less.
+
+### Why
+To turn the concept into something we can bench-test at the venue with off-the-shelf parts (Raspberry Pi, USB microphone arrays, Heltec LoRa boards, thermal and radar modules), and to show that a find can travel as one short, encrypted, low-power burst.
+
+### How it works
+- Direction by GCC-PHAT; range = perch height / tan(depression); two perches can cross their bearings.
+- Messages are defined once, in `eagle/protocol.py`: CHALLENGE 20 B and REPLY 21 B (HMAC), FIX 48 B and LIFE up to 128 B (AES-256-GCM), BEACON 15 B. The firmware headers mirror them, and the tests fail on drift.
+- Power control by reciprocity: each burst goes out at the lowest power that reaches the receiver.
+- A duress bit only the Nest can read; replay windows on every receiver.
+- Signs of life fuse thermal blobs, sound bearings, radar vitals, Bluetooth (allowlist only: bystanders are counted, never logged) and person detections into one list.
+
+### Key results (modelled)
+- Find loop in simulation: position error 0.94 m from one perch 8 m up (1.15 m crossed with a second perch); one FIX at +7 dBm, 48.8 ms on air; a receiver 1.6 km away does not see it.
+- Signs of life: 4 of 4 statuses right, positions within 0.17 m. Ten people over six random layouts: 47 of 47 tracked, 59 of 60 statuses right, no false tracks, two LIFE frames (161.5 ms).
+
+### Decisions and trade-offs
+| Decision | Why | Cost |
+|---|---|---|
+| LoRa at SF7 and 250 kHz | Short airtime (48.8 ms for a FIX) with 3 dB more sensitivity than 500 kHz | A fixed 250 kHz channel only suits a brief low-power demo under 47 CFR 15.247 |
+| One canonical byte layout in Python, mirrored in C | Firmware and host cannot drift silently | Two copies to keep in step (tests catch drift) |
+| Allowlist-only Bluetooth scan | Never stores bystanders' identifiers | Unknown devices are only counted |
+| Simulation first | Bench-testable without hardware | Hardware paths are unverified |
+| Optional tag mode kept | Fast, authenticated identity when a tag exists | Not available when the person carries nothing (see simulator v2) |
+
+### Verification
+- `python -m pytest -q` in `eagle-kit/`: 183 passed, 1 skipped (it needs a YAMNet model file), with the optional pyroomacoustics and pymap3d installed.
+- Firmware sketches compiled and run on the host against stub libraries.
+
+### Open issues / next
+- Live audio, real radios, the ESP32 toolchain and TAK over TLS.
+- The thermal cameras, Bluetooth scan, radar serial link and YAMNet inference on hardware.
+- A 500 kHz channel for anything beyond a brief demo.
 
 ---
 
