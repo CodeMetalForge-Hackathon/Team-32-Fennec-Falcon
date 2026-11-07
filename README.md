@@ -6,7 +6,7 @@ A person is cut off under dense forest canopy: a downed aircrew member, or a hik
 
 **Eagle** is a small perching drone built for that job. It flies in, perches with its motor off, and listens. When it finds the person, it sends a position fix out through a high-altitude relay to the coordinator's map, and carries a short text message back down to a tag the person carries.
 
-This repository holds the software we build for it. The first piece is a physics-based 3D simulator of the full mission.
+This repository holds the software we build for it. The first piece is a physics-based 3D simulator of the full mission. The second is an Unreal Engine demo of the wide-area thermal search over real terrain, with live ATAK markers.
 
 ![Eagle Jungle Simulator, 02:00 night scenario: settings on the left, the Eagle's thermal camera and sensor readouts on the right, mission log and ATAK-style map at the bottom](docs/images/overview-night.jpg)
 
@@ -33,6 +33,10 @@ To run just the physics model, with Node 18 or newer:
 node simulator/run-model.mjs                    # results for all four scenarios
 node simulator/run-model.mjs night opDist_m=80  # change any setting
 ```
+
+## Run the Unreal demo
+
+A second demo flies the Eagle over real Taiwan terrain in Unreal Engine 5: a thermal search through canopy gaps, a confirm orbit, perching, a comms pellet and authentication, with each step appearing live on ATAK. It needs Unreal Engine 5.7 with the free Cesium for Unreal plugin and a free Cesium ion account. Setup, run of show and troubleshooting: [`unreal-sim/README.md`](unreal-sim/README.md).
 
 ## Results so far
 
@@ -63,7 +67,9 @@ What we have learned:
 |---|---|
 | [`simulator/index.html`](simulator/index.html) | Eagle Jungle Simulator: the whole app in one file (physics model, 3D scene, interface) |
 | [`simulator/run-model.mjs`](simulator/run-model.mjs) | Runs the simulator's physics model in Node, no browser needed |
+| [`unreal-sim/`](unreal-sim/) | Unreal Engine 5 demo: live thermal search over real Taiwan terrain, with ATAK markers ([setup](unreal-sim/README.md)) |
 | [`docs/simulator.md`](docs/simulator.md) | Technical reference: architecture, every equation and constant with its source, message protocol, limitations |
+| [`docs/unreal-sim.md`](docs/unreal-sim.md) | Technical reference for the Unreal demo: architecture, detection model, thermal view, CoT messages, verification |
 | [`docs/build-log.md`](docs/build-log.md) | Dated record of every build: what, why, decisions, verification, open issues |
 | [`docs/how-we-document.md`](docs/how-we-document.md) | Our documentation process, commit format and pre-push privacy checklist |
 | [`docs/images/`](docs/images/) | Screenshots |
@@ -75,6 +81,7 @@ What we have learned:
 |---|---|
 | Mission simulator | v1 working: 24 inputs, 4 scenarios, full mission playback |
 | Physics model | v1: acoustic, thermal, radar, RF, fix accuracy, LoRa airtime; sources cited, estimates labelled |
+| Unreal live thermal demo | v1: code complete and tested without Unreal (18 tests; every Unreal API name checked); first run in the editor next |
 | Hardware (Eagle, tag, relay) | Not in this repo yet |
 | Field validation | Not started |
 
