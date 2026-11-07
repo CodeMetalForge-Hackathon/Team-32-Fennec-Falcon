@@ -57,7 +57,8 @@ classifier later.
 
 ## If the camera check fails
 
-`--check` tries OpenCV first, then FFmpeg, on every V4L2 node. Run
+`--check` tries OpenCV first, then FFmpeg, on each V4L2 node named `HikCamera` or `UVC Camera`
+(never the Pi's own ISP/codec nodes), giving each up to 5 seconds to deliver a frame. Run
 `v4l2-ctl -d /dev/video0 --list-formats-ext` and confirm a `YUYV 256x392` mode exists. If the
 frames come back but temperatures look wrong (e.g. negative or thousands of degrees), the raw
 bytes are being converted; force the FFmpeg reader with `--reader ffmpeg`.

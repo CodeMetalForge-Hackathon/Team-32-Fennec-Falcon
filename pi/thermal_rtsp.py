@@ -18,10 +18,14 @@ import csv
 import glob
 import json
 import os
+import queue
+import re
+import select
 import shutil
 import socket
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -33,6 +37,7 @@ SENSOR_H = 192
 FRAME_BYTES = WIDTH * HEIGHT * 2
 COUNTS_PER_KELVIN = 16.0
 CAMERA_NAMES = ("UVC Camera", "HikCamera")
+OPEN_TIMEOUT = 5.0  # seconds a camera may take to deliver its first raw frame
 
 
 def log(*a):
@@ -41,42 +46,72 @@ def log(*a):
 
 # ---------------------------------------------------------------- capture
 def candidate_devices():
-    """V4L2 nodes whose name matches the thermal camera, then all others."""
-    named, other = [], []
+    """V4L2 nodes whose name matches the thermal camera. Other nodes (the Pi's ISP and codec
+    nodes) are never tried: reading from them can block forever."""
+    named = []
     for d in sorted(glob.glob("/sys/class/video4linux/video*"), key=lambda p: int(p.rsplit("video", 1)[1])):
         try:
             name = Path(d, "name").read_text().strip()
         except OSError:
-            name = ""
-        dev = "/dev/" + os.path.basename(d)
-        (named if any(n in name for n in CAMERA_NAMES) else other).append(dev)
-    return named + other
+            continue
+        if any(n in name for n in CAMERA_NAMES):
+            named.append("/dev/" + os.path.basename(d))
+    return named
+
+
+def device_index(dev):
+    """/dev/videoN -> N. OpenCV's V4L2 backend can't open some devices by path."""
+    m = re.fullmatch(r"(?:/dev/video)?(\d+)", str(dev))
+    if not m:
+        raise RuntimeError(f"not a /dev/videoN device: {dev}")
+    return int(m.group(1))
 
 
 class OpenCVReader:
+    """OpenCV V4L2 capture. Reads run in a worker thread so a stalled camera can't block the
+    caller: this OpenCV build ignores CAP_PROP_READ_TIMEOUT_MSEC and its own wait is 10 s."""
+
     def __init__(self, dev):
-        self.cap = cv2.VideoCapture(dev, cv2.CAP_V4L2)
+        self.cap = cv2.VideoCapture(device_index(dev), cv2.CAP_V4L2)
         if not self.cap.isOpened():
             raise RuntimeError("open failed")
         self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"YUYV"))
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, WIDTH)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, HEIGHT)
         self.cap.set(cv2.CAP_PROP_CONVERT_RGB, 0)
-        for _ in range(10):
-            if self.read() is not None:
-                return
-        self.close()
-        raise RuntimeError("no raw 256x392 frames")
+        self.frames = queue.Queue(maxsize=2)
+        self.stop = threading.Event()
+        threading.Thread(target=self._worker, daemon=True).start()
+        if self.read() is None:
+            self.close()
+            raise RuntimeError(f"no raw 256x392 frames within {OPEN_TIMEOUT:.0f} s")
 
-    def read(self):
-        ok, frame = self.cap.read()
-        if not ok:
+    def _worker(self):
+        try:
+            while not self.stop.is_set():
+                ok, frame = self.cap.read()
+                b = frame.tobytes() if ok else b""
+                if len(b) != FRAME_BYTES:
+                    time.sleep(0.05)  # don't spin if reads fail instantly
+                    continue
+                if self.frames.full():  # keep the newest frames if the caller falls behind
+                    try:
+                        self.frames.get_nowait()
+                    except queue.Empty:
+                        pass
+                self.frames.put(b)
+        finally:
+            self.cap.release()  # here, not in close(): release during a blocked read is unsafe
+
+    def read(self, timeout=OPEN_TIMEOUT):
+        """One raw frame, or None if none arrives within `timeout` seconds."""
+        try:
+            return self.frames.get(timeout=timeout)
+        except queue.Empty:
             return None
-        b = frame.tobytes()
-        return b if len(b) == FRAME_BYTES else None
 
     def close(self):
-        self.cap.release()
+        self.stop.set()  # the worker releases the device after its current read returns
 
 
 class FFmpegReader:
@@ -86,14 +121,25 @@ class FFmpegReader:
         self.p = subprocess.Popen(
             ["ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "v4l2", "-input_format", "yuyv422",
              "-video_size", f"{WIDTH}x{HEIGHT}", "-i", dev, "-f", "rawvideo", "-"],
-            stdout=subprocess.PIPE, bufsize=FRAME_BYTES * 4)
+            stdout=subprocess.PIPE, bufsize=0)
         if self.read() is None:
             self.close()
-            raise RuntimeError("ffmpeg got no frames")
+            raise RuntimeError(f"ffmpeg got no frames within {OPEN_TIMEOUT:.0f} s")
 
-    def read(self):
-        b = self.p.stdout.read(FRAME_BYTES)
-        return b if b and len(b) == FRAME_BYTES else None
+    def read(self, timeout=OPEN_TIMEOUT):
+        """One frame, or None if FFmpeg exits or stalls for `timeout` seconds."""
+        fd = self.p.stdout.fileno()
+        buf = bytearray()
+        deadline = time.monotonic() + timeout
+        while len(buf) < FRAME_BYTES:
+            left = deadline - time.monotonic()
+            if left <= 0 or not select.select([fd], [], [], left)[0]:
+                return None
+            chunk = os.read(fd, FRAME_BYTES - len(buf))
+            if not chunk:
+                return None
+            buf += chunk
+        return bytes(buf)
 
     def close(self):
         self.p.kill()
