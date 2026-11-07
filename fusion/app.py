@@ -190,8 +190,15 @@ def thermal_worker(st, args):
 def open_visual(args):
     if args.rgb == "picamera":
         from picamera2 import Picamera2
-        cam = Picamera2()
-        cam.configure(cam.create_video_configuration(main={"size": (640, 480), "format": "RGB888"}))
+        tuning = Picamera2.load_tuning_file(args.rgb_tuning) if args.rgb_tuning else None
+        cam = Picamera2(tuning=tuning)
+        # 2304x1296 is the imx708's 2x2-binned mode over the whole 4608x2592 array, so the
+        # wide lens keeps its full field of view (the 1536x864 mode is a centre crop).
+        # Scale to 640 wide at the same 16:9 aspect for the dashboard.
+        cam.configure(cam.create_video_configuration(
+            main={"size": (640, 360), "format": "RGB888"},
+            sensor={"output_size": (2304, 1296), "bit_depth": 10},
+        ))
         cam.start()
         try:
             from libcamera import controls
@@ -471,6 +478,8 @@ def main():
     ap.add_argument("--thermal-every", type=int, default=3, help="run the thermal person model every N frames")
     ap.add_argument("--rgb", choices=["picamera", "usb", "file", "off"], default="picamera")
     ap.add_argument("--rgb-index", type=int, default=0)
+    ap.add_argument("--rgb-tuning", default="imx708_wide_noir.json",
+                    help="libcamera tuning file for --rgb picamera ('' for the default)")
     ap.add_argument("--rgb-file")
     ap.add_argument("--audio", choices=["arecord", "file", "off"], default="arecord")
     ap.add_argument("--mic", default="default", help="ALSA device, e.g. plughw:2,0 (see arecord -l)")
