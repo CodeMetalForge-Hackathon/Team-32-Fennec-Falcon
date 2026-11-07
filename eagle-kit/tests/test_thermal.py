@@ -98,3 +98,93 @@ def test_hardware_source_errors_are_clear():
         pass
     with pytest.raises(ThermalSourceError, match="pip install adafruit-circuitpython-mlx90640"):
         MLX90640Source()
+
+
+# ---- HTI HT-203U (raw YUYV 256x392, kelvin = raw / 16) -----------------------------------------
+from types import SimpleNamespace  # noqa: E402
+
+import eagle.thermal as T  # noqa: E402
+
+
+def hti_buffer(temps_c, preview_byte=0x80):
+    """Synthetic HT-203U frame: (192, 256) deg C -> 200704 raw bytes, with junk in rows 192-391."""
+    raw = np.full((T.HTI_HEIGHT, T.HTI_WIDTH), preview_byte * 257, dtype="<u2")     # preview/metadata rows
+    raw[:T.HTI_SENSOR_ROWS] = np.round((np.asarray(temps_c) + 273.15) * T.HTI_COUNTS_PER_KELVIN).astype("<u2")
+    return raw.tobytes()
+
+
+def test_hti_decode_synthetic_buffer():
+    temps = np.full((192, 256), 20.0)
+    temps[100:120, 50:60] = 33.0
+    temps[0, 0], temps[191, 255] = -20.0, 120.0
+    out = T.hti_frame_to_celsius(hti_buffer(temps))
+    assert out.shape == (192, 256)
+    assert np.allclose(out, temps, atol=1 / 16)              # 1 count = 1/16 K
+    assert out[110, 55] == pytest.approx(33.0, abs=0.07) and out[0, 0] == pytest.approx(-20.0, abs=0.07)
+    # little-endian check: 0x1234 counts in the first pixel
+    b = bytearray(hti_buffer(temps))
+    b[0:2] = (0x1234).to_bytes(2, "little")
+    assert T.hti_frame_to_celsius(bytes(b))[0, 0] == pytest.approx(0x1234 / 16 - 273.15)
+    assert T.hti_frame_to_celsius(np.frombuffer(bytes(b), np.uint8))[0, 0] == pytest.approx(0x1234 / 16 - 273.15)
+
+
+def test_hti_rejects_converted_frames():
+    with pytest.raises(ThermalSourceError, match="200704"):
+        T.hti_frame_to_celsius(bytes(256 * 392 * 3))           # a BGR-converted frame
+
+
+def test_hti_source_uses_driver_readers_and_detector_finds_person():
+    temps = np.full((192, 256), 18.0) + np.random.default_rng(3).normal(0, 0.1, (192, 256))
+    temps[120:132, 110:150] = 31.0                               # lying person, mid-frame
+    frames = [hti_buffer(temps), None]
+    calls = {}
+
+    class Reader:
+        def read(self, timeout=5.0):
+            calls["timeout"] = timeout
+            return frames.pop(0)
+
+        def close(self):
+            calls["closed"] = True
+
+    drv = SimpleNamespace(open_camera=lambda dev, reader: calls.update(dev=dev, reader=reader) or Reader())
+    src = T.HtiSource("/dev/video0", "ffmpeg", timeout_s=2.0, _driver_mod=drv)
+    t, frame, radiometric = src.read()
+    assert calls["dev"] == "/dev/video0" and calls["reader"] == "ffmpeg" and calls["timeout"] == 2.0
+    assert radiometric and frame.shape == (192, 256)
+    cam = Camera.from_fov(50, 256, 192, position=(0, 0, 3), heading_deg=0, tilt_down_deg=35)
+    blobs = ThermalDetector(cam).detect(frame)
+    assert len(blobs) == 1 and 29 < blobs[0].peak < 33
+    with pytest.raises(ThermalSourceError, match="no frame"):
+        src.read()
+    src.close()
+    assert calls["closed"]
+
+
+def test_hti_source_not_found_and_factory(monkeypatch):
+    drv = SimpleNamespace(open_camera=lambda dev, reader: None)
+    with pytest.raises(ThermalSourceError, match="not found"):
+        T.HtiSource(_driver_mod=drv)
+    seen = {}
+
+    def fake_loader(path=None):
+        seen["path"] = path
+
+        def open_camera(dev, reader):
+            seen.update(d=dev, r=reader)
+            return SimpleNamespace(read=lambda timeout=5: None, close=lambda: None)
+        return SimpleNamespace(open_camera=open_camera)
+    monkeypatch.setattr(T, "_load_hti_driver", fake_loader)
+    src = T.make_thermal_source({"source": "hti", "hti": {"device": "/dev/video4", "reader": "opencv",
+                                                          "driver": "/x/thermal_rtsp.py"}})
+    assert isinstance(src, T.HtiSource) and seen == {"path": "/x/thermal_rtsp.py", "d": "/dev/video4", "r": "opencv"}
+
+
+def test_hti_decode_matches_pi_driver(root):
+    """eagle's decode and pi/thermal_rtsp.py's to_celsius agree (needs OpenCV for that module)."""
+    pytest.importorskip("cv2")
+    drv = T._load_hti_driver()
+    temps = np.linspace(-10, 60, 192 * 256).reshape(192, 256)
+    buf = hti_buffer(temps)
+    assert drv.WIDTH == T.HTI_WIDTH and drv.HEIGHT == T.HTI_HEIGHT and drv.COUNTS_PER_KELVIN == T.HTI_COUNTS_PER_KELVIN
+    assert np.allclose(drv.to_celsius(buf), T.hti_frame_to_celsius(buf), atol=1e-4)

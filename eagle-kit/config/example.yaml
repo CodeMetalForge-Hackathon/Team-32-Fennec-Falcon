@@ -206,16 +206,23 @@ life:
   audio:
     every_s: 4.0                 # analyse the last audio.window_s every N s (uses audio/doa/codes above)
   thermal:
-    source: synthetic            # synthetic | mlx90640 | uvc_y16 | gray8 | none
+    source: synthetic            # synthetic | mlx90640 | uvc_y16 | gray8 | hti | none
     every_s: 2.0
     camera:                      # pinhole model of the thermal camera. MEASURE the mount.
       hfov_deg: 57.0             # PureThermal + Lepton 3.x: check your Lepton's datasheet;
       width: 160                 # MLX90640: 32 x 24, hfov 55 (55x35 version) or 110 (110x75)
-      height: 120
+      height: 120                # HTI HT-203U (source: hti): width 256, height 192, hfov_deg 50.0
+                                 #   (retail listings: 50.0 x 37.2 deg, 3.2 mm lens, 12 um pixels - not
+                                 #   an HTI datasheet; check with a hot object at both image edges)
       vfov_deg: null             # null = square pixels (vfov from hfov and the aspect ratio)
       mount: {enu_m: null, heading_deg: 0.0, tilt_down_deg: 35.0, roll_deg: 0.0}  # enu_m null = perch.enu_m
     mlx90640: {refresh_hz: 4, i2c_hz: 800000, flip_h: false, flip_v: false}
     uvc: {device: 0, width: 160, height: 120}
+    hti:                         # HTI HT-203U (Hikvision, USB 2BDF:0102). Linux: uvcvideo quirks=0x2 (pi/setup_pi.sh)
+      device: null               # /dev/videoN, or null = scan nodes named HikCamera / UVC Camera
+      reader: auto               # auto (OpenCV then FFmpeg) | opencv | ffmpeg
+      driver: null               # null = ../pi/thermal_rtsp.py in this repository (its readers are reused)
+      timeout_s: 5.0             # a read that takes longer is an error, never a hang
     synthetic:                   # used when source = synthetic (bench test without a camera)
       background_c: 20.0
       noise_c: 0.2

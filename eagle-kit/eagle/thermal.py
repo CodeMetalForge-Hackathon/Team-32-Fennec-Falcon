@@ -9,6 +9,10 @@ Sources (all return ``(t, frame, radiometric)``; ``frame`` is (H, W) float):
 * :class:`UvcY16Source`     - PureThermal / FLIR Lepton over USB (UVC Y16, radiometric
   "TLinear" mode: raw = centi-Kelvin) through OpenCV.
 * :class:`Gray8Source`      - any 8-bit camera through OpenCV (relative intensity, no deg C).
+* :class:`HtiSource`        - HTI HT-203U (Hikvision module, USB 2BDF:0102): V4L2 YUYV 256x392 frames,
+  rows 0-191 raw little-endian uint16, kelvin = raw / 16. Capture reuses the readers of
+  ``pi/thermal_rtsp.py`` (OpenCV V4L2 with a read deadline, FFmpeg fallback, HikCamera-only
+  device scan); :func:`hti_frame_to_celsius` is the numpy decode.
 
 Detector (:class:`ThermalDetector`), per frame:
 
@@ -274,8 +278,69 @@ class Gray8Source:
         self.cap.release()
 
 
+HTI_WIDTH, HTI_HEIGHT, HTI_SENSOR_ROWS = 256, 392, 192
+HTI_FRAME_BYTES = HTI_WIDTH * HTI_HEIGHT * 2
+HTI_COUNTS_PER_KELVIN = 16.0
+
+
+def hti_frame_to_celsius(buf) -> np.ndarray:
+    """One raw HT-203U YUYV 256x392 frame (bytes or uint8 array of 200704 bytes) -> (192, 256) deg C.
+
+    Rows 0-191 hold little-endian uint16 counts with kelvin = raw / 16; rows 192-391 (metadata
+    and the camera's own colorized preview) are ignored."""
+    b = buf.tobytes() if isinstance(buf, np.ndarray) else bytes(buf)
+    if len(b) != HTI_FRAME_BYTES:
+        raise ThermalSourceError(f"HT-203U frame must be {HTI_FRAME_BYTES} bytes (256x392 YUYV), got {len(b)}: "
+                                 "the camera is not in its raw mode or the frame was converted")
+    counts = np.frombuffer(b, dtype="<u2", count=HTI_WIDTH * HTI_SENSOR_ROWS).reshape(HTI_SENSOR_ROWS, HTI_WIDTH)
+    return counts.astype(float) / HTI_COUNTS_PER_KELVIN - 273.15
+
+
+def _load_hti_driver(path=None):
+    """Import pi/thermal_rtsp.py (the tested HT-203U capture code) as a module."""
+    import importlib.util
+    from pathlib import Path
+    p = Path(path) if path else Path(__file__).resolve().parents[2] / "pi" / "thermal_rtsp.py"
+    if not p.is_file():
+        raise ThermalSourceError(f"HT-203U driver not found at {p} (set life.thermal.hti.driver)")
+    spec = importlib.util.spec_from_file_location("thermal_rtsp", p)
+    mod = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(mod)
+    except ImportError as e:
+        raise ThermalSourceError("HT-203U capture needs OpenCV: sudo apt install python3-opencv ffmpeg") from e
+    return mod
+
+
+class HtiSource:
+    """HTI HT-203U over USB (UVC). On Linux it needs ``options uvcvideo quirks=0x2`` (pi/setup_pi.sh).
+
+    ``device``: /dev/videoN or None (scan V4L2 nodes named HikCamera / UVC Camera only);
+    ``reader``: auto (OpenCV, then FFmpeg) | opencv | ffmpeg. Frames are deg C, radiometric."""
+
+    def __init__(self, device=None, reader: str = "auto", driver=None, timeout_s: float = 5.0, _driver_mod=None):
+        self.drv = _driver_mod or _load_hti_driver(driver)
+        self.timeout = float(timeout_s)
+        self.cam = self.drv.open_camera(device, reader)
+        if self.cam is None:
+            raise ThermalSourceError("HT-203U not found or gave no raw 256x392 frames "
+                                     "(v4l2-ctl --list-devices; is the uvcvideo quirk set?)")
+
+    def read(self) -> tuple:
+        try:
+            buf = self.cam.read(timeout=self.timeout)
+        except TypeError:                       # readers without a timeout argument (FakeReader)
+            buf = self.cam.read()
+        if buf is None:
+            raise ThermalSourceError(f"HT-203U: no frame within {self.timeout:.0f} s")
+        return time.time(), hti_frame_to_celsius(buf), True
+
+    def close(self) -> None:
+        self.cam.close()
+
+
 def make_thermal_source(tcfg: dict, camera: Camera | None = None, bodies=None, seed: int = 0):
-    """Source named in ``life.thermal.source``: synthetic | mlx90640 | uvc_y16 | gray8."""
+    """Source named in ``life.thermal.source``: synthetic | mlx90640 | uvc_y16 | gray8 | hti."""
     kind = tcfg.get("source", "synthetic")
     if kind == "synthetic":
         s = tcfg.get("synthetic", {})
@@ -293,6 +358,9 @@ def make_thermal_source(tcfg: dict, camera: Camera | None = None, bodies=None, s
         return UvcY16Source(u.get("device", 0), u.get("width", 160), u.get("height", 120))
     if kind == "gray8":
         return Gray8Source(tcfg.get("uvc", {}).get("device", 0))
+    if kind == "hti":
+        h = tcfg.get("hti", {})
+        return HtiSource(h.get("device"), h.get("reader", "auto"), h.get("driver"), h.get("timeout_s", 5.0))
     raise ThermalSourceError(f"unknown thermal source {kind!r}")
 
 
