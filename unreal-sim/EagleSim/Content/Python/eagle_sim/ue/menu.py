@@ -9,7 +9,7 @@ SECTIONS = [
          "Open or create the level, stream real Taiwan terrain from Cesium ion, then plant the forest "
          "and place the person, the muntjac, the eagle and the cameras."),
         ("Start", "2. Start mission", "start()",
-         "Fly the mission: ingress, thermal search, confirm orbit, perch, pellet, authenticate, hold. "
+         "Fly the mission: ingress, thermal search, confirm orbit, perch, observe with bird sensors, hold. "
          "Sends CoT markers to ATAK."),
         ("Pause", "Pause / resume", "pause()", "Freeze or resume the mission."),
         ("Restart", "Restart mission", "restart()", "Start again from ingress."),
@@ -26,8 +26,6 @@ SECTIONS = [
         ("GameView", "Game view on/off", "toggle_game_view()", "Hide editor icons and camera meshes."),
     ]),
     ("Options", "Options", [
-        ("Beacon", "Toggle cooperative SWIR beacon (next start)", "toggle_beacon()",
-         "The person answers the recognition pass with a SWIR beacon: a much faster find."),
         ("Speed1", "Speed x1", "set_speed(1)", "Real time."),
         ("Speed3", "Speed x3", "set_speed(3)", "Default: the whole mission in about 2 minutes."),
         ("Speed6", "Speed x6", "set_speed(6)", "Fast rehearsal."),

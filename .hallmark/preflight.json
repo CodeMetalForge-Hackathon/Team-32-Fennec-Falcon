@@ -1,0 +1,24 @@
+{
+  "scope": "forest lab only",
+  "framework": "vanilla HTML/JS",
+  "font": "existing system-ui and monospace",
+  "palette": "existing dark field-lab UI retained; named forest tokens added",
+  "motion": "existing explicit requestAnimationFrame simulation, no added animation library",
+  "source_files": [
+    "simulator/forest-panel.css",
+    "simulator/forest.html",
+    "simulator/index.html"
+  ],
+  "date": "2026-11-07",
+  "preserved": [
+    "routes",
+    "navigation state machine",
+    "parent simulator",
+    "local SITL boundary"
+  ],
+  "new": [
+    "site evidence strip",
+    "perspective forest renderer",
+    "valley/ridge profiles"
+  ]
+}

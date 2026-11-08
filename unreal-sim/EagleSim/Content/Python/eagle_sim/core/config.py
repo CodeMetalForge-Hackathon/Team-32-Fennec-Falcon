@@ -64,9 +64,7 @@ CONFIRM_VIEWS = 8             # visible views needed from ...
 CONFIRM_BINS = 4              # ... at least this many 30-degree azimuth bins (airborne optical sectioning)
 AZ_BINS = 12
 
-# The person answers the recognition pass with a SWIR beacon (see "Getting them information").
-COOPERATIVE_SIGNAL = False
-BEACON_RANGE_M = 1500.0
+# The person carries no technology; all observations originate on the bird.
 
 # ---------------------------------------------------------------- ATAK / Cursor-on-Target
 # ATAK listens to SA multicast 239.2.3.1:6969 by default. For unicast, add (<phone ip>, port)
@@ -78,7 +76,7 @@ EAGLE_CALLSIGN = "EAGLE-1"
 PERSON_CALLSIGN = "IP-1"
 
 # ---------------------------------------------------------------- Unreal views (ignored by the tests)
-CINEMATIC_SLOWMO = True       # play the perch, pellet drop and authentication at real time
+CINEMATIC_SLOWMO = True       # play the perch observation at real time
 CHASE_BACK_M = 14.0           # chase camera distance behind and above the bird
 CHASE_UP_M = 4.0
 OVERVIEW_BACK_M = 650.0       # overview camera: this far south-east of the search cells ...

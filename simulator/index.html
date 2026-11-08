@@ -29,7 +29,6 @@
   --unknown:#ffff80;     /* unknown */
   --neutral:#aaffaa;     /* neutral */
   --ok:#6fe3a5; --warn:#ffd166; --bad:#ff7b7b;
-  --eink-bg:#c9cdbf; --eink-fg:#1d211b;
   --font-display:"Sofia Sans Semi Condensed","Arial Narrow","Roboto Condensed",system-ui,sans-serif;
   --font-data:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
 }
@@ -129,11 +128,6 @@ section+section{margin-top:14px}
 .log .k{color:var(--friend)}.log .w{color:var(--warn)}.log .b{color:var(--bad)}.log .d{color:var(--dim)}
 .mapwrap{display:flex;flex-direction:column;gap:4px}
 .mapcap{font:500 10px var(--font-data);color:var(--dim);letter-spacing:.03em}
-.tag{margin-top:8px;border-radius:12px;background:#22282a;border:1px solid var(--line-2);padding:8px 9px;display:flex;flex-direction:column;gap:6px}
-.tag .scr{min-height:78px;background:var(--eink-bg);color:var(--eink-fg);border-radius:4px;padding:7px 8px;font:600 11px/1.35 var(--font-data);letter-spacing:.02em;white-space:pre-wrap;overflow:hidden}
-.tag .cap{font:600 10px var(--font-data);letter-spacing:.1em;color:var(--muted);text-transform:uppercase;display:flex;justify-content:space-between}
-.tag .led{width:7px;height:7px;border-radius:50%;background:#3a4140;display:inline-block}
-.tag .led.on{background:var(--ok);box-shadow:0 0 8px var(--ok)}
 #map{width:196px;height:196px;border-radius:8px;border:1px solid var(--line-2);background:#0d1513}
 #tabs{display:none}
 @media (max-width:1240px){#left{width:262px}#right{width:316px}#bottom{left:calc(max(16px,env(safe-area-inset-left,0px)) + 274px);right:calc(max(16px,env(safe-area-inset-right,0px)) + 328px)}#viewbar{left:calc(max(16px,env(safe-area-inset-left,0px)) + 274px)}.mrow{grid-template-columns:minmax(0,1fr) 176px}#map{width:176px;height:176px}}
@@ -153,13 +147,15 @@ section+section{margin-top:14px}
   #left,#right{max-height:none;overflow:visible}
   #bottom{margin-bottom:calc(16px + env(safe-area-inset-bottom,0px))}
   .mrow{grid-template-columns:1fr;}
-  .tag{display:flex;height:auto;min-height:120px}
   .log{height:180px}
   #map{width:100%;height:auto;aspect-ratio:1/1;max-width:420px}
   .mhead{flex-wrap:wrap}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
+<link rel="stylesheet" href="navigation-panel.css">
+<link rel="stylesheet" href="forest-panel.css">
+<link rel="stylesheet" href="mission-panel.css">
 </head>
 <body>
 
@@ -191,11 +187,8 @@ section+section{margin-top:14px}
   <div class="grp"><h3>Display</h3>
     <div class="ctl"><label>Quality</label><output id="qOut">auto</output><div class="seg" id="quality"><button data-q="auto" class="on">Auto</button><button data-q="low">Low</button><button data-q="med">Med</button><button data-q="high">High</button></div></div>
     <div class="ovl" id="overlays">
-      <label><input type="checkbox" id="ov-rf" checked> RF ring</label>
       <label><input type="checkbox" id="ov-snd" checked> Sound ring</label>
       <label><input type="checkbox" id="ov-th" checked> Thermal ring</label>
-      <label><input type="checkbox" id="ov-int" checked> Reply intercept</label>
-      <label><input type="checkbox" id="ov-poll" checked> Poll intercept</label>
       <label><input type="checkbox" id="ov-fr" checked> Camera cone</label>
       <label><input type="checkbox" id="ov-lbl" checked> Labels</label>
     </div>
@@ -207,8 +200,8 @@ section+section{margin-top:14px}
     <div class="phead"><h2>Eagle cam</h2><div class="seg" id="pipMode"><button data-pip="thermal" class="on">Thermal</button><button data-pip="visible">Visible</button><button data-pip="id">ID pass</button></div></div>
     <div class="camwrap"><canvas id="pip" width="640" height="480" aria-label="View from the Eagle's camera"></canvas><div class="camstrip" id="camstrip"></div></div>
     <div class="camnote" id="camnote"></div>
-    <div class="tag" aria-label="Operator's tag"><div class="cap"><span>Operator's tag · e-ink</span><span class="led" id="tagLed"></span></div><div class="scr" id="tagScr"></div></div>
   </section>
+  <section id="navigation-demo" aria-label="GPS-denied navigation demonstration"></section>
   <section><div class="phead"><h2>Sensors</h2><span class="tagm">model</span></div><div id="cards"></div></section>
   <section><div class="phead"><h2>Life list</h2><span class="hint">what Eagle reports</span></div><ul id="life"></ul></section>
 </aside>
@@ -221,10 +214,10 @@ section+section{margin-top:14px}
   </div>
 </section>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/objects/Sky.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/utils/BufferGeometryUtils.js"></script>
+<script src="vendor/three-r128/three.min.js"></script>
+<script src="vendor/three-r128/OrbitControls.js"></script>
+<script src="vendor/three-r128/Sky.js"></script>
+<script src="vendor/three-r128/BufferGeometryUtils.js"></script>
 <script id="eagle-model">
 /* EagleModel: physics for the Eagle Jungle Simulator (downed operator, Taiwan mountain jungle).
  * Pure functions, no DOM. Browser: window.EagleModel. Node: module.exports.
@@ -260,9 +253,7 @@ section+section{margin-top:14px}
       signals: {          // SL = dB at 1 m (A-weighted for voice); bandGain = in-band noise below the broadband dBA
                           // (insects and cicadas sing mostly above the speech band; whistles share it more)
         none:          { label: 'No signal', SL: null },
-        softWhistle:   { label: 'Soft whistle code (3 short)', SL: 85, f: 2500, bandGainNight: 10, bandGainDay: 10, dur_s: 2.5 },   // assumed level
-        rescueWhistle: { label: 'Rescue whistle (3 blasts)', SL: 104, f: 3000, bandGainNight: 10, bandGainDay: 10, dur_s: 3.0 },  // Fox 40: 115 dB sound power -> ~104 dB at 1 m
-        buzzer:        { label: 'Tag buzzer, 3 kHz (Eagle-commanded)', SL: 75, f: 3000, bandGainNight: 12, bandGainDay: 12, dur_s: 1.5 }, // assumed piezo
+        softWhistle:   { label: 'Mouth whistle (no equipment)', SL: 85, f: 2500, bandGainNight: 10, bandGainDay: 10, dur_s: 2.5 },   // assumed level
         voice:         { label: 'Normal voice', SL: 57, f: 1000, bandGainNight: 8, bandGainDay: 8, dur_s: 3.0 },      // Pearsons 1977
         shout:         { label: 'Shout', SL: 85, f: 1000, bandGainNight: 8, bandGainDay: 8, dur_s: 2.0 }              // Pearsons 1977
       }
@@ -292,13 +283,11 @@ section+section{margin-top:14px}
         sf7bw250:  { label: 'LoRa SF7 / 250 kHz', sf: 7, bw: 250000, sens: -121.5 },
         sf12bw125: { label: 'LoRa SF12 / 125 kHz', sf: 12, bw: 125000, sens: -137.0 }
       },
-      eagleTx_dBm: 14, tagMin_dBm: -9, tagMax_dBm: 22, powerMargin_dB: 10,
-      tagH: { lying: 0.3, sitting: 0.9, standing: 1.3 },
+      minTx_dBm: -9, maxTx_dBm: 22, powerMargin_dB: 10,
       veg: { A1: 0.18, alpha: 0.752, gamma: 0.3 },    // ITU-R P.833-10 one terminal in woodland (Rio de Janeiro fit); gamma assumed
       // both terminals inside the forest: Weissberger L = 1.33 F^0.284 d^0.588 (F GHz, d m); with plane-earth spreading this
       // gives ~136 dB at 250 m for antennas 0.3/1.5 m, vs ~138 dB measured for LoRa in Brazilian rainforest (SF12 max 250 m)
-      enemy: { h_patrol: 1.5, h_owns: 10.0, thr: { energy: -115, lora: -124 } },
-      patrolSpeed_mps: 1.0
+
     },
     fix: { doaSigma_deg: 3.0, headingSigma_deg: { mag: 8.0, vio: 1.0 }, tiltSigma_deg: 1.0 },
     link: {
@@ -310,7 +299,7 @@ section+section{margin-top:14px}
       subcanopy: { label: 'Sub-canopy branch', h: 8 },
       stand:     { label: 'Demo stand', h: 3 }
     },
-    sizes: { CHALLENGE: 20, REPLY: 21, FIX: 48, LIFE: 88, TEXT: 72, ACK: 21 }
+    sizes: { FIX: 48, LIFE: 88 }
   };
 
   var PRESETS = {
@@ -323,14 +312,14 @@ section+section{margin-top:14px}
   function defaults() {
     return {
       hour: 2, elevation_m: 1000, weather: 'clear', LAI: 4.5, canopyH_m: 15, understoryVis_m: 20,
-      perch: 'subcanopy', opDist_m: 20, opPosture: 'lying', opState: 'injured', tag: true,
-      signal: 'softWhistle', camera: 'hti256', mics: 6, heading: 'vio', secondPerch: false,
-      radarPellet: false, radio: 'sf7bw250', enemy: 'patrol', enemyDist_m: 250, enemyDetector: 'energy',
+      perch: 'subcanopy', opDist_m: 20, opPosture: 'lying', opState: 'injured',
+      signal: 'none', camera: 'hti256', mics: 6, heading: 'vio', secondPerch: false,
+      radarEnabled: false, radio: 'sf7bw250', enemy: 'patrol', enemyDist_m: 250,
       relayAlt_m: 300, relayDist_m: 2000, longHaul: 'iridium'
     };
   }
 
-  function merge(s) { var d = defaults(), k; for (k in (s || {})) if (s[k] !== undefined && s[k] !== null) d[k] = s[k]; return d; }
+  function merge(s) { var d = defaults(), k; for (k in (s || {})) if (Object.prototype.hasOwnProperty.call(d, k) && s[k] !== undefined && s[k] !== null) d[k] = s[k]; if(s && Number.isFinite(s.perchHeight_m)) d.perchHeight_m=s.perchHeight_m; if(s && typeof s.geometryLOS==='boolean') d.geometryLOS=s.geometryLOS; return d; }
   function clamp(x, a, b) { return Math.max(a, Math.min(b, x)); }
   function pow10(x) { return Math.pow(10, x / 10); }
   function sumDb() { var t = 0; for (var i = 0; i < arguments.length; i++) if (arguments[i] > 0) t += pow10(arguments[i]); return 10 * log10(t); }
@@ -374,7 +363,7 @@ section+section{margin-top:14px}
   }
 
   /* ---------------- acoustic ---------------- */
-  function perchH(s) { return (PARAMS.perches[s.perch] || PARAMS.perches.subcanopy).h; }
+  function perchH(s) { return Number.isFinite(s.perchHeight_m) ? Math.max(0.1,s.perchHeight_m) : (PARAMS.perches[s.perch] || PARAMS.perches.subcanopy).h; }
   function acousticSNR(sig, r, s, e) {
     var A = PARAMS.acoustic, h = perchH(s);
     var d = sqrt(r * r + h * h);
@@ -394,7 +383,7 @@ section+section{margin-top:14px}
   function acoustic(s, e) {
     var sigKey = s.signal;
     var canSignal = s.opState !== 'unconscious';
-    if (!canSignal && sigKey !== 'buzzer') sigKey = s.tag ? 'buzzer' : 'none';
+    if (!canSignal || !PARAMS.acoustic.signals[sigKey]) sigKey = 'none';
     var sig = PARAMS.acoustic.signals[sigKey];
     var rng = acousticRange(sigKey, s, e);
     var snr = sig && sig.SL != null ? acousticSNR(sig, s.opDist_m, s, e) : -99;
@@ -403,12 +392,9 @@ section+section{margin-top:14px}
     if (!sig || sig.SL == null) note = 'Operator is silent; nothing to hear';
     else if (det) note = sig.label + ' heard: SNR ' + r1(snr) + ' dB at ' + Math.round(s.opDist_m) + ' m (needs 6 dB)';
     else note = sig.label + ' lost in ' + e.noiseDbA + ' dBA ambient: SNR ' + r1(snr) + ' dB';
-    if (sigKey === 'buzzer' && s.opState === 'unconscious') note += ' (Eagle tells the tag to chirp)';
     return {
       signal: sigKey, signalLabel: sig ? sig.label : '', signalRange_m: Math.round(rng),
       whistleRange_m: Math.round(acousticRange('softWhistle', s, e)),
-      rescueWhistleRange_m: Math.round(acousticRange('rescueWhistle', s, e)),
-      buzzerRange_m: Math.round(acousticRange('buzzer', s, e)),
       voiceRange_m: Math.round(acousticRange('voice', s, e)),
       shoutRange_m: Math.round(acousticRange('shout', s, e)),
       snrAtOp_dB: r1(snr), detected: !!det, note: note, dur_s: sig && sig.dur_s || 0
@@ -455,15 +441,16 @@ section+section{margin-top:14px}
     };
   }
 
-  /* ---------------- radar pellet ---------------- */
+  /* ---------------- optional bird-mounted radar ---------------- */
   function radar(s) {
-    var R = PARAMS.radar;
-    if (!s.radarPellet) return { vitalsRange_m: R.vitals_m, presenceRange_m: R.presence_m, detected: false, note: 'No pellet dropped' };
-    return { vitalsRange_m: R.vitals_m, presenceRange_m: R.presence_m, detected: true,
-      note: 'Pellet within 1 m: breathing ' + (s.opState === 'unconscious' ? '~10' : '~16') + '/min, heart rate (MR60BHA2, 1.5 m)' };
+    var R = PARAMS.radar, d = sqrt(s.opDist_m * s.opDist_m + perchH(s) * perchH(s));
+    var detected = !!s.radarEnabled && d <= R.presence_m;
+    return { vitalsRange_m: R.vitals_m, presenceRange_m: R.presence_m, detected: detected,
+      note: !s.radarEnabled ? 'Bird-mounted radar disabled' :
+        (detected ? 'Within nominal presence range; motion and vegetation need validation' : 'Outside nominal bird-mounted radar range') };
   }
 
-  /* ---------------- RF ---------------- */
+  /* ---------------- bird-to-relay RF; never a person detector ---------------- */
   function vegLoss(dveg) {
     var V = PARAMS.rf.veg, Am = V.A1 * Math.pow(PARAMS.rf.freqMHz, V.alpha);
     return dveg > 0 ? Am * (1 - exp(-V.gamma * dveg / Am)) : 0;
@@ -479,53 +466,33 @@ section+section{margin-top:14px}
     var F = PARAMS.rf.freqMHz / 1000;
     return d <= 14 ? 0.45 * Math.pow(F, 0.284) * d : 1.33 * Math.pow(F, 0.284) * Math.pow(d, 0.588);
   }
-  function linkLoss(r, hTag, hOther, canopyH, otherInForest) {
-    var d = sqrt(r * r + (hOther - hTag) * (hOther - hTag));
-    if (otherInForest || hOther < canopyH) return baseLoss(d, hTag, hOther) + weissberger(d);   // both inside the forest
-    var cz = cos(atan(r / Math.max(hOther - hTag, 0.1)));
+  function linkLoss(r, hSource, hOther, canopyH, otherInForest) {
+    var d = sqrt(r * r + (hOther - hSource) * (hOther - hSource));
+    if (otherInForest || hOther < canopyH) return baseLoss(d, hSource, hOther) + weissberger(d);   // both inside the forest
+    var cz = cos(atan(r / Math.max(hOther - hSource, 0.1)));
     var dveg = Math.min(d, canopyH / Math.max(cz, 0.02));                                       // path inside the canopy
-    return baseLoss(d, hTag, hOther) + vegLoss(dveg);                                           // P.833, one terminal in woodland
+    return baseLoss(d, hSource, hOther) + vegLoss(dveg);                                           // P.833, one terminal in woodland
   }
   function rf(s, e) {
     var R = PARAMS.rf, radio = R.radios[s.radio] || R.radios.sf7bw250, h = perchH(s);
-    var hTag = R.tagH[s.opPosture] || 0.3;
-    var Lop = linkLoss(s.opDist_m, hTag, h, s.canopyH_m, false);
-    var pollBudget = R.eagleTx_dBm - radio.sens;
-    var range = bisect(function (r) { return linkLoss(r, hTag, h, s.canopyH_m, false) <= pollBudget; }, 1, 20000);
-    var tx = clamp(radio.sens + R.powerMargin_dB + Lop, R.tagMin_dBm, R.tagMax_dBm);
-    var linkOK = s.tag && Lop <= pollBudget;
-    var hE = s.enemy === 'owns' ? R.enemy.h_owns : R.enemy.h_patrol;
-    var thr = R.enemy.thr[s.enemyDetector] || R.enemy.thr.energy;
-    function enemyLoss(D) { return linkLoss(D, hTag, hE, s.canopyH_m, true); }
-    var intercept = bisect(function (D) { return tx - enemyLoss(D) >= thr; }, 1, 20000);
-    var enemyMargin = s.enemy === 'none' ? null : r1(tx - enemyLoss(s.enemyDist_m) - thr);
-    // the Eagle's own poll heard by a ground receiver
-    var pollIntercept = bisect(function (D) { return R.eagleTx_dBm - linkLoss(D, hE, h, s.canopyH_m, h < s.canopyH_m) >= thr; }, 1, 50000);
-    var hold = s.tag && s.enemy !== 'none' && s.enemyDist_m < intercept;
-    var holdFor_s = hold ? Math.round((intercept - s.enemyDist_m + 100) / R.patrolSpeed_mps) : 0;
-    // relay bird: Eagle -> relay
-    var dRel = sqrt(s.relayDist_m * s.relayDist_m + s.relayAlt_m * s.relayAlt_m);
-    var Lrel = baseLoss(dRel, h, s.relayAlt_m);
-    if (h < s.canopyH_m) { var el = atan(s.relayAlt_m / Math.max(s.relayDist_m, 1)); Lrel += vegLoss((s.canopyH_m - h) / Math.max(Math.sin(el), 0.02)); }   // up through the canopy
-    var relayTx = clamp(radio.sens + R.powerMargin_dB + Lrel, R.tagMin_dBm, R.tagMax_dBm);
-    var relayMargin = R.tagMax_dBm - Lrel - radio.sens;
-    // wide-area poll from the relay bird's altitude (flat ground, before terrain masking)
-    var wide = bisect(function (r) { return linkLoss(r, hTag, s.relayAlt_m, s.canopyH_m, false) <= pollBudget; }, 1, 50000);
-    var note;
-    if (!s.tag) note = 'No tag: nothing answers the poll';
-    else if (!linkOK) note = 'Out of range: path loss ' + r1(Lop) + ' dB > ' + r1(pollBudget) + ' dB budget';
-    else if (hold) note = 'EMCON hold: unknowns at ' + s.enemyDist_m + ' m are inside the ' + Math.round(intercept) + ' m intercept radius';
-    else note = 'Authenticated reply at ' + r1(tx) + ' dBm; path loss ' + r1(Lop) + ' dB';
-    return {
-      radio: radio.label, replyRange_m: Math.round(range), pathLossOp_dB: r1(Lop), txForEagle_dBm: r1(tx),
-      interceptRange_m: Math.round(intercept), enemyMargin_dB: enemyMargin, pollInterceptRange_m: Math.round(pollIntercept),
-      emconHold: hold, holdFor_s: holdFor_s, relayLoss_dB: r1(Lrel), relayTx_dBm: r1(relayTx), relayMargin_dB: r1(relayMargin),
-      widePollRange_m: Math.round(wide), detected: !!(linkOK && !hold), linkOK: !!linkOK, note: note
-    };
+    var dz = s.relayAlt_m - h;
+    var dRel = sqrt(s.relayDist_m * s.relayDist_m + dz * dz);
+    var loss = baseLoss(dRel, h, s.relayAlt_m);
+    if (h < s.canopyH_m) {
+      var el = atan(dz / Math.max(s.relayDist_m, 1));
+      loss += vegLoss((s.canopyH_m - h) / Math.max(Math.sin(el), 0.02));
+    }
+    var needed = radio.sens + R.powerMargin_dB + loss;
+    var tx = clamp(needed, R.minTx_dBm, R.maxTx_dBm);
+    var margin = tx - loss - radio.sens;
+    var linkOK = margin >= R.powerMargin_dB;
+    return { radio: radio.label, relayLoss_dB: r1(loss), relayTx_dBm: r1(tx),
+      relayMargin_dB: r1(margin), linkOK: linkOK,
+      note: linkOK ? 'Bird-to-relay link budget closes; terrain and interference unmodeled' : 'Bird-to-relay link lacks the selected margin' };
   }
 
   /* ---------------- fix accuracy ---------------- */
-  function fix(s, ac, th, rfo) {
+  function fix(s, ac, th) {
     var F = PARAMS.fix, h = perchH(s), r = s.opDist_m;
     var sAz = sqrt(F.doaSigma_deg * F.doaSigma_deg + Math.pow(F.headingSigma_deg[s.heading] || 8, 2)) * D2R;
     var method, rangeErr, crossErr;
@@ -533,8 +500,7 @@ section+section{margin-top:14px}
       if (s.secondPerch) { method = 'Two perches, crossing bearings'; rangeErr = r * sAz; crossErr = r * sAz; }
       else if (ac.detected) { method = 'Bearing + depression from one perch (' + h + ' m up)'; rangeErr = F.doaSigma_deg * D2R * (r * r + h * h) / h; crossErr = r * sAz; }
       else { method = 'Thermal pixel to ground'; rangeErr = F.tiltSigma_deg * D2R * (r * r + h * h) / h; crossErr = r * (F.headingSigma_deg[s.heading] || 8) * D2R; }
-    } else if (rfo.detected) { method = 'RF only (signal strength): fly closer to refine'; rangeErr = 0.5 * r; crossErr = r; }
-    else return { method: 'No fix', rangeErr_m: null, crossErr_m: null, ce_m: null };
+    } else return { method: 'No fix', rangeErr_m: null, crossErr_m: null, ce_m: null };
     return { method: method, rangeErr_m: r1(rangeErr), crossErr_m: r1(crossErr), ce_m: r1(sqrt(rangeErr * rangeErr + crossErr * crossErr)) };
   }
 
@@ -549,48 +515,38 @@ section+section{margin-top:14px}
   /* ---------------- evaluate ---------------- */
   function evaluate(input) {
     var s = merge(input), e = env(s);
-    var ac = acoustic(s, e), th = thermal(s, e), ra = radar(s), rfo = rf(s, e), fx = fix(s, ac, th, rfo);
+    var ac = acoustic(s, e), th = thermal(s, e), ra = radar(s), rfo = rf(s, e);
+    if(s.geometryLOS===false){th.detected=false;th.note=(th.note||'')+' Same-scene vegetation blocks the modeled thermal line.';}
+    var fx = fix(s, ac, th);
     var radio = PARAMS.rf.radios[s.radio] || PARAMS.rf.radios.sf7bw250, Z = PARAMS.sizes;
     var link = PARAMS.link[s.longHaul] || PARAMS.link.iridium;
     function at(b) { return airtime(b, radio.sf, radio.bw, 5); }
     var by = [];
-    if (rfo.detected) by.push('RF tag');
     if (ac.detected) by.push('Acoustic');
     if (th.detected) by.push('Thermal');
     if (ra.detected) by.push('Radar');
     var status = by.length >= 2 ? 'FOUND' : (by.length ? 'PARTIAL' : 'NOT FOUND');
     var messages = [], timeline = [], t = 0;
-    timeline.push({ step: 'Listen', t_s: 0, note: 'Perched, motor off, passive: mics, thermal' + (s.radarPellet ? ', radar pellet' : '') });
-    if (rfo.emconHold) { t += rfo.holdFor_s; timeline.push({ step: 'EMCON hold', t_s: t, note: 'No poll while unknowns are within ' + rfo.interceptRange_m + ' m of the operator (' + rfo.holdFor_s + ' s)' }); }
-    if (s.tag && rfo.linkOK) {
-      messages.push({ name: 'CHALLENGE', dir: 'Eagle -> tag', bytes: Z.CHALLENGE, airtime_ms: at(Z.CHALLENGE), tx_dBm: PARAMS.rf.eagleTx_dBm, hop: 'LoRa', note: 'nonce + 64-bit HMAC' + (ac.signal === 'buzzer' ? '; asks the tag to chirp' : '') });
-      t += at(Z.CHALLENGE) / 1000; timeline.push({ step: 'Poll', t_s: r1(t), note: 'CHALLENGE ' + Z.CHALLENGE + ' B, ' + at(Z.CHALLENGE) + ' ms' });
-      t += 0.275 + at(Z.REPLY) / 1000;
-      messages.push({ name: 'REPLY', dir: 'tag -> Eagle', bytes: Z.REPLY, airtime_ms: at(Z.REPLY), tx_dBm: rfo.txForEagle_dBm, hop: 'LoRa', note: 'status masked for the Nest (OK / INJURED / DURESS)' });
-      timeline.push({ step: 'Reply', t_s: r1(t), note: 'REPLY ' + Z.REPLY + ' B at ' + rfo.txForEagle_dBm + ' dBm after a 50-500 ms random wait' });
-    }
+    timeline.push({ step: 'Listen', t_s: 0, note: 'Perched, motor off, passive: mics, thermal' + (s.radarEnabled ? ', bird-mounted radar' : '') });
     if (ac.detected) { t += ac.dur_s; timeline.push({ step: 'Signal', t_s: r1(t), note: ac.signalLabel + ' -> bearing' }); }
     else if (th.detected) { t += 0.5; timeline.push({ step: 'Look', t_s: r1(t), note: 'Thermal confirms a warm body' }); }
     if (fx.ce_m != null) {
       t += 0.5; timeline.push({ step: 'Fix', t_s: r1(t), note: fx.method + ', CE ' + fx.ce_m + ' m' });
+      if (rfo.linkOK) {
       messages.push({ name: 'FIX', dir: 'Eagle -> relay', bytes: Z.FIX, airtime_ms: at(Z.FIX), tx_dBm: rfo.relayTx_dBm, hop: 'LoRa', note: 'AES-256-GCM: position, CE, status, evidence' });
       t += at(Z.FIX) / 1000 + link.latency_s;
       messages.push(s.longHaul === 'courier'
         ? { name: 'COURIER', dir: 'relay -> Nest', bytes: Z.FIX, airtime_ms: 0, tx_dBm: null, hop: 'Flight', note: 'carried out, no emission over land' }
         : { name: 'SBD MO', dir: 'relay -> satellite -> JPRC', bytes: Z.FIX + 8, airtime_ms: null, tx_dBm: null, hop: 'Iridium SBD', note: 'fits in one message (max ' + link.moMax + ' B); relay is ' + Math.round(s.relayDist_m / 100) / 10 + ' km from the operator' });
       timeline.push({ step: 'Relay', t_s: r1(t), note: s.longHaul === 'courier' ? 'Courier flight to the Nest' : 'Relay forwards over Iridium SBD (~' + link.latency_s + ' s)' });
-      t += 1; timeline.push({ step: 'Marker', t_s: r1(t), note: 'CoT a-f-G-U-C on ATAK at the JPRC / Nest' });
+      t += 1; timeline.push({ step: 'Marker', t_s: r1(t), note: 'CoT a-u-G observation on ATAK at the JPRC / Nest' });
+      } else timeline.push({ step: 'Store observation', t_s: r1(t), note: 'Relay unavailable: observation retained on the bird' });
     }
-    var timeToMarker = fx.ce_m != null ? r1(t) : null;
-    if (s.tag && rfo.linkOK) {
-      messages.push({ name: 'TEXT', dir: 'JPRC -> relay -> Eagle -> tag', bytes: Z.TEXT, airtime_ms: at(Z.TEXT), tx_dBm: PARAMS.rf.eagleTx_dBm, hop: 'SBD MT + LoRa', note: '"FRIENDLY EAGLE. RALLY DAR-2 0300. ACK: 2 TAPS"' });
-      messages.push({ name: 'ACK', dir: 'tag -> Eagle', bytes: Z.ACK, airtime_ms: at(Z.ACK), tx_dBm: rfo.txForEagle_dBm, hop: 'LoRa', note: 'two taps on the tag' });
-      timeline.push({ step: 'Coordinator reply', t_s: timeToMarker != null ? r1(timeToMarker + 60) : null, note: 'If the JPRC answers within a minute: text to the tag (SBD MT max ' + PARAMS.link.iridium.mtMax + ' B), vibrate + e-ink' });
-      timeline.push({ step: 'Track', t_s: null, note: 'Re-poll every 10 min; FIX only when he moves > 25 m' });
-    }
+    var timeToMarker = fx.ce_m != null && rfo.linkOK ? r1(t) : null;
+    if (fx.ce_m != null) timeline.push({ step: 'Track', t_s: null, note: 'Reobserve using bird-mounted sensors; identity remains unverified' });
     return {
       settings: s, env: e, acoustic: ac, thermal: th, radar: ra, rf: rfo, fix: fx,
-      find: { status: status, by: by, identity: rfo.detected ? 'AUTHENTICATED' : 'UNCONFIRMED' },
+      find: { status: status, by: by, identity: 'UNVERIFIED' },
       messages: messages, timeline: timeline, timeToMarker_s: timeToMarker
     };
   }
@@ -683,7 +639,7 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 0.6;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-const scene = new THREE.Scene();
+let scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(48, 1, 0.3, 14000);
 camera.position.set(-160, 120, 120);
 const controls = new THREE.OrbitControls(camera, canvas);
@@ -1047,8 +1003,7 @@ class Ring {
   show(v) { this.mesh.visible = v; }
 }
 const rings = {
-  rf: new Ring(0x80e0ff, 0.6, 240, true), snd: new Ring(0xffb347, 0.8, 160), th: new Ring(0xff6a3d, 0.85, 120),
-  int: new Ring(0xff8080, 0.8, 160, true), poll: new Ring(0xff9a3c, 0.45, 240, true), wide: new Ring(0x80e0ff, 0.25, 240, true),
+  snd: new Ring(0xffb347, 0.8, 160), th: new Ring(0xff6a3d, 0.85, 120),
   ceFill: new Ring(0x80e0ff, 0.22, 64, false, true), ce: new Ring(0x80e0ff, 0.95, 64),
 };
 function line3(hex, opacity, dashed) { const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6 * 3), 3)); geo.setDrawRange(0, 2); const mat = dashed ? new THREE.LineDashedMaterial({ color: C(hex), dashSize: 4, gapSize: 3, transparent: true, opacity, depthTest: false, toneMapped: false, fog: false }) : new THREE.LineBasicMaterial({ color: C(hex), transparent: true, opacity, depthTest: false, toneMapped: false, fog: false }); const l = new THREE.Line(geo, mat); l.renderOrder = 31; l.frustumCulled = false; l.userData.noPip = true; OV.add(l); return l; }
@@ -1171,13 +1126,9 @@ function placeActors() {
 function updateOverlays() {
   const show = id => $('#' + id).checked;
   const ex = W.eagleBase.x, ez = W.eagleBase.z, rf = R.rf || {}, ac = R.acoustic || {}, th = R.thermal || {};
-  rings.rf.set(ex, ez, rf.replyRange_m || 0, clamp((rf.replyRange_m || 0) * 0.005, 0.8, 4)); rings.rf.show(show('ov-rf') && S.tag && rf.replyRange_m > 0);
   rings.snd.set(ex, ez, ac.signalRange_m || 0, clamp((ac.signalRange_m || 0) * 0.008, 0.3, 4)); rings.snd.show(show('ov-snd') && S.signal !== 'none' && ac.signalRange_m > 0);
   const thR = th.effectiveRange_m != null ? th.effectiveRange_m : (th.range3px_m || 0);
   rings.th.set(ex, ez, Math.max(thR, 0.5), clamp(thR * 0.012, 0.25, 4)); rings.th.show(show('ov-th') && thR > 0);
-  rings.int.set(W.op.x, W.op.z, rf.interceptRange_m || 0, clamp((rf.interceptRange_m || 0) * 0.006, 0.3, 3)); rings.int.show(show('ov-int') && S.tag && rf.interceptRange_m > 0);
-  rings.poll.set(ex, ez, rf.pollInterceptRange_m || 0, clamp((rf.pollInterceptRange_m || 0) * 0.004, 0.8, 4)); rings.poll.show(show('ov-poll') && S.tag && rf.pollInterceptRange_m > 0);
-  rings.wide.set(W.relayC.x, W.relayC.z, rf.widePollRange_m || 0, clamp((rf.widePollRange_m || 0) * 0.004, 2, 12), 2.5); rings.wide.show(show('ov-rf') && S.tag && rf.widePollRange_m > 0);
   const found = g(R, 'fix.ce_m', null) != null && running.showFix;
   const fx = R.fix || {}, be = Math.atan2(W.opEst.z - ez, W.opEst.x - ex);
   rings.ce.set(W.opEst.x, W.opEst.z, Math.max(0.6, fx.rangeErr_m || 1), clamp((fx.ce_m || 1) * 0.04, 0.25, 3), 1.2, Math.max(0.6, fx.crossErr_m || 1), be);
@@ -1261,11 +1212,11 @@ function ensurePipTargets() {
 }
 const offT = document.createElement('canvas'), offCtx = offT.getContext('2d');
 function aimPip() {
-  const head = new THREE.Vector3(0, 0.6 * eagle.scale.y, 0.12).add(W.eagle); pipCam.position.copy(head);
+  const head = new THREE.Vector3(0, window.__eagleMission ? .35 : 0.6*eagle.scale.y, window.__eagleMission ? 0 : .12).add(W.eagle); pipCam.position.copy(head);
   const tgt = W.op.clone(); tgt.y += operator.userData.posture === 'standing' ? 1.1 : operator.userData.posture === 'sitting' ? 0.7 : 0.25;
   const d = tgt.sub(head), yaw = Math.atan2(d.x, -d.z) + pipYaw, pitch = Math.atan2(d.y, Math.hypot(d.x, d.z)) + pipPitch;
   pipCam.rotation.set(0, 0, 0, 'YXZ'); pipCam.rotation.order = 'YXZ'; pipCam.rotation.y = -yaw; pipCam.rotation.x = pitch; pipCam.updateMatrixWorld();
-  eagle.rotation.y = -yaw + Math.PI;
+  if(!window.__eagleMission||window.__eagleMission.state.forest.attached)eagle.rotation.y = -yaw + Math.PI;
 }
 function withPass(kind, fn) {
   const au = renderer.shadowMap.autoUpdate; renderer.shadowMap.autoUpdate = false;
@@ -1330,7 +1281,7 @@ function pipHud(x, mode) {
   if (pipStats.bbox && mode !== 'visible') {
     const [a, b, c, d] = pipStats.bbox, pad = 2; x.strokeStyle = det ? '#80e0ff' : 'rgba(255,255,128,.85)'; x.lineWidth = Math.max(2, cw / 220); x.setLineDash(det ? [] : [6, 5]);
     x.strokeRect((a - pad) * sx, (b - pad) * sy, (c - a + 1 + pad * 2) * sx, (d - b + 1 + pad * 2) * sy); x.setLineDash([]);
-    x.fillStyle = det ? '#80e0ff' : '#ffff80'; x.fillText(det ? 'OPERATOR · warm body' : 'operator in view · not separable', Math.min((a - pad) * sx, cw * 0.45), Math.max(4, (b - pad) * sy - cw / 30));
+    x.fillStyle = det ? '#80e0ff' : '#ffff80'; x.fillText(window.__eagleMission?'PERSON · simulated pixels':det ? 'OPERATOR · warm body' : 'operator in view · not separable', Math.min((a - pad) * sx, cw * 0.45), Math.max(4, (b - pad) * sy - cw / 30));
   }
   x.strokeStyle = 'rgba(255,255,255,.55)'; x.lineWidth = 1; const mx = cw / 2, my = ch / 2; x.beginPath(); x.moveTo(mx - 14, my); x.lineTo(mx - 5, my); x.moveTo(mx + 5, my); x.lineTo(mx + 14, my); x.moveTo(mx, my - 14); x.lineTo(mx, my - 5); x.moveTo(mx, my + 5); x.lineTo(mx, my + 14); x.stroke();
   x.fillStyle = 'rgba(0,0,0,.55)'; x.fillRect(6, 6, cw * 0.46, cw / 15);
@@ -1363,6 +1314,7 @@ function buildMapBase() {
   x.putImageData(im, 0, 0);
 }
 function drawMap() {
+  if(window.__eagleMission){window.__eagleMission.drawMap();return;}
   const x = mapCtx, Wc = mapCv.width, s = Wc / WORLD, m = (wx, wz) => [(wx + HALF) * s, (wz + HALF) * s];
   x.clearRect(0, 0, Wc, Wc); x.imageSmoothingEnabled = true; x.drawImage(mapBase, 0, 0, Wc, Wc);
   x.strokeStyle = 'rgba(255,255,255,.12)'; x.lineWidth = 1; x.font = `500 ${Math.round(Wc / 30)}px "IBM Plex Mono", monospace`; x.fillStyle = 'rgba(255,255,255,.55)';
@@ -1378,7 +1330,7 @@ function drawMap() {
   // operator estimate
   const st = g(R, 'find.status', 'NOT FOUND'), showFix = st !== 'NOT FOUND' && running.showFix;
   if (showFix) { const fx = R.fix || {}; ring(W.opEst.x, W.opEst.z, Math.max(2, fx.ce_m || 2), 'rgba(128,224,255,.9)');
-    const pk = (performance.now() - mapPulse) / 2400; if (pk >= 0 && pk < 1) { const [a, b] = m(W.opEst.x, W.opEst.z); x.beginPath(); x.arc(a, b, (8 + 40 * pk) * lw, 0, Math.PI * 2); x.strokeStyle = `rgba(128,224,255,${(1 - pk).toFixed(2)})`; x.lineWidth = 2.5 * lw; x.stroke(); } const [a, b] = m(W.opEst.x, W.opEst.z); const auth = g(R, 'find.identity', '') === 'AUTHENTICATED'; x.fillStyle = auth ? 'rgba(128,224,255,.35)' : 'rgba(255,255,128,.3)'; x.strokeStyle = auth ? '#80e0ff' : '#ffff80'; x.lineWidth = 2 * lw; x.fillRect(a - 7 * lw, b - 5 * lw, 14 * lw, 10 * lw); x.strokeRect(a - 7 * lw, b - 5 * lw, 14 * lw, 10 * lw); x.fillStyle = auth ? '#80e0ff' : '#ffff80'; const [ea, eb] = m(W.eagleBase.x, W.eagleBase.z), near = Math.hypot(ea - a, eb - b) < 18 * lw; x.fillText(auth ? 'PR · TAG 7' : 'WARM · ?', a + 9 * lw, b + (near ? 12 : 2) * lw); }
+    const pk = (performance.now() - mapPulse) / 2400; if (pk >= 0 && pk < 1) { const [a, b] = m(W.opEst.x, W.opEst.z); x.beginPath(); x.arc(a, b, (8 + 40 * pk) * lw, 0, Math.PI * 2); x.strokeStyle = `rgba(128,224,255,${(1 - pk).toFixed(2)})`; x.lineWidth = 2.5 * lw; x.stroke(); } const [a, b] = m(W.opEst.x, W.opEst.z); x.fillStyle = 'rgba(255,255,128,.3)'; x.strokeStyle = '#ffff80'; x.lineWidth = 2 * lw; x.fillRect(a - 7 * lw, b - 5 * lw, 14 * lw, 10 * lw); x.strokeRect(a - 7 * lw, b - 5 * lw, 14 * lw, 10 * lw); x.fillStyle = '#ffff80'; const [ea, eb] = m(W.eagleBase.x, W.eagleBase.z), near = Math.hypot(ea - a, eb - b) < 18 * lw; x.fillText('PERSON · ID ?', a + 9 * lw, b + (near ? 12 : 2) * lw); }
   // unknowns the Eagle has reported (patrol, locals)
   lifeTracks.filter(t => t.det && t.kind !== 'operator' && t.kind !== 'animal').forEach(t => { const [a, b] = m(t.pos.x, t.pos.z); x.fillStyle = 'rgba(255,255,128,.3)'; x.strokeStyle = '#ffff80'; x.lineWidth = 1.5 * lw; x.beginPath(); x.arc(a, b, 5 * lw, 0, Math.PI * 2); x.fill(); x.stroke(); x.fillStyle = '#ffff80'; x.fillText(t.short, a + 7 * lw, b + 2 * lw); });
   if (S.enemy === 'owns') { const [a, b] = m(post.position.x, post.position.z); x.strokeStyle = 'rgba(255,128,128,.75)'; x.lineWidth = 1.5 * lw; x.save(); x.translate(a, b); x.rotate(Math.PI / 4); x.strokeRect(-4 * lw, -4 * lw, 8 * lw, 8 * lw); x.restore(); x.fillStyle = 'rgba(255,128,128,.85)'; x.fillText('DF? (intel)', a + 7 * lw, b + 2 * lw); }
@@ -1390,13 +1342,14 @@ function drawMap() {
 // ---------- life list ----------
 let lifeTracks = [];
 function computeLife() {
+  if(window.__eagleMission){const ev=R.find?.by||[];lifeTracks=[{kind:'operator',name:'Observed person',short:'PERSON',pos:W.op,ev,det:ev.length>0,status:'UNVERIFIED'}];return;}
   const ac = R.acoustic || {}, th = R.thermal || {}, ph = PERCH_H[S.perch] || 28, vis = S.understoryVis_m || 20;
   const pLOS = d => ph >= (S.canopyH_m || 22) ? Math.exp(-0.35 * S.LAI / Math.max(0.05, Math.cos(Math.atan2(d, ph)))) : Math.exp(-d / vis);
   const thermalOK = (th.contrastAppC || 0) >= (th.clutterC || 0) * 1.5;
   const dist = p => Math.hypot(p.x - W.eagleBase.x, p.z - W.eagleBase.z);
   const tr = [];
   const op = { kind: 'operator', name: 'Operator', short: 'OP', pos: W.op };
-  op.ev = (R.find && R.find.by) || []; op.det = op.ev.length > 0; op.status = op.det ? (g(R, 'find.identity', '') === 'AUTHENTICATED' ? 'AUTHENTICATED' : 'UNCONFIRMED') : 'NOT FOUND';
+  op.ev = (R.find && R.find.by) || []; op.det = op.ev.length > 0; op.status = op.det ? 'UNVERIFIED' : 'NOT FOUND';
   tr.push(op);
   const grp = (kind, name, short, list, talk) => { if (!list.length || !list[0].visible) return; const ev = new Set(); let best = null, nDet = 0;
     list.forEach(o => { const p = o.position, d = dist(p); let hit = false;
@@ -1404,7 +1357,7 @@ function computeLife() {
       if (d <= (th.effectiveRange_m != null ? th.effectiveRange_m : th.range3px_m || 0) && thermalOK && pLOS(d) >= 0.3) { ev.add('heat'); hit = true; }
       const id = o.userData.tid0; if (id && (pipStats.counts[id] || 0) >= 3) { ev.add('Eagle cam ' + pipStats.counts[id] + ' px'); hit = true; }
       if (hit) { nDet++; if (!best || d < best.d) best = { p, d }; } });
-    const evl = [...ev]; if (kind === 'animal' && evl.length) evl.push('rejected: shape, no tag');
+    const evl = [...ev]; if (kind === 'animal' && evl.length) evl.push('animal-shaped observation; classification is illustrative');
     tr.push({ kind, name: `${name} ×${list.length}`, short, pos: best ? best.p : list[0].position, ev: evl, det: nDet > 0, status: kind === 'animal' ? 'ANIMAL' : 'UNKNOWN', d: best ? best.d : dist(list[0].position) }); };
   grp('patrol', 'Patrol', 'UNK ×4', patrol, true); grp('local', 'Farm workers', 'UNK ×2', locals, true);
   if (S.enemy === 'owns') grp('patrol', 'Post guards', 'UNK ×2', guards, true);
@@ -1414,7 +1367,7 @@ function computeLife() {
 [patrol, locals, guards, macaques, [boar], muntjacs, [sambar]].forEach(list => list.forEach(o => { let id = 0; o.traverse(c => { if (c.userData.tid) id = c.userData.tid; }); o.userData.tid0 = id; }));
 function renderLife() {
   $('#life').innerHTML = lifeTracks.map(t => {
-    const cls = t.kind === 'operator' ? (t.status === 'AUTHENTICATED' ? 'friend' : t.det ? 'unknown' : 'dim') : t.kind === 'animal' ? 'dim' : 'unknown';
+    const cls = t.kind === 'operator' ? (t.det ? 'unknown' : 'dim') : t.kind === 'animal' ? 'dim' : 'unknown';
     const col = { friend: 'var(--friend)', unknown: 'var(--unknown)', dim: 'var(--muted)' }[cls];
     const ev = t.det ? t.ev.join(' · ') : (t.kind === 'operator' ? 'no sensor reaches him' : 'outside sensor range');
     return `<li class="${t.det ? '' : 'off'}"><span class="sym ${t.kind === 'animal' ? 'animal' : t.kind === 'operator' ? '' : 'unknown'}" style="color:${col}"></span><div><div>${t.name}</div><div class="ev">${ev}</div></div><span class="chip ${cls}">${t.det ? t.status : 'not seen'}</span></li>`;
@@ -1434,20 +1387,18 @@ const SCHEMA = [
     { k: 'opDist_m', label: 'Distance from the perch', type: 'range', min: 5, max: 300, step: 1, fmt: v => v + ' m' },
     { k: 'opPosture', label: 'Posture', type: 'seg', opts: [['lying', 'Lying'], ['sitting', 'Sitting'], ['standing', 'Standing']] },
     { k: 'opState', label: 'Condition', type: 'seg', opts: [['conscious', 'Conscious'], ['injured', 'Injured'], ['unconscious', 'Unconscious']] },
-    { k: 'tag', label: 'Carries the tag', type: 'toggle' },
-    { k: 'signal', label: 'Signal', type: 'select', opts: [['none', 'None'], ['softWhistle', 'Soft whistle code'], ['rescueWhistle', 'Rescue whistle'], ['buzzer', 'Tag buzzer (Eagle triggers it)'], ['voice', 'Voice'], ['shout', 'Shout']].map(([k, t]) => [k, lab('acoustic.signals.' + k + '.label', t)]) }] },
+    { k: 'signal', label: 'Natural sound', type: 'select', opts: [['none', 'Silent'], ['softWhistle', 'Mouth whistle'], ['voice', 'Voice'], ['shout', 'Shout']] }] },
   { g: 'Eagle', items: [
     { k: 'perch', label: 'Perch', type: 'seg', opts: [['snag', `Snag ${PERCH_H.snag} m`], ['subcanopy', `Branch ${PERCH_H.subcanopy} m`], ['stand', `Stand ${PERCH_H.stand} m`]], help: k => lab('perches.' + k + '.label', '') },
     { k: 'camera', label: 'Thermal camera', type: 'select', opts: [['mlx55', 'MLX90640 · 32×24 · 55°'], ['hti256', 'HTI phone imager · 256×192 · 56°'], ['lepton35', 'Lepton 3.5 · 160×120 · 57°'], ['boson640', 'Boson+ 640 · 640×512 · 32°']].map(([k, t]) => [k, lab('thermal.cameras.' + k + '.label', t)]) },
     { k: 'mics', label: 'Mic array', type: 'seg', opts: [[4, '4 mics'], [6, '6 mics'], [16, '16 mics']] },
     { k: 'heading', label: 'Heading source', type: 'seg', opts: [['mag', 'Magnetometer'], ['vio', 'Visual-inertial']] },
     { k: 'secondPerch', label: 'Second perch (triangulate)', type: 'toggle' },
-    { k: 'radarPellet', label: 'Radar pellet dropped', type: 'toggle' },
+    { k: 'radarEnabled', label: 'Bird-mounted radar enabled', type: 'toggle' },
     { k: 'radio', label: 'LoRa setting', type: 'seg', opts: [['sf7bw250', 'SF7 · 250 kHz'], ['sf12bw125', 'SF12 · 125 kHz']] }] },
   { g: 'Threat', items: [
     { k: 'enemy', label: 'Enemy', type: 'seg', opts: [['none', 'None'], ['patrol', 'Patrol'], ['owns', 'Owns the area']] },
-    { k: 'enemyDist_m', label: 'Enemy distance from the operator', type: 'range', min: 50, max: 2000, step: 10, fmt: fmtDist },
-    { k: 'enemyDetector', label: 'Enemy receiver', type: 'seg', opts: [['energy', 'Energy detector'], ['lora', 'LoRa-aware']] }] },
+    { k: 'enemyDist_m', label: 'Unknown group distance from the person', type: 'range', min: 50, max: 2000, step: 10, fmt: fmtDist }] },
   { g: 'Relay', items: [
     { k: 'relayAlt_m', label: 'Relay bird altitude', type: 'range', min: 100, max: 600, step: 10, fmt: v => v + ' m' },
     { k: 'relayDist_m', label: 'Relay distance', type: 'range', min: 500, max: 8000, step: 100, fmt: fmtDist },
@@ -1490,23 +1441,22 @@ function renderCards() {
   const sigLabel = ac.signalLabel || lab('acoustic.signals.' + (ac.signal || S.signal) + '.label', S.signal);
   const thEff = th.effectiveRange_m != null ? th.effectiveRange_m : th.range3px_m;
   const cards = [
-    { n: 'RF · tag poll', det: rf.detected, big: S.tag ? `${fmtDist(rf.replyRange_m)} <small>reply range · ${rf.radio || ''}</small>` : '<small>no tag on the operator</small>',
-      sub: S.tag ? `tag replies at ${num(rf.txForEagle_dBm, 0)} dBm (path loss ${num(rf.pathLossOp_dB, 0)} dB)<br>reply heard by the enemy to ${fmtDist(rf.interceptRange_m)} · Eagle's poll to ${fmtDist(rf.pollInterceptRange_m)}${rf.enemyMargin_dB != null ? `<br>enemy at ${fmtDist(S.enemyDist_m)}: margin ${num(rf.enemyMargin_dB, 0)} dB` : ''}` : 'Eagle can still listen and look',
-      extra: rf.emconHold ? `<span class="chip bad">EMCON hold ${rf.holdFor_s ? rf.holdFor_s + ' s' : ''}</span>` : '', note: rf.note },
+    { n: 'Bird → relay radio', det: rf.linkOK, big: `${num(rf.relayTx_dBm, 0)} dBm <small>${rf.radio || ''}</small>`, sub: `link margin ${num(rf.relayMargin_dB, 1)} dB · communications only`, note: rf.note },
     { n: 'Acoustic · ' + sigLabel, det: ac.detected, big: (ac.signal || S.signal) !== 'none' ? `${fmtDist(ac.signalRange_m)} <small>range in ${num(e.noiseDbA, 0)} dBA</small>` : '<small>operator is silent</small>',
-      sub: `soft whistle ${fmtDist(ac.whistleRange_m)} · rescue whistle ${fmtDist(ac.rescueWhistleRange_m)} · voice ${fmtDist(ac.voiceRange_m)}${(ac.signal || S.signal) !== 'none' ? `<br>SNR ${num(ac.snrAtOp_dB, 0)} dB at ${S.opDist_m} m (needs 6)` : ''}`, note: ac.note },
+      sub: `mouth whistle ${fmtDist(ac.whistleRange_m)} · voice ${fmtDist(ac.voiceRange_m)}${(ac.signal || S.signal) !== 'none' ? `<br>SNR ${num(ac.snrAtOp_dB, 0)} dB at ${S.opDist_m} m (needs 6)` : ''}`, note: ac.note },
     { n: 'Thermal · ' + ((CAMS[S.camera] || {}).short || ''), det: th.detected, big: `${fmtDist(thEff)} <small>${thEff > 0 ? 'detection range now' : 'no detection'} · 3 px at ${fmtDist(th.range3px_m)}</small>`,
       sub: `${num(th.pxAtOp, 1)} px across him · contrast ${num(th.contrastAppC, 1)} °C vs threshold ${num(th.thresholdC != null ? th.thresholdC : th.clutterC * 1.5, 1)} °C · clear line ${Math.round((th.pLOS || 0) * 100)}%<br>Eagle cam now: <b style="color:var(--fg)">${pipStats.opPx}</b> px on him`, note: th.note },
-    { n: 'Radar pellet · 60 GHz', det: rd.detected, big: `${num(rd.vitalsRange_m, 1)} m <small>vital signs · presence ${num(rd.presenceRange_m, 0)} m</small>`, sub: S.radarPellet ? 'pellet dropped next to the body' : 'no pellet dropped', note: rd.note },
+    { n: 'Bird-mounted radar · 60 GHz', det: rd.detected, big: `${num(rd.vitalsRange_m, 1)} m <small>vital signs · presence ${num(rd.presenceRange_m, 0)} m</small>`, sub: S.radarEnabled ? 'mounted on the bird; slant range applies' : 'disabled', note: rd.note },
   ];
   $('#cards').innerHTML = cards.map(c => `<div class="card ${c.det ? 'det' : ''}"><div class="row1"><span class="name">${c.n}</span>${c.extra || ''}${chip(c.det)}</div><div class="big">${c.big}</div><div class="sub">${c.sub}</div>${c.note ? `<div class="note">${c.note}</div>` : ''}</div>`).join('')
     + `<div class="card fixcard"><div class="row1"><span class="name">Position fix</span><span class="chip ${fx.ce_m != null ? 'friend' : 'bad'}">${fx.ce_m != null ? 'CE ' + num(fx.ce_m, 1) + ' m' : 'no fix'}</span></div><div class="sub">${fx.method || ''}${fx.ce_m != null ? ` · ${num(fx.rangeErr_m, 1)} m along the bearing · ${num(fx.crossErr_m, 1)} m across` : ''} · heading from ${S.heading === 'vio' ? 'visual-inertial odometry' : 'magnetometer'}</div></div>`;
 }
 function renderTop() {
   const e = R.env || {}, f = R.find || {};
-  $('#envline').textContent = `Central Mountain Range, Taiwan · ${hhmm(S.hour)} · ${num(e.tAmbC, 1)} °C · ${e.rh}% RH · noise ${e.noiseDbA} dBA`;
+  $('#envline').textContent = `${window.__eagleMission?'Fushan-informed mission, Taiwan':'Central Mountain Range, Taiwan'} · ${hhmm(S.hour)} · ${num(e.tAmbC, 1)} °C · ${e.rh}% RH · noise ${e.noiseDbA} dBA`;
   const cls = f.status === 'FOUND' ? 'ok' : f.status === 'PARTIAL' ? 'warn' : 'bad';
-  $('#findPill').innerHTML = `<span class="chip ${cls}">${f.status || '—'}</span><span class="chip ${f.identity === 'AUTHENTICATED' ? 'friend' : 'unknown'}">${f.identity || ''}</span><span class="by">${(f.by || []).join(' + ') || 'no sensor'} · ATAK marker ${R.timeToMarker_s != null ? 'in ~' + Math.round(R.timeToMarker_s) + ' s' : 'none'}</span>`;
+  $('#findPill').innerHTML = `<span class="chip ${cls}">${f.status || '—'}</span><span class="chip ${'unknown'}">${f.identity || ''}</span><span class="by">${(f.by || []).join(' + ') || 'no sensor'} · ATAK marker ${R.timeToMarker_s != null ? 'in ~' + Math.round(R.timeToMarker_s) + ' s' : 'none'}</span>`;
+  if(window.__eagleMission){const m=window.__eagleMission.state;$('#findPill .by').textContent=m.delivered?'Observation delivered · identity UNVERIFIED':m.stored?'Observation retained on Eagle':m.done?'Mission ended · no delivered observation':m.observed?'Observation/transport in progress':'Waiting for a verified perch';$('#camnote').textContent=`Live camera: same forest and moving Eagle. Sensor cards: ${m.observed?'last supported observation':'awaiting support verification'}. ${m.result?.geometry?.clearThermalLine===false?'The observation thermal line was blocked.':''} Identity remains unverified.`;return;}
   const th = R.thermal || {}, posture = operator.userData.posture;
   $('#camnote').innerHTML = pipStats.opPx ? `This frame: clear line, <b>${pipStats.opPx} px</b> land on him. Model: ${num(th.pxAtOp, 1)} px across his torso (needs 3) and a ${Math.round((th.pLOS || 0) * 100)}% chance of a clear line at ${S.opDist_m} m. Drag to pan, double-click to re-aim.`
     : `This frame: <b>no clear line</b> to him (vegetation in the way). Model: ${Math.round((th.pLOS || 0) * 100)}% chance of a clear line at ${S.opDist_m} m. Drag to pan, double-click to re-aim.`;
@@ -1515,28 +1465,19 @@ function renderSteps(activeIdx = -1) {
   const tl = R.timeline || [];
   $('#steps').innerHTML = tl.map((s, i) => `<li class="${i === activeIdx ? 'on' : i < activeIdx ? 'done' : ''} ${/hold|emcon/i.test(s.step) ? 'hold' : ''}" title="${(s.note || '').replace(/"/g, '&quot;')}">${s.step}<span>${tS(s.t_s)}</span></li>`).join('');
 }
-function tagText(phase) {
-  const f = R.find || {}, rf = R.rf || {};
-  if (!S.tag) return 'NO TAG CARRIED\n\nEagle relies on\nsound, heat and\nradar.';
-  if (phase === 'poll') return 'POLL RECEIVED\nFRIENDLY EAGLE ✓\n(HMAC verified)\n\nreplying ' + num(rf.txForEagle_dBm, 0) + ' dBm';
-  if (phase === 'msg') return 'FRIENDLY EAGLE\nRALLY DAR-2 0300\nMOVE AT NIGHT\nACK: 2 TAPS';
-  if (rf.emconHold && phase === 'hold') return 'STANDBY\n\nunknowns nearby\nEagle holding\npolls';
-  return 'TAG 7 · STANDBY\nlast poll: none\nbattery 96%\n\nsilent until a\nvalid poll';
-}
-function setTag(phase) { $('#tagScr').textContent = tagText(phase); $('#tagLed').classList.toggle('on', phase === 'poll' || phase === 'msg'); }
-
 // ---------- log ----------
 function logLine(cls, txt) { const d = document.createElement('div'); d.className = 'l ' + (cls || ''); d.textContent = txt; const L = $('#log'); L.appendChild(d); L.scrollTop = L.scrollHeight; }
 function msgLine(m) { const at = m.airtime_ms ? num(m.airtime_ms, 1) + ' ms' : ''; const tx = m.tx_dBm != null ? (m.tx_dBm > 0 ? '+' : '') + num(m.tx_dBm, 0) + ' dBm' : ''; const route = String(m.dir || '').replace(/->/g, '→'); return `${(m.name || '').padEnd(9)} ${[m.bytes != null ? m.bytes + ' B' : '', at, tx].filter(Boolean).join(' · ')}\n${''.padEnd(10)}${route}${m.hop ? ' · ' + m.hop : ''}${m.note ? ' · ' + m.note : ''}`; }
-function resetLog() { $('#log').innerHTML = ''; const e = R.env || {}; logLine('d', `# ${hhmm(S.hour)} · ${num(e.tAmbC, 1)} °C · ${num(e.noiseDbA, 0)} dBA · ${(R.rf && R.rf.radio) || ''} · ${(R.messages || []).length} messages planned · press Run mission`); (R.messages || []).forEach(m => logLine('d', ''.padEnd(10) + msgLine(m))); if (!(R.messages || []).length) logLine('d', ''.padEnd(10) + 'nothing to send: no tag link and no fix'); }
+function resetLog() { $('#log').innerHTML = ''; const e = R.env || {}; logLine('d', `# ${hhmm(S.hour)} · ${num(e.tAmbC, 1)} °C · ${num(e.noiseDbA, 0)} dBA · ${(R.rf && R.rf.radio) || ''} · ${(R.messages || []).length} messages planned · press Run mission`); (R.messages || []).forEach(m => logLine('d', ''.padEnd(10) + msgLine(m))); if (!(R.messages || []).length) logLine('d', ''.padEnd(10) + 'no delivered report: no sensor fix or relay unavailable'); }
 
 // ---------- update ----------
 function update() {
   R = M.evaluate(S);
   layoutIfNeeded(); setVegCounts(); updateEnvironment(); placeActors(); computeLife(); updateOverlays(); setThermalTemps();
-  renderTop(); renderCards(); renderLife(); renderSteps(running.on ? running.step : -1); if (!running.on) { setTag('idle'); resetLog(); }
+  renderTop(); renderCards(); renderLife(); renderSteps(running.on ? running.step : -1); if (!running.on) { resetLog(); }
   drawMap(); pipDirty = true;
   window.__sim.R = R; window.__sim.S = S;
+  if(window.__eagleMission)window.__eagleMission.settingsChanged();
 }
 let lastCanopy = -1, lastBoost = -1; function layoutIfNeeded() { crownBoost = 1 / Math.sqrt(QL[quality.level].veg); if (S.canopyH_m !== lastCanopy || crownBoost !== lastBoost) { lastCanopy = S.canopyH_m; lastBoost = crownBoost; layoutVegetation(S.canopyH_m); } }
 function setVegCounts() {
@@ -1547,9 +1488,10 @@ function setVegCounts() {
 
 // ---------- mission player ----------
 let pipDirty = true;
-function stopMission(keepLog) { running.on = false; running.step = -1; running.showFix = true; $('#run').disabled = false; $('#run').textContent = 'Run mission'; dot.visible = false; beam.visible = false; downBeam.visible = false; if (!keepLog) setTag('idle'); }
+function stopMission(keepLog) { running.on = false; running.step = -1; running.showFix = true; $('#run').disabled = false; $('#run').textContent = 'Run mission'; dot.visible = false; beam.visible = false; downBeam.visible = false; }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 async function runMission() {
+  if(window.__eagleMission){window.__eagleMission.toggle();return;}
   if (running.on) return; running.on = true; running.token = (running.token || 0) + 1; const tok = running.token; running.showFix = false; updateOverlays(); drawMap();
   $('#run').disabled = true; $('#run').textContent = 'Running…'; resetLog(); $('#log').innerHTML = '';
   const tl = R.timeline || [], msgs = (R.messages || []).slice(), used = new Set();
@@ -1562,15 +1504,11 @@ async function runMission() {
     if (tok !== running.token) return; running.step = i; renderSteps(i); const s = tl[i], name = s.step.toLowerCase();
     const t = tS(s.t_s).padEnd(10);
     if (/listen/.test(name)) { const r = Math.max(20, Math.min(R.acoustic.signalRange_m || 40, 300)); fxRing(0xffb347, W.eagleBase.x, W.eagleBase.z, 2, r, 1.8); fxRing(0xffb347, W.eagleBase.x, W.eagleBase.z, 2, r, 1.8, 0.7); logLine('', `${t}LISTEN    ${s.note || ''}`); camGoal('eagle-wide'); }
-    else if (/hold|emcon/.test(name)) { setTag('hold'); const r = Math.max(30, Math.min(R.rf.interceptRange_m || 60, 500)); fxRing(0xff8080, W.op.x, W.op.z, 2, r, 1.6); fxRing(0xff8080, W.op.x, W.op.z, 2, r, 1.6, 0.8); logLine('b', `${t}HOLD      ${s.note || ''}`); camGoal('threat'); await sleep(D * 0.5); }
-    else if (/^poll/.test(name)) { fxRing(0x80e0ff, W.eagleBase.x, W.eagleBase.z, 2, Math.max(40, Math.min(R.rf.replyRange_m || 200, 600)), 1.5); take(/^CHALLENGE/).forEach(m => logLine('k', `${t}${msgLine(m)}`)); camGoal('eagle-wide'); }
-    else if (/^reply/.test(name)) { setTag('poll'); fxRing(0x80e0ff, W.op.x, W.op.z, 1, 30, 1.2); flyDot([opHead(), W.eagle.clone()], 900); take(/^REPLY/).forEach(m => logLine('k', `${t}${msgLine(m)}`)); camGoal('op'); }
     else if (/signal/.test(name)) { for (let k = 0; k < 3; k++) fxRing(0xffb347, W.op.x, W.op.z, 0.5, Math.max(15, Math.min(R.acoustic.signalRange_m || 30, 250)), 1.1, k * 0.45); if (S.opState !== 'unconscious') operator.userData.signalT = 2.5; bearing.visible = true; logLine('', `${t}SIGNAL    ${s.note || ''} · SNR ${num(R.acoustic.snrAtOp_dB, 0)} dB`); camGoal('op'); }
     else if (/look/.test(name)) { pipMode = 'thermal'; $$('#pipMode button').forEach(x => x.classList.toggle('on', x.dataset.pip === 'thermal')); pipDirty = true; logLine('', `${t}LOOK      ${s.note || ''} · ${pipStats.opPx} px in this frame`); camGoal('eagle-wide'); }
     else if (/^fix/.test(name)) { running.showFix = true; updateOverlays(); drawMap(); logLine('', `${t}FIX       ${s.note || ''}`); camGoal('fix'); }
     else if (/relay/.test(name)) { beam.visible = true; setLine(beam, [W.eagle, relay.position.clone(), edge()]); flyDot([W.eagle.clone(), relay.position.clone(), edge()], 1500); take(/^(FIX|LIFE|SBD|COURIER)/).forEach(m => logLine('k', `${t}${msgLine(m)}`)); logLine('d', `${pad}${s.note || ''}`); camGoal('relay'); }
     else if (/marker/.test(name)) { mapPulse = performance.now(); logLine('k', `${t}MARKER    ${s.note || ''} · CE ${num(R.fix.ce_m, 1)} m`); camGoal('fix'); }
-    else if (/coord/.test(name)) { downBeam.visible = true; setLine(downBeam, [edge(), relay.position.clone(), W.eagle, opHead()]); flyDot([edge(), relay.position.clone(), W.eagle.clone(), opHead()], 1800, 0xffb347); take(/^TEXT/).forEach(m => logLine('w', `${t}${msgLine(m)}`)); setTag('msg'); await sleep(D * 0.6); take(/^ACK/).forEach(m => logLine('k', `${pad}${msgLine(m)}`)); camGoal('op'); }
     else { logLine('', `${t}${s.step.toUpperCase().padEnd(9)} ${s.note || ''}`); camGoal('orbit'); }
     await sleep(D);
   }
@@ -1583,7 +1521,7 @@ function flyDot(pts, dur, hex = 0x80e0ff) { flight.pts = pts; flight.t0 = perfor
 
 // ---------- camera modes ----------
 let camMode = 'orbit', camAnim = null; const camTmp = { p: new THREE.Vector3(), t: new THREE.Vector3() };
-function setCamMode(m) { camMode = m; $$('.viewbtns button').forEach(b => b.classList.toggle('on', b.dataset.cam === m)); controls.enabled = m === 'orbit' || m === 'top'; updateOverlays(); if (m === 'orbit') { camGoal('orbit'); } if (m === 'top') { const c = W.eagleBase.clone().lerp(W.op, 0.5); flyCam(new THREE.Vector3(c.x, 620, c.z + 1), new THREE.Vector3(c.x, 0, c.z)); } }
+function setCamMode(m) { if(window.__eagleMission){window.__eagleMission.setView(m);return;} camMode = m; $$('.viewbtns button').forEach(b => b.classList.toggle('on', b.dataset.cam === m)); controls.enabled = m === 'orbit' || m === 'top'; updateOverlays(); if (m === 'orbit') { camGoal('orbit'); } if (m === 'top') { const c = W.eagleBase.clone().lerp(W.op, 0.5); flyCam(new THREE.Vector3(c.x, 620, c.z + 1), new THREE.Vector3(c.x, 0, c.z)); } }
 function flyCam(p, t, dur = RM ? 1 : 1600) { camAnim = { p0: camera.position.clone(), t0: controls.target.clone(), p1: p, t1: t, s: performance.now(), d: dur }; }
 function camGoal(kind) {
   if (camMode !== 'orbit') return; const ex = W.eagle, op = W.op.clone(), mid = ex.clone().lerp(op, 0.5);
@@ -1622,7 +1560,7 @@ function resize() { const w = canvas.clientWidth, h = canvas.clientHeight; if (!
 addEventListener('resize', () => { resize(); drawMap(); });
 $$('.viewbtns button').forEach(b => b.addEventListener('click', () => setCamMode(b.dataset.cam)));
 $$('#pipMode button').forEach(b => b.addEventListener('click', () => { pipMode = b.dataset.pip; $$('#pipMode button').forEach(x => x.classList.toggle('on', x === b)); pipDirty = true; }));
-$('#run').addEventListener('click', () => { if (camMode !== 'orbit') setCamMode('orbit'); runMission(); });
+$('#run').addEventListener('click', () => { if (!window.__eagleMission && camMode !== 'orbit') setCamMode('orbit'); runMission(); });
 $('#hidePanels').addEventListener('click', () => { document.body.classList.toggle('nopanels'); $('#hidePanels').textContent = document.body.classList.contains('nopanels') ? 'Show panels' : 'Hide panels'; });
 addEventListener('keydown', e => { if (e.key === 'h' || e.key === 'H') { if (!/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) $('#hidePanels').click(); } });
 $$('#overlays input').forEach(c => c.addEventListener('change', () => { updateOverlays(); }));
@@ -1643,15 +1581,18 @@ function animate(now) {
   macaques.forEach((q, i) => { q.position.y += Math.sin(time * 3 + i) * 0.003; q.rotation.y += Math.sin(time * 0.7 + i) * 0.004; });
   boar.rotation.y = 0.8 + Math.sin(time * 0.4) * 0.5; muntjacs.forEach((q, i) => { q.rotation.y = -0.6 + i * 1.7 + Math.sin(time * 0.3 + i) * 0.4; }); sambar.rotation.y = 1.9 + Math.sin(time * 0.2) * 0.3;
   // fx
+  if(window.__eagleMission)window.__eagleMission.frame(dt);
   fxPool.forEach(f => { if (!f.on) return; f.t += dt; if (f.t < 0) return; const k = f.t / f.dur; if (k >= 1) { f.on = false; f.ring.show(false); return; } const r = lerp(f.r0, f.r1, 1 - Math.pow(1 - k, 2)); f.ring.set(f.cx, f.cz, r, clamp(r * 0.02, 0.6, 5), 2); f.ring.mat.opacity = 0.95 * (1 - k); f.ring.show(true); });
   if (flight.pts && dot.visible) { const k = clamp((now - flight.t0) / flight.dur, 0, 1), segs = flight.pts.length - 1, f = k * segs, i = Math.min(segs - 1, Math.floor(f)); dot.position.copy(flight.pts[i]).lerp(flight.pts[i + 1], f - i); if (k >= 1) dot.visible = false; }
   rain.material.uniforms.uCenter.value.copy(camera.position);
   mist.forEach((m, i) => { m.material.map.offset.set(time * 0.0025 * (i + 1), time * 0.0015); });
   // camera
+  if(!window.__eagleMission){
   if (camAnim) { const k = clamp((now - camAnim.s) / camAnim.d, 0, 1), e = k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2; camera.position.lerpVectors(camAnim.p0, camAnim.p1, e); controls.target.lerpVectors(camAnim.t0, camAnim.t1, e); if (k >= 1) camAnim = null; }
   if (camMode === 'eagle') { camera.position.copy(pipCam.position); camera.quaternion.copy(pipCam.quaternion); camera.fov = 55; camera.updateProjectionMatrix(); }
   else if (camMode === 'operator') { const eye = W.op.clone(); eye.y += posture === 'standing' ? 1.65 : posture === 'sitting' ? 1.05 : 0.35; camera.position.copy(eye); camera.lookAt(W.eagle); camera.fov = 70; camera.updateProjectionMatrix(); }
   else { if (camera.fov !== 48) { camera.fov = 48; camera.updateProjectionMatrix(); } controls.autoRotate = camMode === 'orbit' && idleT > 12 && !camAnim && !running.on && !RM; controls.autoRotateSpeed = 0.35; controls.update(); }
+  }else window.__eagleMission.updateCamera();
   renderer.render(scene, camera);
   // Eagle cam at ~8 Hz
   pipT += dt; const pipVisible = $('#right').offsetParent !== null || getComputedStyle($('#right')).position === 'fixed';
@@ -1675,6 +1616,43 @@ label('DF post', 'hostile', v => v.copy(post.position).setY(post.position.y + 8)
 label('macaques', 'neutral', v => v.copy(macaques[0].position).setY(macaques[0].position.y + 2));
 
 // ---------- test hooks ----------
+window.__eagleHost={
+ get settings(){return {...S};},get camera(){return camera;},get controls(){return controls;},get renderer(){return renderer;},get canvas(){return canvas;},
+ settingsForPatch(){S.opDist_m=clamp(+S.opDist_m||20,5,25);const input=$('#c-opDist_m');if(input){input.min=5;input.max=25;}syncControls();return {...S};},
+ attach(layer){
+  scene=new THREE.Scene();scene.background=layer.scene.background.clone();scene.fog=layer.scene.fog.clone();
+  layer.scene.rotation.x=-Math.PI/2;scene.add(layer.scene,eagle,operator,relay);
+  const parts=eagle.children.slice(),flying=eagleModel(true);flying.scale.setScalar(.2);eagle.add(flying);this.flightParts={parts,flying};
+  renderer.shadowMap.enabled=false;renderer.toneMappingExposure=.85;camera.far=14000;camera.updateProjectionMatrix();camAnim=null;camMode='mission';
+  LBL.forEach(l=>{if(l.el.textContent==='OPERATOR')l.el.textContent='SIMULATED PERSON';else if(!/EAGLE|RELAY/.test(l.el.textContent))l.visFn=()=>false;});
+ },
+ sync(m,layer,options={}){
+  const f=m.forest,p=f.p,to=p=>new THREE.Vector3(p[0],p[2],-p[1]);
+  renderer.toneMappingExposure=.85;scene.background=layer.scene.background;scene.fog.color.copy(layer.scene.background);
+  layer.render(f,{yaw:.55,pitch:.55,zoom:1,panX:0,panY:0},{syncOnly:true,hideDrone:true,...options});
+  if(this.lastWorld!==f.world){this.lastWorld=f.world;collectPip();}
+  W.eagle.copy(to(p));W.eagleBase.set(p[0],f.world.ground?.(p[0],p[1])||0,-p[1]);eagle.position.copy(W.eagle);
+  this.flightParts.parts.forEach(o=>o.visible=f.attached);this.flightParts.flying.visible=!f.attached;
+  const next=f.phase==='TRANSIT'?f.path[f.next]:f.target?.approach;if(next&&!f.attached){const dir=to(next).sub(W.eagle);if(dir.length()>.05){eagle.rotation.y=Math.atan2(dir.x,dir.z);eagle.rotation.x=-Math.atan2(dir.y,Math.hypot(dir.x,dir.z));}}else eagle.rotation.x=0;
+  W.op.copy(to(m.operator));operator.position.copy(W.op);operator.userData.posture=S.opPosture;
+  W.opEst.copy(m.reportedPosition?to(m.reportedPosition):W.op);W.relayC.set(p[0]-(+S.relayDist_m||200)*.7,(f.world.ground?.(p[0],p[1])||0)+(+S.relayAlt_m||100),-p[1]-(+S.relayDist_m||200)*.714);W.relayR=10;relay.position.copy(W.relayC);
+  W.relayOff=true;eagle.visible=!['nose','gimbal'].includes(window.__eagleMission?.view);pipDirty=true;
+ },
+ publish(m){
+  const base=m.result||M.evaluate(S);
+  R=m.result||{...base,find:{status:m.done?'ABORTED':'IN TRANSIT',by:[],identity:'UNVERIFIED'},acoustic:{...base.acoustic,detected:false},thermal:{...base.thermal,detected:false},radar:{...base.radar,detected:false},fix:{ce_m:null,method:'Observation waits for verified support'},messages:[],timeline:[],timeToMarker_s:null};
+  running.showFix=m.delivered;window.__sim.R=R;computeLife();renderCards();renderTop();renderLife();setThermalTemps();
+  const linkChip=$('#cards .card .chip');if(linkChip)linkChip.textContent=R.rf.linkOK?'Modeled link available':'Modeled link unavailable';
+  $('#camnote').textContent=`Live camera: same forest and moving Eagle. Sensor cards: ${m.observed?'last supported observation':'awaiting support verification'}. ${m.result?.geometry?.clearThermalLine===false?'The observation thermal line was blocked.':''} Identity remains unverified.`;
+ },
+ render(){renderer.render(scene,camera);},pip(){pipRender();},
+ cameraMode(mode){camMode='mission';controls.enabled=mode==='orbit';camAnim=null;controls.autoRotate=false;eagle.visible=!['nose','gimbal'].includes(mode);},
+ get aircraftVisible(){return eagle.visible;},
+ look(position,target,fov=55){camera.position.copy(position);camera.lookAt(target);camera.fov=fov;camera.updateProjectionMatrix();},
+ orbitTarget(p,reset){controls.target.copy(p);if(reset)camera.position.copy(p).add(new THREE.Vector3(40,29,35));controls.update();},
+ get pose(){return W.eagle.clone();},get person(){return W.op.clone();},get relay(){return W.relayC.clone();},
+ get scene(){return scene;}
+};
 window.__sim = { S, R, apply(p) { Object.assign(S, p); activePreset = ''; syncControls(); update(); }, preset: applyPreset, run: runMission, cam: setCamMode, pip(m) { pipMode = m; $$('#pipMode button').forEach(x => x.classList.toggle('on', x.dataset.pip === m)); pipDirty = true; }, get pipStats() { return pipStats; }, quality(q) { quality.mode = q; applyQuality(q === 'auto' ? 'high' : q); }, ready: false, get life() { return lifeTracks; } };
 
 // ---------- boot ----------
@@ -1687,5 +1665,10 @@ requestAnimationFrame(t => { last = t; animate(t); });
 window.__sim.ready = true;
 })();
 </script>
+<script src="forest-site.js"></script>
+<script src="forest-renderer.js"></script>
+<script src="forest-model.js"></script>
+<script src="mission-model.js"></script>
+<script src="mission-panel.js"></script>
 </body>
 </html>

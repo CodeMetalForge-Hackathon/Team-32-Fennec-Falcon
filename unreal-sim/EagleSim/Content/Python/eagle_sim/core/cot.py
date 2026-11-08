@@ -6,7 +6,6 @@ from xml.sax.saxutils import escape, quoteattr
 # CoT types used by the demo
 EAGLE = "a-f-A-M-F-Q"          # friendly air, military, fixed wing, UAV
 UNKNOWN_GROUND = "a-u-G"       # unconfirmed warm target
-FRIENDLY_PERSON = "a-f-G-U-C"  # friendly ground unit (the authenticated isolated person)
 
 
 def _ts(t):

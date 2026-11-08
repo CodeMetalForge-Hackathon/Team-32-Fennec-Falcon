@@ -5,7 +5,7 @@ They are built by script, so the repository holds no binary .uasset files:
   MI_*              instances of it for leaves, bark, camouflage, the muntjac, the eagle ...
   M_EagleThermal    the post-process material that turns the Eagle camera into a white-hot
                     long-wave infrared view. Warm bodies are drawn from the Custom Depth stencil
-                    (1 person, 2 animal, 3 beacon, 4 on-screen text) and only where nothing
+                    (1 person, 2 animal, 4 on-screen text) and only where nothing
                     stands in front of them, so the person shows through canopy gaps only.
 """
 import unreal
@@ -28,8 +28,6 @@ SURFACES = {
     "Eagle": ((0.070, 0.045, 0.025), 0.70, 0.0),
     "EagleHead": ((0.300, 0.250, 0.180), 0.70, 0.0),
     "Beak": ((0.250, 0.220, 0.100), 0.50, 0.0),
-    "Pellet": ((0.100, 0.120, 0.060), 0.60, 0.0),
-    "Beacon": ((0.800, 0.900, 1.000), 0.30, 40.0),
 }
 
 THERMAL_HLSL = r"""
@@ -46,7 +44,7 @@ if (stencil > 0.5 && sceneDepth > customDepth - 30.0)
 {
     if (stencil < 1.5)      { g = max(g, 0.97); }   // person, about 34 C
     else if (stencil < 2.5) { g = max(g, 0.82); }   // animal, about 30 C
-    else                    { g = 1.0; }            // beacon flash and on-screen text
+    else                    { g = 1.0; }            // on-screen text
 }
 // Sensor noise and a little lens vignette, except on the on-screen text.
 if (stencil < 3.5)

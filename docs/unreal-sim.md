@@ -3,8 +3,8 @@
 The Unreal demo shows the wide-area part of the mission that comes before the perch-and-listen fix
 modelled in the [browser simulator](simulator.md): a hawk-eagle-sized drone searches a real Taiwan
 mountain valley with a thermal camera, finds a person hidden under canopy, confirms them, perches
-near them, delivers a comms pellet, authenticates them and holds a relay orbit, while ATAK shows each
-step. How to install and run it: [unreal-sim/README.md](../unreal-sim/README.md).
+near them to observe using onboard sensors, and holds a relay orbit. The person carries no
+technology, and identity remains unverified. ATAK shows bird-origin observations. How to install and run it: [unreal-sim/README.md](../unreal-sim/README.md).
 
 All numbers on this page are **modelled** (design values or outputs of this code), not measured.
 
@@ -23,7 +23,7 @@ core/flight.py  core/detect.py  core/cot.py  core/layout.py  core/config.py     
 ```
 
 - **`eagle_sim/core`** has no Unreal dependency. The mission talks to an *engine* object with
-  ten methods: `ground`, `visible`, `set_eagle`, `aim`, `set_beacon`, `pellet`, `label`, `to_lla`,
+  methods: `ground`, `visible`, `set_eagle`, `aim`, `label`, `to_lla`,
   `send`, `log` (plus `status`). The tests and `tools/headless_demo.py` use a simple engine
   (`core/headless.py`); Unreal uses `ue/engine.py`.
 - **`eagle_sim/ue`** runs in the editor world through one `unreal.register_slate_post_tick_callback`.
@@ -55,8 +55,6 @@ and height above the ellipsoid.
 | SEARCH | Soaring circle r = 100 m at 100 m above ground around each evasion-plan cell, camera on the cell centre, 1.25 laps per cell | `SEARCH_*`, `SEARCH_CELLS_EN` |
 | CONFIRM | Circle r = 40 m at 60 m around the cue, camera on the cue, up to 2.5 laps | `CONFIRM_*` |
 | PERCH | Flies to the top of the cover tree nearest the person, descending so it arrives as the descent ends; motor off | |
-| DROP | Tosses an 80 g comms pellet (LoRa + e-paper, notional) to land 1.5 m from the person | |
-| AUTH | Challenge 20 B, reply 21 B (notional message sizes); identity confirmed, status and route exchanged | |
 | HOLD | Relay orbit r = 90 m at 120 m above the person; one-way bird note after 20 s | `HOLD_*` |
 
 Flight: cruise 12 m/s (design point for a 1.65 m, 2.4 kg airframe). Bank angle for a coordinated
@@ -75,7 +73,6 @@ turn, atan(v²/(g·r)): 8.4° at r = 100 m, 20.2° at r = 40 m. Climb 3 m/s, des
 | Cue | 3 glimpses within 12 s; cue placed 5–12 m from the true position (random, seeded) | `CUE_*` |
 | Confirm | Airborne optical sectioning: count a view each time the person is seen from a new 30° azimuth bin; confirm at 8 views across at least 4 bins | `CONFIRM_VIEWS`, `CONFIRM_BINS`, `AZ_BINS` |
 | False target | A muntjac (0.9 m, 0.6 m tall) in cell A is detected, labelled and not cued | `ANIMAL_EN` |
-| Cooperative answer (optional) | SWIR beacon flashing at 1 Hz during the first lap of a cell, seen by a 90° × 70° cue camera out to 1,500 m; fixes the cue to 3 m | `COOPERATIVE_SIGNAL`, `BEACON_RANGE_M` |
 
 The forest is 300 trees scattered within 260 m of the cells plus 4 cover trees 4–7 m from the
 person, each a trunk and 3–4 canopy spheres (radius 2.8–5 m, tops 13–22 m), seeded (`SEED = 32`).
@@ -89,11 +86,11 @@ tests see the same canopy.
 | Terrain | Google Photorealistic 3D Tiles from Cesium ion (asset 2275207) on a `Cesium3DTileset`; frustum culling off and culled tiles kept at a coarser level so terrain probes work anywhere in the area; on-screen data attribution on |
 | Sun and sky | `CesiumSunSky`: UTC+8, 10:00 solar time, 7 Nov 2026, no daylight saving. A plain directional light and sky are added if it cannot spawn |
 | Forest | Engine basic shapes. Collision profile `UI`: blocks the Visibility channel (canopy hides the person) and lets the Camera channel through (terrain probes ignore trees) |
-| Person, muntjac, beacon | Basic shapes writing Custom Depth with stencil 1, 2 and 3 |
+| Person, muntjac | Basic shapes writing Custom Depth with stencil 1 and 2 |
 | Eagle | Six shapes attached to one movable root: 1.65 m span, banks into turns |
 | Cameras | Eagle thermal (32°, 1.25 aspect, letterboxed like the sensor), chase (60°, smoothed, 14 m behind and 4 m above), perch (85°, placed 20 m from the person where both the person and the perch are in sight), overview (55°, 650 m south-east and 520 m above the cells) |
 | On-screen text | TextRenderActors 60 cm in front of each camera: status line and the current step in two lines; stencil 4 |
-| Labels | Cells, EAGLE-1, CUE, MUNTJAC, IP-1, COMMS PELLET; turned to the viewer and scaled with distance so they keep a constant size on screen |
+| Labels | Cells, EAGLE-1, CUE, MUNTJAC, IP-1; turned to the viewer and scaled with distance so they keep a constant size on screen |
 
 Settings that matter for rendering are in `EagleSim/Config/DefaultEngine.ini`: `r.CustomDepth=3`
 (Custom Depth with stencil, required for the thermal view) and no static lighting.
@@ -104,7 +101,7 @@ Settings that matter for rendering are in `EagleSim/Config/DefaultEngine.ini`: `
 HLSL node. It reads the scene colour, scene depth, custom depth and custom stencil:
 
 - Background grey level 0.10 + 0.42 × luminance (vegetation reads cool, sunlit ground warmer); sky 0.03–0.08.
-- Stencil 1 (person) 0.97, stencil 2 (animal) 0.82, stencil 3 and 4 (beacon, text) 1.0, **only where
+- Stencil 1 (person) 0.97, stencil 2 (animal) 0.82, stencil 4 (text) 1.0, **only where
   scene depth is no closer than custom depth − 30 cm**, so a warm body shows only through gaps.
 - ±2.5% per-pixel noise and a light vignette.
 
@@ -120,13 +117,11 @@ All UDP, by default to the ATAK SA multicast group 239.2.3.1:6969 (`COT_TARGETS`
 |---|---|---|---|---|
 | EAGLE-1 | a-f-A-M-F-Q (friendly UAV) | EAGLE-1 | Every 2 s real time | 5 m |
 | CUE-1 | a-u-G (unknown ground) | CUE | Cue from 3 glimpses | 2 × cue error |
-| IP-1 | a-u-G | IP-1 (unauthenticated) | CONFIRMED | 3 m |
-| IP-1 | a-f-G-U-C (friendly ground unit) | IP-1 | Reply authenticated | 3 m |
+| IP-1 | a-u-G | IP-1 (identity unverified) | CONFIRMED | 3 m |
 | EAGLE-TEST | a-f-A-M-F-Q | EAGLE-TEST | Menu: Send test CoT | |
 
-The same uid IP-1 is sent twice, so ATAK replaces the unknown marker with the friendly one. In the
-concept these messages travel over the relay and satellite path in the browser simulator; here they
-go straight to ATAK.
+IP-1 remains an unknown-ground observation at confirmation and after perched observation.
+The demo sends CoT straight to ATAK; the browser separately models the onward relay path.
 
 ## Reference run
 
@@ -143,34 +138,16 @@ uses real terrain, so its times differ a little):
 | 214.3 s | Confirm orbit |
 | **248.5 s** | **CONFIRMED**: 8 views over 120° |
 | 259.7 s | Perched 5 m from the person |
-| 261.7 s | Pellet dropped |
-| **266.2 s** | **Authenticated** |
-| 275.4 s | Relay orbit |
-
-With the cooperative SWIR beacon the cue comes at 156.4 s and confirmation at 230.5 s (18 s sooner
-in this small three-cell area; the gain grows with the area to search). One run sends 49 CoT events
-up to the relay orbit.
 
 ## Verification
 
-- `python -m pytest unreal-sim/tests`: 18 tests. Mission logic: orbit geometry, bank angle, the
-  172 m detection range, frame test, glimpse spacing, view spread, valid CoT XML, UDP delivery that
-  survives a bad target, forest layout, a full mission to the relay orbit, the beacon being faster,
-  the bird never dropping below ground or jumping, and confirmation needing several sides.
-- **Unreal glue code, end to end without Unreal:** `tests/test_ue_smoke.py` runs `eagle_sim.ue`
-  against `tests/fake_unreal.py`, a stand-in for the `unreal` module with simple terrain, sphere
-  collision and Cesium tiles that stream in. It checks the build (level, origin moved to the ground,
-  1,220 tree parts, stencils, the thermal material on the Eagle camera), then flies the mission to the
-  relay orbit and checks camera cuts, labels, on-screen text, the pellet landing next to the person
-  and all CoT types arriving over UDP.
-- **Unreal API names:** `tools/check_unreal_api.py` checked all 332 Unreal Python references against
-  the UE 5.6 Python API stub; Cesium names were checked against the Cesium for Unreal v2 headers.
-- `tools/headless_demo.py` into `tools/cot_listen.py` over UDP: 53 events received.
+Run `python -m pytest unreal-sim/tests`. The tests cover geometry, view accumulation, blocked
+sight lines, sensor-only missions, unverified identity, valid CoT and UDP delivery. The Unreal
+adapter tests build the scene, fly to the relay orbit, and check camera cuts, labels and markers
+against fake_unreal.py. They do not prove rendering in a real Unreal Editor.
 
-**Not yet verified:** a run in a real Unreal Editor. The first time it runs, check that the menu
-appears, the build completes, the person shows white in the thermal view only through gaps, on-screen
-text faces the camera (`TEXT_YAW_FIX_DEG` flips it if not) and the markers appear in ATAK. Then add
-screenshots to `docs/images/`.
+After a previously built scene is opened, rebuild props with the updated scripts. Verify thermal
+occlusion, text orientation and ATAK markers in the editor. No field performance is established.
 
 ## Limitations
 
@@ -179,5 +156,4 @@ screenshots to `docs/images/`.
 - Detection is geometric (range, frame, line of sight). No detection probability, false-alarm
   statistics, weather, or thermal contrast physics.
 - No wind, thermals or battery model; the bird flies at a constant speed.
-- The pellet exchange is scripted; message sizes are notional.
 - CoT goes straight to ATAK over the local network rather than over the relay and satellite path.

@@ -2,7 +2,8 @@
 
 A hawk-eagle-sized drone flies into a Taiwan mountain valley, searches three evasion-plan cells with
 its thermal camera, finds a hidden person through gaps in the canopy, confirms them by circling,
-perches on a tree above them, drops a comms pellet, authenticates them, and holds a relay orbit.
+perches to observe using bird-mounted sensors, and holds a relay orbit. The person carries no
+technology. Identity remains unverified; thermal detection alone does not identify an individual.
 Every step appears on an ATAK map as Cursor-on-Target markers.
 
 It runs inside the Unreal Editor (no Play button, no C++ and no Visual Studio). The mission logic is
@@ -37,19 +38,11 @@ plain Python and is tested without Unreal. Technical reference: [docs/unreal-sim
 
 Next time: open the project, **File → Open Level → Taiwan** (or run Build again), then Start.
 
-## Run of show (default speed x3, about 2 minutes)
+## Mission flow
 
-| Real time | Camera | What happens | ATAK |
-|---|---|---|---|
-| 0:00 | Chase | EAGLE-1 arrives from the east at 150 m above ground | EAGLE-1 track starts |
-| 0:42 | Thermal (white-hot) | Cell A: soaring circles. A warm muntjac shows up and is rejected | |
-| 1:06 | Thermal | Cell B: three glimpses of the person through canopy gaps; cue sent at 1:09 | Unknown marker **CUE** |
-| 1:11 | Thermal | Confirm orbit at 60 m: views from every side stack up; **CONFIRMED** at 1:23 | **IP-1 (unauthenticated)** |
-| 1:23 | Perch | Real time from here: lands on a tree 5 m from the person (1:34), tosses the pellet (1:36), challenge and reply (1:39) | IP-1 turns **friendly** |
-| 1:45 | Overview | Relay orbit over the person; one-way bird note at 1:52 | EAGLE-1 circling |
-
-The times are from the reference run (see [docs/unreal-sim.md](../docs/unreal-sim.md)); real terrain
-shifts them a little. The bottom of every camera view shows the current step in words.
+Ingress → thermal search → multi-view human detection → perch and observe → relay orbit.
+CoT observations remain unknown-ground markers with identity unverified. No cooperative response
+is required. Timing depends on terrain visibility; the current headless runner prints event times.
 
 ## Menu
 
@@ -58,8 +51,7 @@ shifts them a little. The bottom of every camera view shows the current step in 
 | 1. Build Taiwan scene | Level, Cesium terrain and sun, forest, targets, eagle, cameras (run again after big changes) |
 | 2. Start mission / Restart / Pause / Stop | Runs the mission in the editor |
 | Views | Auto director, Eagle thermal camera, Chase, Perch, Overview, Free camera, Game view on/off |
-| Toggle cooperative SWIR beacon | Next start: the person answers the recognition pass with a beacon (faster find) |
-| Speed x1 / x3 / x6 | Simulated seconds per real second (the perch, pellet and authentication always play at x1) |
+| Speed x1 / x3 / x6 | Simulated seconds per real second (perched observation always play at x1) |
 | Send test CoT to ATAK | One EAGLE-TEST marker: check the network before you present |
 | Re-place forest and props | Respawn everything except the terrain, for example after editing `config.py` |
 | Reload Python scripts | Pick up edits to the Python files without restarting |
@@ -92,7 +84,7 @@ ATAK listens to SA multicast `239.2.3.1:6969` by default, which is what `COT_TAR
 - **Record a video** of a good run beforehand (Win+G, Xbox Game Bar, or OBS).
 - **Pre-load the terrain** the night before: run Build once on the same machine; Cesium caches tiles.
 - **ATAK without Unreal:** `python tools/headless_demo.py` flies the same mission in plain Python and
-  sends the same markers (add `--to <phone IP>:4242` for unicast, `--beacon`, `--speed 6`).
+  sends the same markers (add `--to <phone IP>:4242` for unicast, `--speed 6`).
 
 ## Troubleshooting
 

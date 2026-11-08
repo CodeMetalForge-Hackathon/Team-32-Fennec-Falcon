@@ -29,7 +29,6 @@ class HeadlessEngine:
             for dx, dy, dz, r in t.blobs:
                 self.spheres.append((t.x + dx, t.y + dy, g + dz, r))
         self.logs, self.sent, self.labels = [], [], {}
-        self.beacon_states, self.pellet_fracs = [], []
         self.eagle = None
         self.status_text = ""
 
@@ -58,12 +57,6 @@ class HeadlessEngine:
 
     def aim(self, cam, look_at):
         pass
-
-    def set_beacon(self, on):
-        self.beacon_states.append(on)
-
-    def pellet(self, start, end, frac):
-        self.pellet_fracs.append(frac)
 
     def label(self, key, text, xyz):
         self.labels[key] = text

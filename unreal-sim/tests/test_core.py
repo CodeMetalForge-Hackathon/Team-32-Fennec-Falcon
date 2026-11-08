@@ -6,7 +6,7 @@ import pytest
 
 from conftest import FakeEngine, make_cfg, scenario_for
 from eagle_sim.core import cot, detect, flight, layout
-from eagle_sim.core.mission import AUTH, CONFIRM, HOLD, Mission
+from eagle_sim.core.mission import CONFIRM, HOLD, Mission
 
 
 # ---------------------------------------------------------------- flight
@@ -120,30 +120,32 @@ def phase_time(m, needle):
     return None
 
 
-def test_mission_finds_confirms_authenticates_and_holds():
+def test_mission_detects_person_without_carried_equipment_and_holds():
     cfg = make_cfg()
     m, eng = run(cfg)
     assert m.phase == HOLD, m.events[-5:]
     confirmed = phase_time(m, "CONFIRMED")
     assert confirmed is not None and confirmed < 1500
-    assert phase_time(m, "authenticated") is not None
+    assert phase_time(m, "identity UNVERIFIED") is not None
     types = [t for t, _ in m.cot_sent]
-    assert cot.UNKNOWN_GROUND in types and cot.FRIENDLY_PERSON in types and cot.EAGLE in types
-    assert eng.pellet_fracs and eng.pellet_fracs[-1] == pytest.approx(1.0)
-    assert eng.labels["operator"] == "IP-1 AUTHENTICATED"
+    assert cot.UNKNOWN_GROUND in types and cot.EAGLE in types
+    assert "a-f-G-U-C" not in types
+    assert eng.labels["operator"] == "IP-1 PERSON DETECTED · ID UNVERIFIED"
     # every CoT payload parses
     for payload in eng.sent:
         ET.fromstring(payload)
 
 
-def test_cooperative_beacon_is_faster_than_thermal_alone():
-    m_plain, _ = run(make_cfg())
-    m_coop, eng = run(make_cfg(COOPERATIVE_SIGNAL=True))
-    t_plain = phase_time(m_plain, "CONFIRMED")
-    t_coop = phase_time(m_coop, "CONFIRMED")
-    assert t_coop is not None and t_plain is not None
-    assert t_coop < t_plain
-    assert any(eng.beacon_states)
+def test_no_person_report_when_all_bird_sight_lines_are_blocked():
+    cfg = make_cfg()
+    eng = FakeEngine(cfg)
+    eng.visible = lambda *args: False
+    m = Mission(eng, scenario_for(cfg, eng), cfg)
+    for _ in range(6000):
+        m.update(0.1)
+    assert m.phase != HOLD
+    assert not any(kind == cot.UNKNOWN_GROUND for kind, _ in m.cot_sent)
+    assert 'operator' not in eng.labels
 
 
 def test_the_bird_stays_above_ground_and_never_teleports():
@@ -155,7 +157,7 @@ def test_the_bird_stays_above_ground_and_never_teleports():
     while m.phase != HOLD and m.t < 3000:
         m.update(0.1)
         x, y, z = eng.eagle[:3]
-        if m.phase not in (AUTH,) and last is not None:
+        if last is not None:
             step = math.dist((x, y, z), last)
             assert step <= cfg.SPEED_MS * 0.1 * 1.6 + 1.0, (m.phase, step)
         assert z >= ground(x, y) - 0.5

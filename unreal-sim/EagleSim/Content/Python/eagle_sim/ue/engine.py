@@ -11,7 +11,7 @@ from . import util
 CAPTION_WIDTH = 64
 
 # label key: (minimum lift in metres, lift as a multiple of the label height)
-LIFTS = {"operator": (22.0, 2.2), "animal": (14.0, 1.4), "cue": (18.0, 1.2), "pellet": (10.0, 1.0),
+LIFTS = {"operator": (22.0, 2.2), "animal": (14.0, 1.4), "cue": (18.0, 1.2),
          "eagle": (2.0, 1.3), "cell": (30.0, 1.0)}
 
 
@@ -33,14 +33,10 @@ def wrap(text, width=CAPTION_WIDTH, lines=2):
 
 def label_rgb(text):
     t = text.upper()
-    if "UNAUTHENTICATED" in t or t.startswith("CUE"):
+    if "UNVERIFIED" in t or t.startswith("CUE"):
         return (255, 190, 40)
-    if "AUTHENTICATED" in t:
-        return (90, 255, 120)
     if "MUNTJAC" in t:
         return (210, 210, 210)
-    if "PELLET" in t:
-        return (120, 230, 255)
     return (255, 255, 255)
 
 
@@ -64,8 +60,6 @@ class UEEngine:
         self._sizes = {}
         self._osd_text = {}
         self._chase = None
-        self._pellet_shown = False
-        self._pellet_landed = False
         self._fixed = []
         for a in sc.cell_labels:
             x, y, _ = util.from_ue(a.get_actor_location())
@@ -98,26 +92,6 @@ class UEEngine:
 
     def aim(self, cam, look_at):
         self.cam, self.look = cam, look_at
-
-    def set_beacon(self, on):
-        if self.sc.beacon is not None:
-            util.set_visible(self.sc.beacon, on)
-
-    def pellet(self, start, end, frac):
-        p = self.sc.pellet
-        if p is None:
-            return
-        f = min(1.0, max(0.0, frac))
-        x = start[0] + (end[0] - start[0]) * f
-        y = start[1] + (end[1] - start[1]) * f
-        z = start[2] + (end[2] - start[2]) * f + 6.0 * f * (1.0 - f)     # a short toss arc
-        if not self._pellet_shown:
-            util.set_visible(p, True)
-            self._pellet_shown = True
-        util.place(p, util.to_ue(x, y, z), util.rot())
-        if f >= 1.0 and not self._pellet_landed:
-            self._pellet_landed = True
-            self.label("pellet", "COMMS PELLET", end)
 
     def label(self, key, text, xyz):
         entry = self.labels.get(key)

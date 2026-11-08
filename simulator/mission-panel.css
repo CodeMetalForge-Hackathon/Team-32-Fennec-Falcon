@@ -1,0 +1,9 @@
+#mission-status{white-space:pre-line;font:12px/1.7 var(--font-data);color:var(--friend);padding:10px 0}
+#navigation-demo label{display:block;font-size:12px;color:var(--muted)}
+#navigation-demo select,#mission-pov{box-sizing:border-box;background:var(--panel-2);border:1px solid var(--line-2);color:var(--fg);padding:7px;border-radius:5px;max-width:100%}
+#navigation-demo select{width:100%;margin:5px 0 10px}
+.mission-tools,.mission-layers{display:flex;gap:7px;flex-wrap:wrap;margin:9px 0}.mission-tools button{padding:7px;font-size:11px;white-space:nowrap}
+.mission-layers label{display:flex!important;gap:5px;align-items:center}.viewbtns{align-items:center;gap:8px}.viewbtns label{font-size:12px}
+.ctl[hidden],#overlays[hidden]{display:none!important}
+#mission-pov{min-width:0;max-width:250px}.mhead{flex-wrap:wrap}
+@media(max-width:800px){#mission-pov{max-width:220px}#viewbar{padding:7px}.viewbtns{min-width:0}#steps{flex-basis:100%}}

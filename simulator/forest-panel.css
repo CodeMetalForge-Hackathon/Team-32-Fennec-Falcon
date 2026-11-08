@@ -1,0 +1,42 @@
+/* Hallmark · pre-emit critique: P4 H4 E4 S5 R4 V4 · existing field-lab theme retained */
+:root{--forest-rule:#36504d;--forest-panel:#13251e;--forest-ink:#e0ece7;--forest-muted:#afc2b5;--forest-field:#bed395;--forest-font:system-ui;--forest-data:monospace}
+html,body{overflow-x:clip}
+#forest-demo{margin-top:24px;border-top:1px solid var(--line-2,#36504d);padding-top:18px}
+#forest-demo p{line-height:1.55;color:var(--muted,#b0c2bd)}
+#forest-dialog{box-sizing:border-box;width:min(1380px,96vw);max-width:96vw;height:94vh;max-height:94vh;padding:24px;background:var(--bg,#091211);color:var(--fg,#e0ece7);border:1px solid var(--line-2,#36504d);border-radius:8px;overflow:auto;font-family:var(--font-ui,system-ui)}
+#forest-dialog::backdrop{background:#020807df}
+#forest-dialog header{display:flex;justify-content:space-between;align-items:center;gap:16px}
+#forest-dialog h2{font-size:25px;margin:8px 0 12px;line-height:1.2}
+#forest-dialog h2{overflow-wrap:anywhere;min-width:0;font-style:normal}
+.forest-site-strip{display:grid;grid-template-columns:minmax(0,340px) minmax(0,1fr);gap:24px;align-items:end;border-block:1px solid var(--forest-rule);padding:12px 0;margin:16px 0;color:var(--forest-muted);font-size:12px}
+.forest-site-strip label{font-size:12px;color:var(--forest-ink)}.forest-site-strip p{margin:0}
+.forest-layer-controls{display:flex;gap:14px;flex-wrap:wrap;margin:12px 0;font-size:12px;color:var(--forest-muted)}
+#forest-renderer-state{font-family:var(--forest-data);color:var(--forest-field)}
+#forest-evidence{border-left:2px solid var(--forest-field);padding:1px 12px;margin-bottom:22px;font-size:12px}
+#forest-evidence p{margin:9px 0}#forest-evidence b{display:block;color:var(--forest-ink);font-weight:500}
+#forest-dialog button{white-space:nowrap}#forest-dialog button:hover{filter:brightness(1.15)}#forest-dialog button:active{transform:translateY(1px)}
+#forest-dialog button:focus-visible,#forest-dialog input:focus-visible,#forest-dialog select:focus-visible{outline:2px solid var(--forest-field);outline-offset:3px}
+#forest-dialog h3{font-size:14px;margin:20px 0 8px}
+.forest-eyebrow{font:11px monospace;letter-spacing:.15em;color:#80e0ff}
+.forest-intro{max-width:900px;font-size:14px}
+.forest-layout{display:grid;grid-template-columns:minmax(0,1fr) 310px;gap:24px}
+.forest-controls{display:flex;gap:16px;align-items:end;margin:18px 0 10px}
+.forest-controls label{display:block;font-size:12px;flex:1}.forest-controls label:last-child{flex:0 0 95px}
+#forest-dialog select{box-sizing:border-box;width:100%;background:#152824;color:#e0ece7;padding:9px;border:1px solid #36504d;margin-top:6px}
+#forest-dialog button,#forest-open{padding:9px 14px;background:#203c37;color:#e0ece7;border:1px solid #4e7569;border-radius:4px;cursor:pointer;font:inherit}
+#forest-play{background:#80e0ff!important;color:#08212a!important}
+#forest-dialog canvas{display:block;width:100%;height:auto;border:1px solid #243e40;box-sizing:border-box;margin-top:14px}
+#forest-map{touch-action:none;cursor:grab}#forest-map.dragging{cursor:grabbing}#forest-map:focus-visible{outline:2px solid #80e0ff;outline-offset:3px}
+.forest-view-controls{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:14px}.forest-view-controls button{font-size:12px!important;padding:6px 10px!important}.forest-view-controls label{font-size:12px;margin-left:8px}
+#forest-dialog aside{font-size:12px;min-width:0}#forest-dialog a{color:#80e0ff}
+#forest-status{border-left:3px solid #80e0ff;padding:1px 14px 10px;background:#10211f}
+.forest-data{white-space:pre-line;font:12px/1.8 monospace}
+#forest-candidates p{border-bottom:1px solid #243e40;padding-bottom:8px}
+#forest-stages{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+#forest-stages span{padding:6px 8px;border:1px solid #36504d;font:10px monospace;color:#9fb5ad}
+#forest-stages .active{background:#80e0ff;color:#08212a;border-color:#80e0ff}
+.forest-readiness{padding-left:18px;line-height:1.6}.forest-readiness li{margin:9px 0}
+#forest-events{padding-left:18px;line-height:1.65;color:#b0c2bd}
+#forest-dialog footer{margin-top:20px;border-top:1px solid #36504d;padding-top:14px;font-size:12px;line-height:1.6;color:#9fb5ad}
+@media(max-width:800px){#forest-dialog{padding:14px}.forest-layout{grid-template-columns:1fr;gap:8px}#forest-dialog h2{font-size:20px}.forest-controls{gap:8px}#forest-dialog .seg{display:flex;flex-wrap:wrap;gap:6px}}
+@media(max-width:800px){.forest-site-strip{grid-template-columns:minmax(0,1fr);gap:8px}#forest-dialog header{align-items:start}#forest-dialog header h2{max-width:100%}}
