@@ -1,0 +1,25 @@
+[Unit]
+StartLimitIntervalSec=0
+Description=Eagle field: eagle_runtime (sensors -> decision gate -> one sealed FIX to the Nest, recorded to ~/field_logs)
+After=eagle-nest.service sound.target
+Wants=eagle-nest.service
+# These open the same thermal camera / microphone; eagle_runtime replaces life_node.
+Conflicts=thermal.service fusion.service eagle-life.service
+
+[Service]
+User=@USER@
+WorkingDirectory=@REPO@/eagle-kit
+Environment=PYTHONUNBUFFERED=1
+ExecStartPre=/bin/mkdir -p @HOME@/field_logs @HOME@/eagle
+# Exit 3 if the thermal camera or the mic array is missing (USB still enumerating at boot): systemd retries.
+# run_runtime.sh adds --record @HOME@/field_logs unless ~/eagle/norecord exists (field page Start/Stop recording).
+ExecStart=@REPO@/pi/field/run_runtime.sh
+StandardOutput=append:@HOME@/field_logs/runtime.log
+StandardError=append:@HOME@/field_logs/runtime.log
+KillSignal=SIGTERM
+TimeoutStopSec=15
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,5 @@
+# Python
+__pycache__/
+*.pyc
+# Venue settings and real keys: never commit (see docs/how-we-document.md, privacy checklist)
+eagle-kit/config/local.yaml

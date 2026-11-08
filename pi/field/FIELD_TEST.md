@@ -24,4 +24,7 @@ Notes
 - The thermal picture on the page only updates while recording is on.
 - Enrolling or the clap test pauses detection for 10 to 30 s; the page shows the task's progress.
 - Without the hotspot: plug in a keyboard and monitor and open http://localhost:8080.
+- Decision gate instead of the 30 s life list: `bash ~/Team-32/pi/field/use_runtime.sh` (once; `off` to go back).
+  Nothing reaches the Nest until the gate decides; the Verdict card then starts with "Decision gate"
+  (action, P, reason per person). Reference: docs/pi-runtime.md.
 - To change the hotspot password, set `HOTSPOT_PASS` in `eagle-hotspot.service` and reinstall.

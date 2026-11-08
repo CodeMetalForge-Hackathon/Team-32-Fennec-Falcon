@@ -79,10 +79,22 @@ def systemctl(*args, timeout=20) -> tuple:
         return 1, str(e)
 
 
+def node_unit() -> str:
+    """The detection service in use: eagle-runtime (decision gate, pi/field/use_runtime.sh) when it is
+    enabled, else eagle-life. Buttons restart this one, so they never swap one for the other."""
+    if Path("/etc/systemd/system/eagle-runtime.service").exists():
+        try:
+            if subprocess.run(["systemctl", "is-enabled", "--quiet", "eagle-runtime"], timeout=3).returncode == 0:
+                return "eagle-runtime"
+        except (OSError, subprocess.SubprocessError):
+            pass
+    return "eagle-life"
+
+
 def unit_names() -> list:
     vision = ([f"eagle-vision@{c}" for c in CAMERAS] if Path("/etc/systemd/system/eagle-vision@.service").exists()
               else ["eagle-vision"])
-    return ["eagle-nest", "eagle-life", *vision, "eagle-dashboard", "eagle-hotspot"]
+    return ["eagle-nest", node_unit(), *vision, "eagle-dashboard", "eagle-hotspot"]
 
 
 def service_states() -> dict:
@@ -174,7 +186,7 @@ def set_recording(on: bool) -> tuple:
         flag.unlink(missing_ok=True)
     else:
         flag.touch()
-    rc, out = systemctl("restart", "eagle-life.service")
+    rc, out = systemctl("restart", f"{node_unit()}.service")
     return rc == 0, ("Recording started (new run folder)" if on else "Recording stopped") if rc == 0 else out
 
 
@@ -222,15 +234,27 @@ def write_site(form: dict) -> tuple:
     tmp = p.with_suffix(".tmp")
     tmp.write_text(json.dumps(site, indent=1))
     os.replace(tmp, p)
-    errs = [out for u in ("eagle-life.service", "eagle-nest.service") for rc, out in [systemctl("restart", u)] if rc]
+    errs = [out for u in (f"{node_unit()}.service", "eagle-nest.service") for rc, out in [systemctl("restart", u)] if rc]
     return (not errs), ("Site saved; services restarted" if not errs else "Saved, but restart failed: " + "; ".join(errs))
 
 
 # ------------------------------------------------------------------ status
+def gate_text(gate: dict, sends) -> str | None:
+    """The decision gate's view (eagle_runtime's decision events), most probable first."""
+    if not gate and not sends:
+        return None
+    rows = sorted(gate.values(), key=lambda d: -(d.get("p") or 0))[:4]
+    out = [f"{d.get('action', ''):8s} P {d.get('p') or 0:.3f}  {d.get('subject', '')}: {d.get('reason', '')}" for d in rows]
+    out += [f"SENT     {d.get('subject')} burst {d.get('burst') or '-'}, {time.time() - d['t']:.0f} s ago"
+            + (" (muted)" if d.get("muted") else "") for d in sends]
+    return "\n".join(out)
+
+
 def status(logs: Path, runner: Runner) -> dict:
     run = logs / "latest"
     run_dir = run.resolve() if run.exists() else None
     last_list, dets = None, deque(maxlen=12)
+    gate, sends = {}, deque(maxlen=3)              # eagle_runtime: latest decision per subject, sent reports
     if run_dir:
         for line in tail_lines(run_dir / "events.jsonl", 400):
             try:
@@ -241,6 +265,11 @@ def status(logs: Path, runner: Runner) -> dict:
                 last_list = e
             elif e.get("event") == "detection":
                 dets.append(e)
+            elif e.get("event") == "decision":
+                if e.get("kind") == "SEND":
+                    sends.append(e)
+                elif e.get("subject"):
+                    gate[e["subject"]] = e
     recording = not (Path.home() / "eagle" / "norecord").exists()
     size = sum(p.stat().st_size for p in run_dir.iterdir() if p.is_file()) if run_dir else 0
     free = shutil.disk_usage(logs if logs.exists() else Path.home()).free
@@ -260,6 +289,7 @@ def status(logs: Path, runner: Runner) -> dict:
         "target_enrolled": (Path.home() / "eagle" / "target_profile.npz").exists(),
         "life_list": last_list.get("summary") if last_list else None,
         "life_list_age_s": round(time.time() - last_list["t"]) if last_list else None,
+        "gate": gate_text(gate, sends),
         "detections": [{"age_s": round(time.time() - d["t"], 1), "kind": d.get("kind"), "category": d.get("category"),
                         "source": d.get("source"), "match_level": d.get("match_level")} for d in reversed(dets)],
         "nest": nest,
@@ -345,7 +375,7 @@ async function poll(){
   $('clock').textContent=s.time;
   $('sensors').innerHTML=Object.entries(s.sensors).map(([k,v])=>sensor(k,v)).join(' &nbsp; ');
   $('services').innerHTML=Object.entries(s.services).map(([k,v])=>`<span class="dot ${v==='active'?'ok':'bad'}"></span>${esc(k)}`).join(' &nbsp; ');
-  $('verdict').textContent=s.life_list?s.life_list:'No people tracked yet';
+  $('verdict').textContent=(s.gate?'Decision gate:\n'+s.gate+'\n\n':'')+(s.life_list?s.life_list:'No people tracked yet');
   $('dets').textContent=s.detections.map(d=>`${d.age_s.toFixed(0).padStart(4)} s  ${d.kind||''} ${d.category||''}${d.match_level?'  MATCH '+d.match_level:''}  ${d.source||''}`).join('\\n')||'no detections yet';
   $('nest').textContent=s.nest.join('\\n')||'nothing received yet';
   const r=s.recording;$('rec').innerHTML=(r.on?'<span class="dot ok"></span>Recording ':'<span class="dot bad"></span>Not recording ')+
