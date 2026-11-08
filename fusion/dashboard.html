@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Human Detection</title>
+<style>
+  :root {
+    --bg: #0e1013; --panel: #171a1f; --line: #262b33; --text: #e8eaed; --muted: #8b93a0;
+    --human: #e5484d; --maybe: #f5a524; --animal: #3e9bf5; --none: #3a3f47; --ok: #30a46c;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { padding: 14px 20px; display: flex; align-items: baseline; gap: 14px; border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 18px; margin: 0; font-weight: 600; letter-spacing: .02em; }
+  header .sub { color: var(--muted); font-size: 13px; }
+  #verdict { margin: 16px 20px; padding: 18px 22px; border-radius: 10px; background: var(--none);
+             transition: background .25s; }
+  #verdict .label { font-size: 30px; font-weight: 700; letter-spacing: .01em; }
+  #verdict .reasons { margin-top: 6px; color: rgba(255,255,255,.85); font-size: 14px; }
+  #verdict.human { background: var(--human); } #verdict.maybe { background: #8a5a00; }
+  #verdict.animal { background: #1d4f86; } #verdict.none, #verdict.idle { background: var(--none); }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; padding: 0 20px; }
+  @media (max-width: 1100px) { .grid { grid-template-columns: 1fr; } }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
+          display: flex; flex-direction: column; }
+  .card.hit { border-color: var(--human); box-shadow: 0 0 0 1px var(--human) inset; }
+  .card h2 { margin: 0; padding: 10px 14px; font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+  .dot.ok { background: var(--ok); }
+  .card img { width: 100%; aspect-ratio: 4 / 3; object-fit: contain; background: #000; display: block; }
+  .card.audio img { aspect-ratio: 8 / 3; }
+  .body { padding: 10px 14px 14px; }
+  .detail { min-height: 22px; font-size: 15px; }
+  .status { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .bar { height: 10px; background: #0b0d10; border-radius: 5px; overflow: hidden; margin-top: 8px; }
+  .bar > div { height: 100%; width: 0; transition: width .2s; }
+  .bar.h > div { background: var(--human); } .bar.a > div { background: var(--animal); }
+  .barlab { display: flex; justify-content: space-between; color: var(--muted); font-size: 12px; margin-top: 3px; }
+  .top { margin-top: 8px; color: var(--muted); font-size: 12px; }
+  #events { margin: 16px 20px 24px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; }
+  #events h3 { margin: 0 0 6px; font-size: 13px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+  #events ol { list-style: none; margin: 0; padding: 0; font-size: 13px; max-height: 160px; overflow: auto; }
+  #events li { padding: 3px 0; border-top: 1px solid var(--line); }
+  #events li:first-child { border-top: 0; }
+  #events .t { color: var(--muted); margin-right: 8px; font-variant-numeric: tabular-nums; }
+  .tag { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; background: var(--none); }
+  .tag.human { background: var(--human); } .tag.maybe { background: var(--maybe); } .tag.animal { background: var(--animal); }
+</style>
+</head>
+<body>
+<header><h1>Multi-sensor human detection</h1><span class="sub">thermal + visual + audio, running offline on the drone computer</span></header>
+<section id="verdict" class="idle"><div class="label">Starting</div><div class="reasons"></div></section>
+<div class="grid">
+  <div class="card" id="c-thermal"><h2><span class="dot"></span>Heat signature</h2>
+    <img src="/stream/thermal" alt="thermal camera">
+    <div class="body"><div class="detail"></div><div class="status"></div>
+      <div class="bar h"><div></div></div><div class="barlab"><span>human</span><span class="hv">0%</span></div></div></div>
+  <div class="card" id="c-visual"><h2><span class="dot"></span>Visual</h2>
+    <img src="/stream/visual" alt="visual camera">
+    <div class="body"><div class="detail"></div><div class="status"></div>
+      <div class="bar h"><div></div></div><div class="barlab"><span>human</span><span class="hv">0%</span></div>
+      <div class="bar a"><div></div></div><div class="barlab"><span>animal</span><span class="av">0%</span></div></div></div>
+  <div class="card audio" id="c-audio"><h2><span class="dot"></span>Sound</h2>
+    <img src="/stream/audio" alt="audio spectrogram">
+    <div class="body"><div class="detail"></div><div class="status"></div>
+      <div class="bar h"><div></div></div><div class="barlab"><span>human sound</span><span class="hv">0%</span></div>
+      <div class="bar a"><div></div></div><div class="barlab"><span>animal sound</span><span class="av">0%</span></div>
+      <div class="top"></div></div></div>
+</div>
+<section id="events"><h3>Verdict history</h3><ol></ol></section>
+<script>
+const pct = v => Math.round(Math.max(0, Math.min(1, v || 0)) * 100) + "%";
+function card(name, s, now) {
+  const el = document.getElementById("c-" + name);
+  const live = s.status === "ok" && now - s.t < 3;
+  el.querySelector(".dot").className = "dot" + (live ? " ok" : "");
+  el.querySelector(".detail").textContent = s.detail || "";
+  el.querySelector(".status").textContent = live ? (s.level_db !== undefined ? `level ${s.level_db} dB` : "live") : s.status;
+  const h = Math.max(s.human || 0, now - s.t_h <= 1.5 ? s.hold_h || 0 : 0);
+  el.querySelector(".bar.h > div").style.width = pct(h);
+  el.querySelector(".hv").textContent = pct(h);
+  const a = el.querySelector(".bar.a > div");
+  if (a) { a.style.width = pct(s.animal); el.querySelector(".av").textContent = pct(s.animal); }
+  el.classList.toggle("hit", live && h >= 0.5);
+  const top = el.querySelector(".top");
+  if (top && s.top) top.textContent = s.top.map(([n, v]) => `${n} ${Math.round(v * 100)}%`).join("  ·  ");
+}
+async function tick() {
+  try {
+    const r = await fetch("/state", { cache: "no-store" });
+    const d = await r.json();
+    const v = document.getElementById("verdict");
+    v.className = d.verdict.level;
+    v.querySelector(".label").textContent = d.verdict.label;
+    v.querySelector(".reasons").textContent = (d.verdict.reasons || []).join("   |   ");
+    for (const k of ["thermal", "visual", "audio"]) card(k, d.sensors[k], d.time);
+    const ol = document.querySelector("#events ol");
+    ol.innerHTML = "";
+    for (const e of d.events.slice().reverse()) {
+      const li = document.createElement("li");
+      li.innerHTML = `<span class="t"></span><span class="tag ${e.level}"></span><span class="l"></span>`;
+      li.querySelector(".t").textContent = e.time;
+      li.querySelector(".l").textContent = e.label;
+      ol.appendChild(li);
+    }
+  } catch (e) { document.querySelector("#verdict .label").textContent = "Dashboard disconnected"; }
+}
+setInterval(tick, 300); tick();
+</script>
+</body>
+</html>

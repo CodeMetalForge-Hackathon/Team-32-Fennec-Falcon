@@ -1,0 +1,39 @@
+# Minimal MediaMTX config for the thermal stream. Anything not listed uses MediaMTX defaults.
+# Viewers:  RTSP   rtsp://<pi-ip>:8554/thermal      (VLC, ffplay)
+#           WebRTC http://<pi-ip>:8889/thermal      (any browser, lowest latency)
+#           HLS    http://<pi-ip>:8888/thermal      (browser fallback)
+rtsp: yes
+webrtc: yes
+hls: yes
+rtmp: no
+srt: no
+
+# Only the Pi itself may publish. Anyone on the network may watch (fine on the
+# password-protected field hotspot). To require a viewer password, give the second
+# entry a user/pass instead of "any".
+authInternalUsers:
+  - user: any
+    pass:
+    ips: ['127.0.0.1', '::1']
+    permissions:
+      - action: publish
+      - action: api
+      - action: metrics
+  - user: any
+    pass:
+    ips: []
+    permissions:
+      - action: read
+      - action: playback
+
+pathDefaults:
+  # Record what is published as fragmented MP4 in 10-minute files, deleted after 3 days.
+  # Copy field recordings off the Pi within 3 days. ~600 MB/hour total with raw temps.
+  record: yes
+  recordPath: /home/thermal_recordings/%path/%Y-%m-%d_%H-%M-%S-%f%z
+  recordSegmentDuration: 10m
+  recordDeleteAfter: 72h
+
+paths:
+  thermal:
+    source: publisher

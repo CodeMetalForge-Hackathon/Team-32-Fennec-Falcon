@@ -1,0 +1,13 @@
+[Unit]
+Description=Eagle field: read-only status page on port 8080 (watch over the THERMAL-PI hotspot)
+After=local-fs.target
+Conflicts=fusion.service
+
+[Service]
+User=@USER@
+ExecStart=/usr/bin/python3 @REPO@/pi/field/dashboard.py --logs @HOME@/field_logs --port 8080
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

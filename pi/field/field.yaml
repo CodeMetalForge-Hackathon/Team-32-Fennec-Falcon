@@ -1,0 +1,45 @@
+# Field config for the auto-started services (pi/field/install.sh). Overrides eagle-kit/config/example.yaml.
+# Hardware: Pi 5 + Hailo-8 AI HAT+, HTI HT-203U (USB), reSpeaker XVF3800 (ALSA card L16K6Ch, 6-channel
+# firmware), Camera Module 3 standard (imx708). The Wide NoIR is not connected tonight: to use it instead,
+# set camera.sensor: imx708_wide_noir and life.vision.camera to 102 x 67 deg. life_node and nest_station
+# run on the same Pi and talk over loopback UDP, so nothing here needs a network. Keys: keys_file below.
+
+# Site setup from the field page (mount height, heading, tilt, lat/lon, clap-test offset) lives in
+# ~/eagle/site.yaml and is merged over this file when it exists. Edit it from the page, not here.
+include: [~/eagle/site.yaml]
+
+audio:
+  preset: respeaker_xvf3800
+  device: XVF3800                # name substring, so a changed ALSA card number does not matter
+
+life:
+  modules: [audio, thermal, vision]
+  thermal:
+    source: hti
+    camera: {width: 256, height: 192, hfov_deg: 50.0}
+  vision:
+    jsonl: ~/eagle/vision.jsonl  # written by eagle-vision.service (apps/hailo_vision.py)
+    camera:                      # must match camera.sensor: example.yaml describes the Wide (102 x 67 deg)
+      hfov_deg: 66.0             # Camera Module 3 standard lens (Raspberry Pi camera docs): 66 deg horizontal,
+      vfov_deg: 41.0             # 41 deg vertical; hailo-apps' 1280x720 keeps the full 16:9 field
+  record:
+    thermal_hz: 2.0
+    chunk_s: 60.0
+    min_free_gb: 2.0
+
+radio:
+  transport: udp                 # nest_station swaps bind/peer
+  udp: {bind: "127.0.0.1:47001", peer: "127.0.0.1:47002"}
+
+camera:
+  # Pi camera by sensor name (libcamera model, see `rpicam-hello --list-cameras`), never by port:
+  #   imx708            Camera Module 3, standard lens, 66 deg HFOV, libcamera default tuning
+  #   imx708_wide_noir  Camera Module 3 Wide NoIR, 102 deg HFOV, imx708_wide_noir.json tuning
+  # Used by apps/hailo_vision.py (run_vision.sh) and apps/enroll_target.py; --camera overrides it.
+  sensor: imx708
+
+# Field keys from apps/keygen.py, kept OUT of the repo (this file is committed). Overrides the TEST
+# keys in example.yaml; if the file is missing, life_node and nest_station refuse to start rather than
+# fall back to the test keys. nest_keys.yaml is used because the Nest runs on this same Pi.
+#   python apps/keygen.py --out-dir ~/eagle/keys
+keys_file: ~/eagle/keys/nest_keys.yaml
