@@ -4,7 +4,7 @@
 `bash ~/Team-32/pi/field/enroll.sh`. The profile is kept across reboots.
 
 1. **Power on.** Plug in the power bank (USB-C PD, 5V 5A). Everything starts by itself in about a minute.
-2. **Join the hotspot.** On a phone: Wi-Fi network **THERMAL-PI**, password **thermal1234**. It appears about
+2. **Join the hotspot.** On a phone: Wi-Fi network **THERMAL-PI**, password from `~/eagle/hotspot.env` on the Pi (kept out of the repo). It appears about
    30 s after boot when no known Wi-Fi is around.
 3. **Open the page:** http://10.42.0.1:8080
 4. **Check sensors.** Thermal, microphones and both cameras should show green ("live").
@@ -24,4 +24,4 @@ Notes
 - The thermal picture on the page only updates while recording is on.
 - Enrolling or the clap test pauses detection for 10 to 30 s; the page shows the task's progress.
 - Without the hotspot: plug in a keyboard and monitor and open http://localhost:8080.
-- To change the hotspot password, set `HOTSPOT_PASS` in `eagle-hotspot.service` and reinstall.
+- The hotspot password lives only on the Pi: `echo HOTSPOT_PASS=<8+ chars> > ~/eagle/hotspot.env` before the first boot without Wi-Fi. To change it later: `sudo nmcli connection modify thermal-hotspot wifi-sec.psk <new>`.

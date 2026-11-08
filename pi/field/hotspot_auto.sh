@@ -4,11 +4,15 @@
 # The hotspot profile is autoconnect=no, so at a venue with known Wi-Fi the Pi joins that instead.
 set -uo pipefail
 SSID="${HOTSPOT_SSID:-THERMAL-PI}"
-PASS="${HOTSPOT_PASS:-thermal1234}"
+PASS="${HOTSPOT_PASS:-}"          # from ~/eagle/hotspot.env (EnvironmentFile), never from the repo
 WAIT="${HOTSPOT_WAIT:-30}"
 CON=thermal-hotspot
 
 if ! nmcli -t -f NAME connection show | grep -qx "$CON"; then
+  if [ "${#PASS}" -lt 8 ]; then
+    echo "$(date '+%F %T') no hotspot profile and no HOTSPOT_PASS (8+ chars) in ~/eagle/hotspot.env; skipping"
+    exit 0
+  fi
   nmcli connection add type wifi ifname wlan0 con-name "$CON" autoconnect no ssid "$SSID" \
     802-11-wireless.mode ap 802-11-wireless.band bg ipv4.method shared \
     wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$PASS"
