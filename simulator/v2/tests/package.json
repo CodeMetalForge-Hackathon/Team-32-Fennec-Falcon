@@ -1,0 +1,12 @@
+{
+  "name": "eagle-simulator-tests",
+  "private": true,
+  "description": "Headless browser checks for simulator/v2/index.html: presenter numbers, remote GPU streaming.",
+  "scripts": {
+    "test": "node test_present.js && node test_remote.js lan && node test_remote.js room"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0",
+    "three": "0.128.0"
+  }
+}
