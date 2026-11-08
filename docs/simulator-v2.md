@@ -15,7 +15,10 @@ measured.
 | `index.html` | The app in one file: 3D scene, panels and model. Built from the two files below; do not edit it by hand |
 | `index.src.html` | Page source (scene, interface, mission player) with a `/*@@MODEL@@*/` marker where the model goes |
 | `model.js` | Physics and decision model. Plain JavaScript, no dependencies; runs in Node (`require`) or the browser (`window.EagleModel`) |
-| `build.js` | `node build.js` inlines `model.js` into `index.src.html` and writes `index.html` |
+| `build.js` | `node build.js` inlines `model.js` and `eagle_drone.js` into `index.src.html` and writes `index.html`; also builds `eagle_viewer.html` |
+| `eagle_drone.js` | The Eagle as a 3D model: a flapping-wing drone at Mountain Hawk-Eagle size with three skins (hawk-eagle, serpent eagle, bare airframe) and its flight, landing, wing-fold and take-off animation. Reference: [eagle-drone.md](eagle-drone.md) |
+| `eagle_viewer.src.html` | Standalone viewer for the model, built into `eagle_viewer.html` |
+| `assets/` | The model as `.glb` files with animation clips, for Unreal or Blender; rebuilt by `tools/export_glb.js` |
 | `model_table.js` | `node model_table.js` prints every preset and what-if case in the results below |
 | `serve.mjs` | `node serve.mjs` serves the page on the local network and passes the connection setup between a GPU computer and a laptop for [remote GPU](#remote-gpu). Node 18 or newer, no packages |
 | `tests/` | Headless browser checks: `test_present.js` (presenter, live numbers against the model) and `test_remote.js` (remote GPU). Run `npm install` in that folder first |
@@ -219,7 +222,7 @@ moment, so changing a setting changes the story.
 |---|---|---|---|
 | 1 | Find a downed aviator who carries nothing | Overview of the valley | |
 | 2 | Anything that transmits gets found | Perch and patrol, with a pulsing red ring: how far a burst beside him carries (246 m) | |
-| 3 | Perch, motor off, listen | Close on the Eagle | |
+| 3 | Perch, motor off, listen | The Eagle flies in, flares onto the perch and folds its wings | |
 | 4 | Body heat through a gap in the leaves | The Eagle and its camera cone | Eagle cam, thermal |
 | 5 | 6 microphones hear his tap code | Close on him, with sound rings | |
 | 6 | It only talks when it is sure | Orbit | P(operator) over time |

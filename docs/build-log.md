@@ -4,6 +4,57 @@ Every build gets an entry here: what we built, why, how it works, what we decide
 
 ---
 
+## 2026-11-08 · The Eagle as a 3D model: hawk-eagle size, folding wings, flight and perching
+
+**Files:** [`simulator/v2/eagle_drone.js`](../simulator/v2/eagle_drone.js), [`simulator/v2/index.src.html`](../simulator/v2/index.src.html) (built into `index.html`), [`simulator/v2/eagle_viewer.src.html`](../simulator/v2/eagle_viewer.src.html) (built into `eagle_viewer.html`), [`simulator/v2/assets/`](../simulator/v2/assets/), [`simulator/v2/tools/export_glb.js`](../simulator/v2/tools/export_glb.js) · **Docs:** [eagle-drone.md](eagle-drone.md)
+
+![The model: bare airframe, Mountain Hawk-Eagle disguise in flight, perched with wings folded](images/eagle-drone-model.jpg)
+
+### What
+A 3D model of the Eagle: a flapping-wing drone built to a Mountain Hawk-Eagle's size, with the bare airframe from the team's [reference render](images/eagle-drone-reference.jpg) underneath and a full bird disguise on top (Mountain Hawk-Eagle by default, Crested Serpent Eagle as an option). It flaps, glides, soars, lands on a perch with a flare, folds its wings along its back like a perched eagle, scans with its head and takes off again. It replaces the primitive birds in simulator v2, runs in a standalone viewer, and exports as glTF with eight animation clips for Unreal or Blender.
+
+### Why
+The demo needs to show what the Eagle is: an eagle-sized drone that perches in the canopy and passes as a bird. The old perched and flying models were separate shapes with no wings that moved. The disguise only works if size, wingbeat, perching posture and wing fold match the real bird, so those are set from published measurements.
+
+### How it works
+- One skeleton (95 bones) with shoulder, elbow and wrist joints; every flight feather is a bone that rotates with the fold, so the wing spreads for flight and stacks for perching. Fold: shoulder sweeps 86° and rolls 54°, elbow closes to 168°, wrist to 166°.
+- Three skins on that skeleton, painted at load into one texture: hawk-eagle, serpent eagle, bare airframe (carbon lamellae on the same joints). X-ray shows the airframe through the disguise.
+- Procedural animation from a small set of pose numbers: stroke at 3.0 Hz with upstroke wrist flex and primary slots; take-off (crouch, spring, unfold, hard strokes); landing (swoop below the perch and up, flare, feet forward, two balancing beats, fold); head scanning on the perch.
+- Simulator v2: one bird perches and flies; **Run mission**, presenter card 3 and the cinematic open with the arrival and landing; take-offs climb forward off the perch; the relay banks and flaps in its orbit; a disguise selector; Eagle cam at the bird's eye; the thermal and ID passes pose the skinned bird.
+- `tools/export_glb.js` runs the same code in headless Chromium and writes one `.glb` per skin.
+
+Full detail: [eagle-drone.md](eagle-drone.md).
+
+### Key results
+- Measured on the model: span 1.60 m, length 0.75 m, folded wing 0.51 m, tail 0.34 m, tarsus 0.115 m, all inside the published Mountain Hawk-Eagle ranges (1.34–1.75, 0.69–0.84, 0.49–0.52, 0.34–0.36, 0.113–0.118 m).
+- Wingbeat 3.0 Hz, modelled from golden eagles' measured 2.2–2.8 Hz scaled to a lighter bird. Eyes sit 0.40 m above the branch when perched, body centre 0.258 m.
+- One skinned mesh per bird, 10.7k–12.6k triangles, one draw call per material (two or three); animation update 0.07 ms a frame per bird (measured, headless CPU).
+- `.glb` files 2.4–2.8 MB each; Khronos glTF validator: 0 errors. Reloaded with three.js's GLTFLoader, all eight clips play with correct poses.
+
+### Decisions and trade-offs
+| Decision | Why | Cost |
+|---|---|---|
+| Mountain Hawk-Eagle size and plumage by default, serpent eagle kept as a skin | The size the team asked for; the old livery stays one click away | Hawk-eagles are less common than serpent eagles, so the better cover may be the serpent eagle; that is a mission call |
+| Every feather a bone, rotating with the fold | A real fan fold that reads as a bird from any angle, and the same mechanism on the airframe | 95 bones per bird |
+| Procedural animation, not keyframes | Flights follow any path the simulator gives and react to turns and climbs | Looks only: no lift or stall model |
+| Textures painted in code at load | No image files to ship; skins stay editable as code | 30–120 ms per skin at load (measured, headless) |
+| One bird for perched and flying | The arrival, perch and take-off are continuous | Simulator code that hid one model and showed the other had to change |
+| Bird animated on wall-clock frame time | Flights keep pace with the mission on slow GPUs | Choppy flapping below 4 frames a second |
+
+### Verification
+- Render sheets of every pose and skin from a headless harness (perched, spread, mid-fold, upstroke, downstroke, flare, landing filmstrip, take-off); fixed what they showed (a flat tail seen edge-on, primaries drooping below the tail, inside-out eyes and tubes, legs tucked through the back).
+- Simulator v2 in headless Chromium: loads and runs with no console errors; the mission goes from arrival to perched and folded, to take-off and fly-away; `tests/test_present.js` passes (10 steps, 12 numbers checked against the model).
+- Viewer at desktop and phone width, light and dark: no console errors, no horizontal scroll; measured span 1.60 m.
+- `.glb` files: Khronos glTF validator 0 errors; round-trip load and playback of every clip.
+
+### Open issues / next
+- Watch the arrival and landing on the team's laptops at full frame rate (headless ran at about 1 frame a second).
+- Import the `.glb` into Unreal 5.8 and swap it into the scene importer and the live thermal demo.
+- The airframe's lamella wing, linkage and legs are placeholders for the real mechanism.
+- Disguise choice: hawk-eagle (the size we built to) or serpent eagle (the more common bird) for the mission.
+
+---
+
 ## 2026-11-07 · Eagle Jungle Simulator v2: presenter, adaptive quality, remote GPU
 
 **Files:** [`simulator/v2/index.src.html`](../simulator/v2/index.src.html) (built into `index.html`), [`simulator/v2/serve.mjs`](../simulator/v2/serve.mjs), [`simulator/v2/tests/`](../simulator/v2/tests/) · **Docs:** [simulator-v2.md](simulator-v2.md#presenter-mode), [demo-runbook.md](demo-runbook.md)
