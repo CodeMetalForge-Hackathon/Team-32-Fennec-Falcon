@@ -77,18 +77,24 @@ def load_person_detector(path=PERSON_MODEL):
     return persons
 
 
-def consistent_faces(face: list, names: list, *, min_cos: float = 0.30, log=print):
+def consistent_faces(face: list, names: list, *, min_cos: float = 0.30, log=print, reference=None):
     """Keep only faces that look like the same person as the rest. -> (kept faces, [(name, cos)] dropped).
 
     A photo whose largest face is someone else (a group shot, a person in the background) would
     otherwise teach the matcher a second identity. With 3+ faces: centre = mean of the normalised
     embeddings, refined once on the faces that agree with it; a face whose cosine to that centre is
     below ``min_cos`` is dropped. ArcFace (buffalo_l) same-person pairs usually score well above 0.4 and
-    different people below 0.2, so 0.30 leaves margin on both sides. Fewer than 3 faces: kept as is."""
-    if len(face) < 3 or min_cos is None:
+    different people below 0.2, so 0.30 leaves margin on both sides. Fewer than 3 faces: kept as is.
+
+    ``reference``: faces already in the profile (``--add-to``). They take part in the check (the centre is
+    computed over old + new) but are never dropped; an old face that disagrees is only warned about."""
+    ref = np.zeros((0, 512), np.float32) if reference is None or not len(reference) else \
+        np.asarray(reference, np.float32).reshape(len(reference), -1)
+    if len(face) + len(ref) < 3 or min_cos is None or not face:
         return face, []
-    e = np.stack(face).astype(np.float32)
-    e /= np.linalg.norm(e, axis=1, keepdims=True) + 1e-9
+    new = np.stack(face).astype(np.float32)
+    e = np.concatenate([ref, new]) if len(ref) else new
+    e = e / (np.linalg.norm(e, axis=1, keepdims=True) + 1e-9)
     centre = e.mean(0)
     for _ in range(2):
         centre /= np.linalg.norm(centre) + 1e-9
@@ -96,7 +102,12 @@ def consistent_faces(face: list, names: list, *, min_cos: float = 0.30, log=prin
         if agree.sum() >= max(2, len(e) // 2):
             centre = e[agree].mean(0)
     centre /= np.linalg.norm(centre) + 1e-9
-    cos = e @ centre
+    cos_all = e @ centre
+    cos_ref, cos = cos_all[:len(ref)], cos_all[len(ref):]
+    for i, c in enumerate(cos_ref):
+        if c < min_cos:
+            log(f"WARN   existing profile face #{i}: cos {c:.2f} to the combined set < {min_cos:.2f} (kept: --add-to "
+                "never removes what is already in the profile)")
     kept, dropped = [], []
     for f, n, c in zip(face, names, cos):
         if c >= min_cos:
@@ -104,8 +115,15 @@ def consistent_faces(face: list, names: list, *, min_cos: float = 0.30, log=prin
         else:
             dropped.append((n, float(c)))
             log(f"OUTLIER {n}: face cos {c:.2f} to the other photos < {min_cos:.2f} - not the same person? dropped")
-    log(f"CHECK  {len(kept)}/{len(face)} faces agree with each other (min cos {min_cos:.2f}, "
-        f"lowest kept {min((c for c in cos if c >= min_cos), default=float('nan')):.2f})")
+    lowest = min((c for c in cos if c >= min_cos), default=float("nan"))
+    if len(ref):
+        n_ref_ok = int((cos_ref >= min_cos).sum())
+        log(f"CHECK  {len(kept)}/{len(face)} new faces agree with the profile's {len(ref)} existing face(s) "
+            f"(combined {n_ref_ok + len(kept)}/{len(ref) + len(face)} agree; min cos {min_cos:.2f}, lowest new kept "
+            f"{lowest:.2f}, existing faces cos {float(cos_ref.min()):.2f}..{float(cos_ref.max()):.2f})")
+    else:
+        log(f"CHECK  {len(kept)}/{len(face)} faces agree with each other (min cos {min_cos:.2f}, "
+            f"lowest kept {lowest:.2f})")
     return kept, dropped
 
 
@@ -127,7 +145,7 @@ def person_box_for_face(boxes, face_box, min_inside: float = 0.8):
 
 
 def enroll(images, description: str, embedders, detect_persons, *, min_face_px: float = 40.0,
-           consistency: float = 0.30, log=print) -> TargetProfile:
+           consistency: float = 0.30, log=print, reference_faces=None) -> TargetProfile:
     """images: iterable of (name, RGB array or None). Returns the profile (not saved).
 
     Appearance (CLIP image / OSNet) comes only from the person box that contains the photo's kept face, so
@@ -183,7 +201,7 @@ def enroll(images, description: str, embedders, detect_persons, *, min_face_px: 
         elif embedders.clip is not None:
             clip_img.append(embedders.clip.image_embedding(rgb))
             log(f"ITEM   {name}: no person found, whole photo embedded with CLIP only (clothing/item photo)")
-    face, dropped = consistent_faces(face, face_names, min_cos=consistency, log=log)
+    face, dropped = consistent_faces(face, face_names, min_cos=consistency, log=log, reference=reference_faces)
     skipped += [(n, f"face does not match the other photos (cos {c:.2f})") for n, c in dropped]
     outliers = {n for n, _ in dropped}
     for n, e in appearance:               # a crop located by a face that turned out not to be the target: drop it
@@ -245,6 +263,28 @@ def read_images(folder: Path):
             print(f"SKIP   {p.name}: not an image type this tool reads ({', '.join(sorted(IMAGE_EXT))})")
 
 
+def add_photo_profile(base: TargetProfile, new: TargetProfile, source: str = "") -> TargetProfile:
+    """``new`` (photos enrolled with ``reference_faces=base.face``) appended to ``base``: faces, CLIP image and
+    OSNet embeddings concatenated; the base description and its text embeddings are kept, a new
+    description's are added. Nothing in ``base`` is removed."""
+    def cat(a, b):
+        return np.concatenate([a, b]).astype(np.float32) if len(a) and len(b) else (a if len(a) else b)
+    desc = base.description
+    if new.description and new.description.strip() and new.description.strip() != (base.description or "").strip():
+        desc = f"{base.description} / {new.description}" if base.description else new.description
+    meta = dict(base.meta)
+    prev = dict(meta.get("face_sources") or {})
+    meta["face_sources"] = {"photos": int(prev.get("photos", len(base.face) - int(prev.get("live", 0)))) + len(new.face),
+                            "live": int(prev.get("live", 0))}
+    meta["photo_adds"] = list(meta.get("photo_adds") or []) + [{
+        "source": source, "added_unix": int(time.time()), "face": int(len(new.face)),
+        "clip_image": int(len(new.clip_image)), "osnet": int(len(new.osnet)),
+        "skipped": new.meta.get("skipped", []), "prompts": new.meta.get("prompts", [])}]
+    meta["skipped"] = list(meta.get("skipped") or []) + list(new.meta.get("skipped", []))
+    return TargetProfile(cat(base.face, new.face), cat(base.clip_image, new.clip_image),
+                         cat(base.clip_text, new.clip_text), cat(base.osnet, new.osnet), desc, meta)
+
+
 def add_live_faces(profile, kept: list, summary: list) -> TargetProfile:
     """Append live-scan ArcFace embeddings to ``profile`` (or a new one): same file format, same matcher."""
     prof = profile if profile is not None else TargetProfile(meta={"created_unix": int(time.time())})
@@ -282,8 +322,8 @@ def main(argv=None) -> int:
     ap.add_argument("--description-file", default=None, help="read the description from a text file")
     ap.add_argument("--out", default="target_profile.npz")
     ap.add_argument("--add-to", default=None, metavar="PROFILE",
-                    help="with --live and no --photos: append the live faces to this existing profile "
-                         "(keeps its photo faces, CLIP and description) instead of starting a new one")
+                    help="append to this existing profile instead of starting a new one: --photos (checked against "
+                         "the profile's faces, nothing existing is removed) and/or --live")
     ap.add_argument("--config", default=None, help="eagle config (identity: models_dir, face.min_width_px)")
     ap.add_argument("--person-model", default=str(PERSON_MODEL))
     ap.add_argument("--same-person-cos", type=float, default=0.30,
@@ -309,7 +349,16 @@ def main(argv=None) -> int:
 
 
 def enroll_main(a, cfg, c, tuning, held: dict) -> int:
-    prof, emb = None, None
+    prof, emb, base = None, None, None
+    if a.add_to:
+        base_path = Path(a.add_to).expanduser()
+        if not base_path.is_file():
+            print(f"no profile at {base_path}")
+            return 2
+        base = TargetProfile.load(base_path)
+        n0 = base.counts()
+        print(f"adding to {base_path}: {n0['face']} face, {n0['clip_image']} CLIP image, {n0['clip_text']} CLIP text, "
+              f"{n0['osnet']} OSNet")
     if a.photos:
         desc = Path(a.description_file).read_text(encoding="utf-8") if a.description_file else a.description
         emb = held["emb"] = make_runtime_embedders(cfg, text=True)
@@ -322,18 +371,14 @@ def enroll_main(a, cfg, c, tuning, held: dict) -> int:
             return 2
         prof = enroll(read_images(folder), desc, emb, load_person_detector(a.person_model),
                       min_face_px=float(c["face"]["min_width_px"]),
-                      consistency=None if a.same_person_cos <= 0 else a.same_person_cos)
-    if a.add_to:
-        if a.photos:
-            print("--add-to is for a live scan only; with --photos a new profile is built")
-            return 2
-        base = Path(a.add_to).expanduser()
-        if not base.is_file():
-            print(f"no profile at {base}")
-            return 2
-        prof = TargetProfile.load(base)
-        n0 = prof.counts()
-        print(f"adding to {base}: {n0['face']} face, {n0['clip_image']} CLIP image, {n0['clip_text']} CLIP text")
+                      consistency=None if a.same_person_cos <= 0 else a.same_person_cos,
+                      reference_faces=base.face if base is not None else None)
+        if base is not None:
+            nn = prof.counts()
+            print(f"ADDED  {nn['face']} face, {nn['clip_image']} CLIP image, {nn['clip_text']} CLIP text from {folder}")
+            prof = add_photo_profile(base, prof, source=str(folder))
+    elif base is not None:
+        prof = base
     if a.live:
         face = emb.face if emb is not None and emb.face is not None else face_embedder(cfg, c)
         if face is None:
