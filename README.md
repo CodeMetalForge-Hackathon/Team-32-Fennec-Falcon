@@ -18,7 +18,7 @@ The reference scenario is Taiwan mountain forest; the same sensing questions app
 
 ## Run the browser simulator
 
-**New: [Forest navigation & perching lab](simulator/forest.html).** Compute a route between synthetic 3D obstacles, step through branch attachment or clearing landing, and try grip failure, blocked canopy and sensor loss. Also available below the GPS-denied panel. [Implementation and current limits](docs/forest-navigation.md).
+**[Taiwan forest navigation lab](simulator/forest.html).** Explore a Fushan-informed 3D reconstruction with sloping terrain, broadleaf crowns, understory and fallen wood. Compare valley/ridge structure, orbit or use the drone viewpoint, inspect collision envelopes and step through landing/perching failures. Site evidence is distinguished from procedural geometry. [Site analysis](docs/taiwan-forest-analysis.md) · [Implementation and limits](docs/forest-navigation.md).
 
 Open [simulator/index.html](simulator/index.html) in Chrome, Edge, Safari or Firefox. First load needs internet for external assets. Headless model:
 

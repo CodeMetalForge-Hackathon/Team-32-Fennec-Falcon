@@ -1,5 +1,13 @@
 # Build log
 
+## 2026-11-07 · Fushan evidence and ecological reconstruction
+
+Replaced the default generic block display with a Fushan-informed perspective forest. Added primary-source context from TFRI and published canopy, understory-light and typhoon studies. The site analysis explicitly separates historical measurements, engineering inferences and invented local geometry; actual tree census and topographic stake data have not been obtained. A coarse DEM spot check was not adopted because registration to the surveyed plot was unresolved.
+
+Added deterministic valley and shorter-ridge scenes with sloping ground, broadleaf crowns, branches, understory ferns and fallen wood; the original blocks remain selectable. The planner now handles per-world bounds, terrain clearance and reachable grid attachment. A local Three.js renderer adds shaded world geometry, drone POV, canopy cutaway, collision-envelope inspection and visual mist. No measured sensor degradation or wet-grip physics is implied. Standalone rendering uses a pinned local Three.js r128/MIT bundle; parent simulator retains its existing version.
+
+Verification is recorded in test-forest.cjs and check-forest.cjs: baseline plus both Fushan presets, terrain/obstacle clearance, support-gated motor shutdown, failure/reselection, perspective rendering, camera controls, scene switching, layers and responsive widths. Updated screenshots show the forest, cutaway and drone viewpoint. This is an ecological reconstruction with synthetic pose/contact and a complete map, not a surveyed digital twin or hardware-validated navigation system.
+
 ## 2026-11-07 · Orbitable forest camera
 
 Replaced the forest lab's fixed oblique projection with an interactive orthographic 3D camera. Mouse/touch orbit, wheel/pinch zoom, right/shift-drag and two-finger pan, top/side/overview presets, reset and drone-follow controls allow inspection of the same mission from different viewpoints. All obstacle faces use camera-depth sorting; the drone's arms and rotor rings now project from world geometry. Transparent obstacles and always-visible route overlays retain explanatory visibility. Camera input is independent of mission state and works while paused or playing.

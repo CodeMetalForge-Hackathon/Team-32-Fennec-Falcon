@@ -1,12 +1,22 @@
 # Forest navigation and perching lab
 
+## Current default: Fushan-informed forest
+
+The lab now opens a perspective WebGL scene informed by [Fushan site evidence](taiwan-forest-analysis.md), with modeled sloping ground, branching trees, irregular broadleaf crowns, understory and fallen wood. Choose taller valley forest, shorter exposed-ridge forest or the original block baseline. Site measurements and reconstruction assumptions are separated in the interface. No tree census coordinates or surveyed ground model have been loaded.
+
+The Fushan patch is 48 × 40 × 38 m, with a 2 m planning grid, a 1.2 m/s illustrative transit speed and 0.7 m/s terminal motion. Terrain clearance is sampled at 0.25 m intervals. Endpoint attachment searches the nearest reachable local grid vertex rather than assuming rounded coordinates are clear. These are software model settings, not field-derived operating limits. The original block-world settings described below apply only to the comparison baseline.
+
+**Drone view** places the camera at the aircraft. **Canopy cutaway** hides crowns for inspection, **Collision envelopes** reveals the boxes actually used by the planner, and **Mist visualization** changes visual range without changing sensor validity or collision geometry. The route overlay is intentionally visible through vegetation. All are explanatory display controls.
+
+The renderer uses locally bundled Three.js r128 with its MIT license in `simulator/vendor/three-r128/`, matching the version already used by the main Jungle Simulator. The focused forest page needs no external assets. If WebGL initialization fails, the existing canvas projection remains as a labeled fallback. Idle scenes render only when changed; playback and interaction redraw the scene.
+
 Open [the forest lab](../simulator/forest.html) directly, or open the Jungle Simulator and choose **Forest navigation & perching → Open forest lab** below the GPS-denied navigation panel. Use **Play mission**, **Step 1 second**, scenario selection and 1×/4×/8× playback. Reset restarts the selected scenario. Closing the lab pauses playback.
 
 ### Move around the 3D scene
 
 Drag the forest view to orbit around it, scroll to zoom, and right-drag or shift-drag to pan. Touch controls support one-finger orbit and two-finger pinch/pan. **Overview**, **Top** and **Side** choose camera presets; **Reset view** restores the overview. **Follow drone** centers the moving aircraft while retaining orbit and zoom controls. These camera controls work during playback and while paused and do not modify the mission state. Keyboard users can focus the canvas, use arrow keys to orbit, +/− to zoom and Home to reset.
 
-The renderer uses a rotatable orthographic 3D camera with bounded elevation and zoom, not a fixed oblique projection. All six faces of each obstacle are sorted by camera depth. Obstacles are transparent and route/trail/drone overlays remain visible through them for explanation; visibility through a drawn obstacle does not imply collision clearance. Drone arms and rotor rings are world-space geometry. Axis markers rotate with the scene. Camera state remains separate from the planner and is retained across mission resets.
+The main renderer uses a perspective 3D camera with bounded elevation and zoom and depth-tested forest meshes. Route and trail overlays remain visible through vegetation for explanation; visibility through a drawn obstacle does not imply collision clearance. The fallback renderer retains the orbitable orthographic box view. Camera state remains separate from the planner and is retained across mission resets.
 
 For local HTTP access, run `python -m http.server 8770 --bind 127.0.0.1` from the repository root, then visit `http://127.0.0.1:8770/simulator/forest.html`.
 
@@ -18,7 +28,7 @@ The original navigation panel illustrates GPS and backup-source transitions on a
 
 This is executable planning and a contact state-machine demonstration. It does not run camera perception, EGO-Swarm, gripper physics or closed-loop forest flight. It does not move the perched bird in the main Three.js scene. The ArduPilot SITL viewer remains separate and receives none of these routes.
 
-## Geometry and planning contract
+## Original comparison baseline: geometry and planning contract
 
 All coordinates are local xyz metres with z upward; no global origin or geographic coordinates are inferred. The synthetic world is 22 × 16 × 12 m. Wood and foliage are axis-aligned solid boxes. Aircraft clearance uses a conservative axis-aligned cube with 0.45 m half-width, implemented by inflating every obstacle on all axes. These are invented presentation dimensions, not dimensions validated against the prototype.
 

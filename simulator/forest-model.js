@@ -3,7 +3,8 @@
   'use strict';
   const bounds=[22,16,12], radius=0.45;
   const box=(id,min,max,kind='wood')=>({id,min,max,kind});
-  function scene(scenario='branch'){
+  function scene(scenario='branch',profile='baseline'){
+    if(profile.startsWith('fushan'))return (typeof module!=='undefined'?require('./forest-site.js'):root.EagleForestSite).build(scenario,profile);
     const obstacles=[
       box('trunk-1',[6,0,0],[7,8,10]),box('trunk-2',[11,8,0],[12,16,9]),
       box('low limb',[7,7,4],[12,9,5]),box('overhead limb',[13,1,9],[17,9,10]),
@@ -22,11 +23,13 @@
     return {obstacles,candidates};
   }
   function free(p,world){
-    if(p.some((v,i)=>v<radius||v>bounds[i]-radius))return false;
+    if(p.some((v,i)=>v<radius||v>(world.bounds||bounds)[i]-radius))return false;
+    if(world.ground&&p[2]<world.ground(p[0],p[1])+radius)return false;
     return !world.obstacles.some(o=>p.every((v,i)=>v>=o.min[i]-radius&&v<=o.max[i]+radius));
   }
   function segment(a,b,world){
     if(!free(a,world)||!free(b,world))return false;
+    if(world.ground){const n=Math.ceil(Math.hypot(...a.map((v,i)=>v-b[i]))/.25);for(let j=1;j<n;j++){const p=a.map((v,i)=>v+(b[i]-v)*j/n);if(p[2]<world.ground(p[0],p[1])+radius)return false;}}
     // Exact slab intersection avoids missing a thin corner between samples.
     return !world.obstacles.some(o=>{
       let enter=0,exit=1;
@@ -39,7 +42,14 @@
   }
   // Six-connected voxel A*: collision checks use inflated synthetic boxes.
   function plan(start,goal,world){
-    start=start.map(Math.round);goal=goal.map(Math.round);
+    const realStart=start.slice(),realGoal=goal.slice(),cell=world.cell||1;
+    const attach=p=>{
+      const rounded=p.map(v=>Math.round(v/cell)*cell),candidates=[];
+      for(const x of [-cell,0,cell])for(const y of [-cell,0,cell])for(const z of [-cell,0,cell])candidates.push([rounded[0]+x,rounded[1]+y,rounded[2]+z]);
+      candidates.sort((a,b)=>Math.hypot(...a.map((v,i)=>v-p[i]))-Math.hypot(...b.map((v,i)=>v-p[i])));
+      return candidates.find(q=>segment(p,q,world));
+    };
+    start=attach(realStart);goal=attach(realGoal);if(!start||!goal)return null;
     if(!free(start,world)||!free(goal,world))return null;
     const key=p=>p.join(','), h=p=>p.reduce((s,v,i)=>s+Math.abs(v-goal[i]),0);
     const open=[{p:start,g:0,f:h(start)}],cost=new Map([[key(start),0]]),parent=new Map();
@@ -49,10 +59,11 @@
       if(n.g!==cost.get(nk))continue;
       if(nk===key(goal)){
         const path=[goal];let at=nk;while(parent.has(at)){at=parent.get(at);path.push(at.split(',').map(Number));}path.reverse();
+        path.unshift(realStart);path.push(realGoal);
         const smooth=[path[0]];let i=0;while(i<path.length-1){let j=path.length-1;while(j>i+1&&!segment(path[i],path[j],world))j--;smooth.push(path[j]);i=j;}return smooth;
       }
       for(let axis=0;axis<3;axis++)for(const d of [-1,1]){
-        const p=n.p.slice();p[axis]+=d;const pk=key(p),g=n.g+1;
+        const p=n.p.slice();p[axis]+=d*cell;const pk=key(p),g=n.g+cell;
         if(g>=(cost.get(pk)??Infinity)||!segment(n.p,p,world))continue;
         cost.set(pk,g);parent.set(pk,nk);open.push({p,g,f:g+h(p)});
       }
@@ -68,8 +79,9 @@
     }
     s.phase='ABORTED';s.done=true;event(s,'No reachable support. Mission withheld; no blind climb or landing.');
   }
-  function create(scenario='branch'){
-    const s={scenario,world:scene(scenario),p:[2,2,3],t:0,age:0,phase:'INSPECT',path:[],next:1,target:null,failed:[],events:[],trail:[[2,2,3]],done:false,attached:false,motors:true};
+  function create(scenario='branch',profile='baseline'){
+    const world=scene(scenario,profile),start=world.start||[2,2,3];
+    const s={scenario,world,p:start.slice(),t:0,age:0,phase:'INSPECT',path:[],next:1,target:null,failed:[],events:[],trail:[start.slice()],done:false,attached:false,motors:true};
     event(s,'Synthetic metric pose and complete obstacle map supplied.');select(s);return s;
   }
   function move(s,target,dt,speed){
@@ -85,7 +97,7 @@
     if(s.scenario==='sensor-loss'&&s.t>=5){s.phase='ABORTED';s.done=true;event(s,'Pose/depth feed lost. Animation stopped; physical failsafe is not modeled.');return s;}
     const change=phase=>{s.phase=phase;s.age=0;event(s,phase.replaceAll('_',' ').toLowerCase());};
     if(s.phase==='TRANSIT'){
-      if(move(s,s.path[s.next],dt,2)){s.next++;if(s.next===s.path.length)change('INSPECT');}
+      if(move(s,s.path[s.next],dt,s.world.speed||2)){s.next++;if(s.next===s.path.length)change('INSPECT');}
     }else if(s.phase==='INSPECT'&&s.age>=1.5)change('APPROACH');
     else if(s.phase==='APPROACH'&&move(s,s.target.p,dt,0.7))change('CONTACT');
     else if(s.phase==='CONTACT'&&s.age>=1)change('VERIFY_SUPPORT');
