@@ -203,3 +203,23 @@ def test_status_helpers():
     s = P.status_from_names(["injured", "WATER"])
     assert s == P.ST_INJURED | P.ST_WATER and P.status_names(s) == ["INJURED", "WATER"]
     assert P.class_name(P.CLS_WHISTLE | P.CLS_AUTH) == "WHISTLE+AUTH"
+
+
+def test_identity_level_in_fix_class_byte():
+    """Match level rides in class bits 5-6: layout stays 48 bytes, other bits are untouched."""
+    k = bytes(range(32))
+    for base in (P.CLS_UNKNOWN, P.CLS_WHISTLE | P.CLS_AUTH, P.CLS_TAP | P.CLS_SIM, P.CLS_TAG_RSSI):
+        for lvl in range(4):
+            cls = P.with_identity(base, lvl)
+            assert P.identity_level(cls) == lvl and cls & ~P.CLS_ID_MASK == base
+            sess = P.EagleSession(3, k, k)
+            frame = sess.encrypt_fix(P.FixBody(42.0, -71.0, 10, 4, cls, 0.7, 1_800_000_000))
+            assert len(frame) == P.FIX_LEN == 48
+            rep = P.NestSession(k, max_age_s=0).decrypt_fix(frame)
+            assert P.identity_level(rep.body.cls) == lvl and rep.body.cls & 0x0F == base & 0x0F
+            assert rep.authenticated is False                    # identity never implies a tag
+    assert P.with_identity(P.with_identity(P.CLS_TAP, 3), 1) == P.with_identity(P.CLS_TAP, 1)
+    assert P.class_name(P.with_identity(P.CLS_WHISTLE | P.CLS_AUTH, P.ID_FACE)) == "WHISTLE+AUTH+ID-FACE"
+    assert P.class_name(P.CLS_TAP) == "TAP"
+    with pytest.raises(ValueError):
+        P.with_identity(0, 4)

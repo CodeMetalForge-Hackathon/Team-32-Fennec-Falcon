@@ -173,11 +173,12 @@ class Locator:
             out.append(self.locate(self.doa(audio, m, events), m))
         return events, out
 
-    def fix_body(self, det: Detection, t_unix: int, *, sim: bool = False) -> P.FixBody:
-        """FIX payload for an acoustic detection (tag fields filled in by the poll step)."""
+    def fix_body(self, det: Detection, t_unix: int, *, sim: bool = False, identity_level: int = 0) -> P.FixBody:
+        """FIX payload for an acoustic detection (tag fields filled in by the poll step).
+        ``identity_level`` (P.ID_*) marks a match with the missing person's profile."""
+        cls = P.with_identity(det.cls | (P.CLS_SIM if sim else 0), identity_level)
         return P.FixBody(lat=det.lat, lon=det.lon, alt_m=det.hae or 0.0, ce_m=det.ce_m or 0.0,
-                         cls=det.cls | (P.CLS_SIM if sim else 0), confidence=det.doa.confidence,
-                         t_unix=t_unix, status=det.status)
+                         cls=cls, confidence=det.doa.confidence, t_unix=t_unix, status=det.status)
 
 
 def describe(det: Detection) -> str:

@@ -35,6 +35,11 @@ FIX  Eagle -> Nest, 48 bytes, AES-256-GCM with K_fix (shared by Eagles and the N
           tag_id uint8 (0 = none) | chal_ctr16 uint16 (low 16 bits of the answered challenge)
   32  16  GCM tag
   GCM nonce (12 bytes) = salt || counter || eagle_id || 0x03 || 0x00 0x00
+  class byte: bits 0-3 how it was found (CLS_UNKNOWN, CLS_WHISTLE, CLS_TAP, CLS_TAG_RSSI),
+  bit 4 CLS_AUTH (authenticated tag REPLY), bits 5-6 missing-person identity match level
+  (ID_NONE 0, ID_APPEARANCE 1 = appearance candidate, ID_STRONG 2 = strong appearance,
+  ID_FACE 3 = face verified; see eagle/identity.py), bit 7 CLS_SIM (simulated traffic).
+  The identity level only adds information: a FIX is sent the same way at every level.
 
 BEACON  Nest -> Eagles, 15 bytes (optional; lets Eagles measure path loss to the Nest)
   0   1   type = 0x04
@@ -151,7 +156,11 @@ CLS_WHISTLE = 0x01
 CLS_TAP = 0x02
 CLS_TAG_RSSI = 0x03   # tag answered a blind poll; position = perch, ce = RSSI range
 CLS_AUTH = 0x10       # an authenticated tag REPLY confirmed the person
+CLS_ID_SHIFT = 5      # bits 5-6: identity match level vs the missing person's profile
+CLS_ID_MASK = 0x60
 CLS_SIM = 0x80        # simulated / test traffic
+ID_NONE, ID_APPEARANCE, ID_STRONG, ID_FACE = range(4)
+ID_LEVEL_NAMES = {ID_NONE: "NONE", ID_APPEARANCE: "APPEARANCE", ID_STRONG: "STRONG", ID_FACE: "FACE"}
 
 
 class ProtocolError(Exception):
@@ -182,7 +191,22 @@ def class_name(cls: int) -> str:
     base = {CLS_UNKNOWN: "UNKNOWN", CLS_WHISTLE: "WHISTLE", CLS_TAP: "TAP", CLS_TAG_RSSI: "TAG-RSSI"}.get(
         cls & 0x0F, f"0x{cls & 0x0F:x}")
     flags = [n for b, n in ((CLS_AUTH, "AUTH"), (CLS_SIM, "SIM")) if cls & b]
+    lvl = identity_level(cls)
+    if lvl:
+        flags.append(f"ID-{ID_LEVEL_NAMES[lvl]}")
     return "+".join([base] + flags)
+
+
+def identity_level(cls: int) -> int:
+    """Identity match level (ID_*) carried in bits 5-6 of a FIX class byte."""
+    return (int(cls) & CLS_ID_MASK) >> CLS_ID_SHIFT
+
+
+def with_identity(cls: int, level: int) -> int:
+    """``cls`` with its identity bits set to ``level`` (0..3); every other bit is kept."""
+    if not 0 <= int(level) <= 3:
+        raise ValueError(f"identity level must be 0..3, got {level}")
+    return (int(cls) & ~CLS_ID_MASK & 0xFF) | (int(level) << CLS_ID_SHIFT)
 
 
 # ---- crypto helpers ---------------------------------------------------------------------

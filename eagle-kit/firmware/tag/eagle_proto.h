@@ -48,6 +48,21 @@
 #define COVERT_LABEL     "EGCV"
 #define COVERT_LABEL_LEN 4
 
+// ---- FIX class byte (inside the encrypted FIX body; the radios never parse it) --------------
+// bits 0-3 how found | bit 4 AUTH | bits 5-6 identity match level | bit 7 SIM
+#define CLS_UNKNOWN   0x00
+#define CLS_WHISTLE   0x01
+#define CLS_TAP       0x02
+#define CLS_TAG_RSSI  0x03
+#define CLS_AUTH      0x10
+#define CLS_ID_SHIFT  5
+#define CLS_ID_MASK   0x60
+#define CLS_SIM       0x80
+#define ID_NONE       0      // no match with the missing person's profile
+#define ID_APPEARANCE 1      // appearance candidate (clothing / body)
+#define ID_STRONG     2      // strong appearance match
+#define ID_FACE       3      // face verified
+
 // ---- status bits --------------------------------------------------------------------------
 #define ST_INJURED 0x01
 #define ST_MOBILE  0x02

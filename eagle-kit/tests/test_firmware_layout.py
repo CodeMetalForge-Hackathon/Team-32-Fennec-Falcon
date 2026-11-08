@@ -127,3 +127,14 @@ def test_keygen_outputs_are_consistent(tmp_path, root):
     assert "#define TAG_ID 12" in h
     first = re.search(r"K_TAG\[32\] = \{\s*(0x[0-9a-f]{2})", h).group(1)
     assert first[2:] == nest["tag_hmac"][:2]
+
+
+def test_fix_class_byte_constants(defs):
+    """Class byte bits (incl. the identity match level) agree between the headers and Python."""
+    for name in ("CLS_UNKNOWN", "CLS_WHISTLE", "CLS_TAP", "CLS_TAG_RSSI", "CLS_AUTH", "CLS_ID_SHIFT", "CLS_ID_MASK",
+                 "CLS_SIM", "ID_NONE", "ID_APPEARANCE", "ID_STRONG", "ID_FACE"):
+        assert defs[name] == getattr(P, name), name
+    assert defs["CLS_ID_MASK"] == 3 << defs["CLS_ID_SHIFT"]
+    used = defs["CLS_AUTH"] | defs["CLS_SIM"] | 0x0F
+    assert used & defs["CLS_ID_MASK"] == 0                     # identity bits overlap nothing else
+    assert defs["FIX_LEN"] == 48 == P.FIX_LEN and P.FIX_BODY_LEN == 22
