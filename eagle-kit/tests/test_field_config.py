@@ -66,3 +66,20 @@ def test_recorder_writes_live_audio(tmp_path):
         rec.audio(cap)
     assert len(np.load(tmp_path / "live_audio.npz")["pcm"]) == 64000
     rec.close()
+
+
+def test_live_thermal_faster_than_recording(tmp_path):
+    rec = Recorder(tmp_path, thermal_hz=2.0, live_hz=8.0, log=lambda *a: None, clock=lambda: 1000.0)
+    recorded = live = 0
+    for k in range(16):                                   # 2 s at 8 Hz
+        t = 1000.0 + k * 0.125
+        if rec.live_due(t) or rec.thermal_due(t):
+            if rec.thermal_due(t):
+                rec.thermal(t, np.full((4, 4), 30.0))
+                recorded += 1
+            else:
+                rec.thermal_live(t, np.full((4, 4), 31.0))
+            live += 1
+    assert recorded == 4 and live == 16                   # recording stays at 2/s, live view at 8/s
+    assert np.load(tmp_path / "live_thermal.npy")[0, 0] == 3100
+    rec.close()

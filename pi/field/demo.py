@@ -47,7 +47,26 @@ LEVEL_NAMES = {1: "appearance", 2: "strong appearance", 3: "face verified"}
 
 
 # ------------------------------------------------------------------ pictures
+_TV_CACHE = {}
+
+
 def thermal_view(path: Path):
+    """Cached per frame (file mtime): the page asks about 8 times a second."""
+    try:
+        m = path.stat().st_mtime_ns
+    except OSError:
+        return None
+    hit = _TV_CACHE.get(str(path))
+    if hit and hit[0] == m:
+        png, lo, hi, _ = hit[1]
+        return png, lo, hi, dash.age_s(path)
+    r = _thermal_view(path)
+    if r:
+        _TV_CACHE[str(path)] = (m, r)
+    return r
+
+
+def _thermal_view(path: Path):
     """-> (png, min C, max C, age s) of the latest thermal frame, or None. Denoised (3x3 mean) and stretched
     to the temperatures actually in view (2nd..99.7th percentile, at least 6 C wide) so a person stands out
     instead of sensor speckle. Sent at native resolution; the browser scales it smoothly."""
@@ -388,7 +407,7 @@ async function poll(){let s;try{s=await (await fetch('/state')).json()}catch(e){
 }
 function loadImg(id,url,ms){const el=$(id);let busy=false;setInterval(()=>{if(busy)return;busy=true;const im=new Image();
   im.onload=()=>{el.src=im.src;busy=false};im.onerror=()=>{busy=false};im.src=(typeof url==='function'?url():url)+'?'+Date.now()},ms)}
-loadImg('cam',()=>'/cam/'+cam+'.jpg',120);loadImg('thermal','/thermal.png',400);loadImg('audio','/audio.png',250);
+loadImg('cam',()=>'/cam/'+cam+'.jpg',80);loadImg('thermal','/thermal.png',120);loadImg('audio','/audio.png',250);
 function toast(t){const e=$('toast');e.textContent=t;e.style.display='block';clearTimeout(e._t);e._t=setTimeout(()=>e.style.display='none',6000)}
 async function toggleRec(){const on=$('rec').classList.contains('on');$('rec').disabled=true;
   try{const j=await (await fetch(on?'/rec/stop':'/rec/start',{method:'POST'})).json();toast(j.message)}catch(e){toast('no answer from the Pi')}

@@ -64,9 +64,11 @@ def make_run_dir(root, now=None) -> Path:
 
 class Recorder:
     def __init__(self, root, *, thermal_hz: float = 2.0, chunk_s: float = 60.0, min_free_gb: float = 2.0,
-                 fsync_s: float = 5.0, log=print, clock=time.time):
+                 fsync_s: float = 5.0, log=print, clock=time.time, live_hz: float = 8.0):
         self.dir = make_run_dir(root, clock())
         self.thermal_dt = 1.0 / float(thermal_hz) if thermal_hz else None
+        self.live_dt = 1.0 / float(live_hz) if live_hz else None   # live view only; recording keeps thermal_hz
+        self._live_last = -1e9
         self.chunk_s, self.min_free = float(chunk_s), float(min_free_gb) * 1e9
         self.fsync_s, self.log, self.clock = float(fsync_s), log, clock
         self.active = True
@@ -113,6 +115,15 @@ class Recorder:
     # ---- thermal ------------------------------------------------------------------------------
     def thermal_due(self, now: float) -> bool:
         return self.active and self.thermal_dt is not None and now - self._th_last >= self.thermal_dt - 1e-3
+
+    def live_due(self, now: float) -> bool:
+        """Time for a live-view thermal frame (``live_hz``, default 8/s): faster than recording."""
+        return self.live_dt is not None and now - self._live_last >= self.live_dt - 1e-3
+
+    def thermal_live(self, t: float, frame) -> None:
+        """Live view only (``live_thermal.npy`` for the demo page); not added to the recording."""
+        self._live_last = t
+        self._write_live(np.clip(np.round(np.asarray(frame, float) * 100.0), -32768, 32767).astype(np.int16))
 
     def thermal(self, t: float, frame) -> None:
         if not self.thermal_due(t):

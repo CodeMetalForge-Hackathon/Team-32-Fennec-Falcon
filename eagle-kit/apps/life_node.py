@@ -75,6 +75,7 @@ class LifeNode:
             from eagle.record import Recorder
             r = L.get("record", {})
             self.rec = Recorder(args.record, thermal_hz=float(r.get("thermal_hz", 2.0)),
+                                live_hz=float(r.get("live_hz", 8.0)),
                                 chunk_s=float(r.get("chunk_s", 60.0)), min_free_gb=float(r.get("min_free_gb", 2.0)),
                                 log=log)
         want = list(args.modules or L.get("modules", ALL_MODULES))
@@ -313,10 +314,13 @@ class LifeNode:
         self._th_cache = None
         try:
             self.rec.tick()
-            if "thermal" in self.mods and self.rec.thermal_due(now):
+            if "thermal" in self.mods and (self.rec.live_due(now) or self.rec.thermal_due(now)):
                 _, frame, rad = self.mods["thermal"][0].read()
                 self._th_cache = (now, frame, rad)
-                self.rec.thermal(now, frame)
+                if self.rec.thermal_due(now):
+                    self.rec.thermal(now, frame)        # recorded (thermal_hz) and live
+                else:
+                    self.rec.thermal_live(now, frame)   # live view only (live_hz)
             if "audio" in self.mods:
                 self.rec.audio(self.mods["audio"]["cap"])
         except Exception as e:
