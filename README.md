@@ -1,6 +1,6 @@
 <div align="center">
 
-<h1>Fennec</h1>
+<h1>Fennec Falcon</h1>
 
 <h3>Operator down: locate. Stay covert.</h3>
 
