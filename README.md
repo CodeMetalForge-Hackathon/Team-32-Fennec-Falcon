@@ -75,6 +75,8 @@ The **Operator Profile Recognition Card** is the identity record the Eagle carri
 
 The card stores signatures, not photos, and stays on the device. Identity can only raise a detection's priority: every human detected is still reported, so a missed match never costs a rescue. The match level (0 none, 1 to 2 appearance, 3 face verified) travels inside the 48-byte message. Full description, enrolment steps, privacy and limits: [docs/operator-profile-card.md](docs/operator-profile-card.md).
 
+**Optional tag.** `eagle-kit` also contains firmware for a small person-worn radio tag (`eagle-kit/firmware/tag/`). It is an optional extension for cooperative cases (for example teams that carry one) and is not part of the core mission, which assumes the missing person carries no electronics.
+
 The simulations above remain identity UNVERIFIED by design; the card is what the hardware prototype adds, and its accuracy is so far measured only in indoor tests (see the reference doc).
 
 ## Project map
