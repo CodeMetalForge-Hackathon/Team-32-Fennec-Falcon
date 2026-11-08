@@ -302,3 +302,33 @@ life:
     responsive_window_s: 300
     life_window_s: 300
     score_tau_s: 300
+
+# ---- Missing-person identity (eagle/identity.py, apps/enroll_target.py, apps/hailo_vision.py --profile) ----
+# Additive evidence only: it may raise a track's priority and score, never lower, suppress or delay a human.
+# Calibrate the ranges on site: enroll a volunteer, walk them and a few strangers past the camera, and
+# read the logged cosines. Models come from apps/fetch_models.py; nothing downloads at runtime.
+identity:
+  models_dir: ~/eagle-models
+  every_s: 1.0                   # re-score a track at most this often
+  hold_s: 30.0                   # a track keeps its best match level this long
+  appearance:
+    weights: {clip_image: 0.4, clip_text: 0.2, osnet: 0.4}
+    ranges:                      # cosine -> 0..1 linearly between [lo, hi] per model
+      clip_image: [0.70, 0.90]   # CLIP ViT-B/32 crop vs profile crops
+      clip_text: [0.20, 0.32]    # CLIP crop vs the description text
+      osnet: [0.40, 0.80]        # OSNet re-ID
+    candidate: 0.5               # appearance score -> level 1 (appearance candidate)
+    strong: 0.8                  # appearance score -> level 2 (strong appearance)
+    min_crop_px: [32, 64]        # person crops smaller than w x h are not embedded
+  face:
+    min_width_px: 40             # ArcFace is only scored on faces at least this wide
+    verify: 0.40                 # ArcFace cosine -> level 3 (face verified)
+    det_size: 640                # SCRFD input size
+  models:                        # null = default file under models_dir (see apps/fetch_models.py)
+    insightface_root: null
+    osnet: null
+    clip_image_hef: null
+    clip_text_hef: null
+    clip_tokenizer: null
+    clip_token_embeddings: null
+    clip_text_projection: null
