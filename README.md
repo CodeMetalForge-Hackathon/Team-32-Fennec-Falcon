@@ -61,6 +61,27 @@ camera (Hailo-8) -----+--> fusion (eagle-kit) --+--> one 48-byte AES-256-GCM FIX
 
 Everything starts on power-up as systemd services, and a phone joins the Pi's own hotspot to watch and control it. Setup, the services and the field checklist: [docs/field-prototype.md](docs/field-prototype.md) · [pi/field/FIELD_TEST.md](pi/field/FIELD_TEST.md).
 
+### Run the hardware demo
+
+Setup on a fresh Raspberry Pi 5 (Raspberry Pi OS Bookworm, Hailo-8 driver and `hailo-apps` installed, sensors plugged in):
+
+```
+git clone <this repo> ~/team-32 && cd ~/team-32/eagle-kit
+pip install -r requirements.txt opencv-python onnxruntime insightface ai-edge-litert pillow-heif --break-system-packages
+python apps/fetch_models.py              # one-time model download (needs internet once; nothing downloads at runtime)
+python apps/keygen.py --out-dir ~/eagle/keys   # field keys, kept outside the repository
+bash ../pi/field/install.sh              # installs and starts the services
+```
+
+Run it:
+
+1. Enrol the person being sought (their Operator Profile card): `python apps/enroll_target.py --photos <folder> --live`.
+2. Power on. All services start by themselves with no network.
+3. Open `http://localhost:8081` on the Pi's screen for the demo view (camera, thermal, sound, verdict, signal-sent badge), or `http://localhost:8080` for the control page. A phone can join the Pi's hotspot and use `http://10.42.0.1:8081`.
+4. Walk into view: the banner moves from NO HUMAN DETECTED to HUMAN DETECTED to TARGET FOUND, and the encrypted FIX received by the Nest shows as SIGNAL SENT TO RESCUE HQ.
+
+Details, troubleshooting and the field checklist: [docs/field-prototype.md](docs/field-prototype.md) and [pi/field/FIELD_TEST.md](pi/field/FIELD_TEST.md).
+
 ## Operator Profile Recognition Card
 
 The **Operator Profile Recognition Card** is the identity record the Eagle carries for the person it is looking for. It is built *before* a search from a full face scan and recent photos, and loaded onto the onboard computer. During the search, every face the camera sees is compared against it, on the device, with no connection.
@@ -115,4 +136,19 @@ cd eagle-kit && python -m pytest -q   # onboard software, runs without hardware
 
 Browser and Unreal demonstrations are software models. The field prototype runs the sensing and identity pipeline on real hardware, tested indoors so far. Actual long-range sensing, identity verification, communications propagation, flight power and perching require hardware/field validation. No person-worn or delivered electronic endpoint is part of the mission.
 
-Team 32: Mitch Kirby and Alex Bartolomei, Ember Corps. [Apache-2.0](LICENSE).
+## Open-source components
+
+Pre-existing open-source libraries and models used, with licences and sources in [eagle-kit/eagle/data/NOTICE.md](eagle-kit/eagle/data/NOTICE.md):
+
+- **InsightFace** buffalo_l (SCRFD face detector, ArcFace recognition): MIT code; pretrained weights are for non-commercial research only.
+- **Ultralytics YOLOv8n / YOLOv5** person detection (AGPL-3.0), compiled for the Hailo-8 from the **Hailo Model Zoo** and **hailo-apps** (MIT).
+- **YAMNet** sound classifier and class map (Google, Apache-2.0).
+- **OpenAI CLIP** ViT-B/32 (MIT, optional appearance matching) and **torchreid OSNet** (MIT code, research-only weights).
+- Thermal person model trained on the **HIT-UAV** dataset (CC BY 4.0, Suo et al., 2023).
+- Python libraries: NumPy, OpenCV, ONNX Runtime, LiteRT (`ai-edge-litert`), `cryptography` (AES-256-GCM), PyYAML, pyserial, sounddevice, Pillow and pillow-heif; GStreamer and Picamera2 on the Pi.
+
+The model files in `fusion/models/` are stored with Git LFS (`git lfs pull` after cloning). Larger weights are downloaded by `eagle-kit/apps/fetch_models.py` and are not committed.
+
+## Team
+
+Team 32, Ember Corps: Mitch Kirby and Alex Bartolomei. Licensed under [Apache-2.0](LICENSE).
