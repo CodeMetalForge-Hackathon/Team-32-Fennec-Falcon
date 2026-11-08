@@ -4,6 +4,52 @@ Every build gets an entry here: what we built, why, how it works, what we decide
 
 ---
 
+## 2026-11-08 · Simulator v2: the craft, the five birds and the pentagon; DF mast removed; cinematic follows the decision chain; published
+
+**Files:** [`simulator/v2/index.src.html`](../simulator/v2/index.src.html) (built into `index.html`), [`simulator/v2/model.js`](../simulator/v2/model.js) (five birds by default), [`simulator/v2/tests/test_present.js`](../simulator/v2/tests/test_present.js) · **Docs:** [simulator-v2.md](simulator-v2.md#the-craft-and-the-five-birds), [eagle-drone.md](eagle-drone.md#in-simulator-v2)
+
+### What
+- **The craft.** A Saronic-type autonomous boat, drawn to the Corsair class's published size (24 ft), at sea about 20 km off the coast. It carries the five birds on a rack on its after deck and launches them one by one, each with its prey in its talons. **Craft** in the view bar shows it.
+- **Five birds.** Eagles 2-5 join Eagle-1. Over the search area they fly a circle round his predicted path, 72° apart, so the five make a pentagon; Eagle-1's corner is empty while it is down on its perch. The pentagon and the predicted path are drawn in the 3D view (overlay *Pentagon, 5 birds*) and on the map.
+- **Call the other four.** At the decision step of **Run mission** the other four fly in over him to look, then rejoin the pentagon.
+- **DF mast removed** from the outpost. A burst the enemy hears now draws its bearing line from the patrol's receiver; captions, the presenter's threat card and the export follow.
+- **Cinematic, ten shots, about 76 s**, along the decision chain (steps D to Z):
+  1. The craft launches the five.
+  2. Dawn over the canopy.
+  3. The pentagon, from behind one bird and then from about 330 m up.
+  4. Eagle-1 drops onto its branch.
+  5. It sits on the perch.
+  6. Its thermal view of him, outlined and zoomed.
+  7. The other four fly in to look, and their votes come in (3 of 5 must agree).
+  8. The take-off.
+  9. The burst.
+  10. The craft forwards the report by satellite.
+- **Five birds in the model** (was eight), so the search-time numbers follow the plan.
+
+### Why
+- Mitch asked for the radio tower to go (it is not part of the plan) and for the Saronic-type boat and the five birds from the project's decision chain: the craft is sent with 5 birds (D), releases them about 20 km off (F) one by one with prey (G), and they form a pentagon round the radius with his path predicted (J), call the other four (Q, R) and need 3 of 5 to agree (S).
+
+### How it works
+- **Pentagon.** Five slots on one circle, 150 m in radius, 72° apart, turning at 11 m/s (one lap in 86 s). The centre sits 40 m short of him on the line from the parachute through his position. The height is 35 m over the crowns, taken round the circle with a running maximum and then averaged, so the birds climb and sink slowly. Eagle-2 doubles as the model's relay bird.
+- **Converge and rejoin.** Each of the four flies in over the crowns to its own circle round him, 14-25 m out and 14-26 m over the crowns, and does three laps. It then flies to where its pentagon slot will be when it gets there, timed so it hands back to the circle without a jump.
+- **Craft.** Chined deep-V hull lofted from 30 stations, low freeboard, a chamfered deck cover, and a sensor mast with radome, satcom dome, EO/IR ball, whips and lights. It rides a three-wave swell (heave, pitch, roll). The sea is a 3.6 km plane with a tiling normal map in three scales, smoother with distance, plus foam round the hull and the coast's mountains as a haze silhouette. It sits 3 km west of the map and is drawn only in the Craft view and the cinematic's first and last shots; the island is put away meanwhile, and the Eagle cam still draws it. The sky, stars and moon now follow the camera.
+- **Votes.** Illustrative: two of the four get a clear line, so 3 of 5 agree. The model does not simulate the other birds.
+
+### Key results
+- The five birds together in the cinematic's pentagon shot; four circling in the orbit view while Eagle-1 is perched. Published as version 10.
+- Search time with five birds: 13.3 h at night, 6.7 h before dawn, 173-221 h by day or in a typhoon (was 8.3, 4.2 and 108-138 h with eight).
+
+### Verification
+- Every shot captured in headless Chromium under a fixed-step clock (jumping straight to it); no console errors.
+- The page script parses (`node --check` on the built page's script); `tests/test_present.js` updated for five birds (step 8 now reads 13.3 h).
+
+### Open issues / next
+- The craft sits 3 km west of the map in the scene; the plan puts it about 20 km offshore. The pentagon is 300 m across to fit the 800 m map.
+- The prey's role is still open in the chain (supplies, relay node or thermal camera); it is drawn as a small decoy.
+- Watch the full cinematic at frame rate on the demo laptop.
+
+---
+
 ## 2026-11-08 · Simulator v2: the Eagle cam sees him (sight line cleared, silhouette outlined); published
 
 **Files:** [`simulator/v2/index.src.html`](../simulator/v2/index.src.html) (built into `index.html`) · **Docs:** [simulator-v2.md](simulator-v2.md)

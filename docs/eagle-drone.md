@@ -199,7 +199,7 @@ open into slots on the upstroke and when soaring.
 | `takeoff` (`takeoff(path)`) | Crouch, spring, wings unfold in 0.4 s, hard strokes at 3.4 Hz and ±48°, legs tuck, then cruise |
 | `land` (`land(perch, heading, from)`) | Glide in, drop about 2 m below the perch and swoop up, flare (body up to 58°, wings cupped forward braking, tail fanned down, feet forward, toes open), touch down, two balancing beats, fold in about 1 s. It lands facing the way it flew in; with `faceAfter` it then hop-turns on the branch to that heading (wings half open, a 4.5 cm hop, about 0.85 s) |
 | `perched` | Upright, wings folded, tail down. The head scans in quick turns and holds, the way raptors look around; with `lookAt(point)` it keeps coming back to that point |
-| `auto` | For a bird the caller moves (the relay): banks from its turn rate, flaps when climbing and now and then, soars otherwise |
+| `auto` | For a bird the caller moves (Eagles 2-5 on the pentagon): banks from its turn rate, flaps when climbing and now and then, soars otherwise |
 
 Speeds along a path come from the path and its duration. Bank angle is set from turn rate and speed
 (`atan(v·ω/g)`, capped at 43°). The animation is prescribed kinematics for looks, not an aerodynamic
@@ -218,17 +218,22 @@ model.
   the trees. The first version came in from behind the perch, through the hillside above it.
 - **Presenter card 3** ("Perch, motor off, listen") plays the arrival from 6 m beside the branch,
   looking out over the open side, and names the disguise.
-- **Cinematic** shows the bird up close and at its real speed (12 m/s in level flight). From 3 m
-  beside the branch, on a lens that narrows to 8° while the bird is far off so it stays about a fifth
-  of the frame, Eagle-1 glides in over the valley towards the lens, swoops up, flares, puts its feet
-  forward, hops round and folds its wings. Then a slow orbit at 1.75–2.5 m while it sits scanning; the
-  take-off from the same spot as it drops off the branch and flies out over the valley; and a cut to
-  where it sends from: it flies head-on at a camera just past the send point, against the sky, and over
-  it, and the intercept ring spreads as the camera rises 40 m and follows its front edge inland (for
-  the courier it passes over a camera at the coast and is gone). The cut stands in for the rest
-  of the flight, so nothing is sped up. Tracking shots aim at the bird's own position, smoothed so the
-  wingbeat does not shake the frame.
-- **Relay** overhead is a second bird in `auto` mode: it banks in its orbit and flaps when it climbs.
+- **Cinematic** follows the team's decision chain over ten shots, about 76 s, with every bird at its
+  real speed (12 m/s in level flight). The craft offshore launches the five off its rack: each
+  springs off its perch, peels away over the side and turns for the coast. Dawn over the canopy.
+  The five on their pentagon, first from behind one bird, then from about 330 m up. Eagle-1 drops onto its
+  branch, seen from 3 m beside it on a lens that narrows to 8° while the bird is far off (so it stays
+  about a fifth of the frame): it swoops up, flares, puts its feet forward, hops round and folds its
+  wings. A slow orbit at 1.75–2.5 m while it sits scanning. Its thermal view of him, outlined, then
+  zoomed 2.5×. The other four circle in over him while their votes come in. The take-off out over
+  the valley. A cut to where it sends from: head-on at a camera just past the send point, with the
+  intercept ring spreading as the camera rises 40 m (for the courier it passes over a camera at the
+  coast and is gone). Last, the craft forwards the report by satellite. The cuts stand in for the
+  rest of each flight, so nothing is sped up. Tracking shots aim at the bird's own position,
+  smoothed so the wingbeat does not shake the frame.
+- **Eagles 2-5** are four more birds in `auto` mode on the pentagon round his predicted path: they bank on
+  the circle and flap when they climb. Eagle-2 is also the relay. The craft launches all five with their prey in
+  their talons.
 - **Disguise** selector under *Input · the Eagle*: Mountain Hawk-Eagle, Crested Serpent Eagle, or the
   bare airframe. It is kept across presets and sent to a remote-GPU host.
 - **Eagle cam** sits at the bird's eye, 0.40 m above the branch (the old model put it at 0.96 m).
@@ -238,7 +243,7 @@ model.
 - **Timing.** The bird animates on wall-clock frame time, up to 1 s a frame in steps of 0.1 s, so
   its flights keep pace with the mission on a slow GPU. The cinematic's shots run on the same clock,
   so a stalled or hidden tab pauses the film instead of letting the shots run ahead of the bird.
-- `window.__sim.eagle` and `window.__sim.relay` expose the two birds for scripted checks.
+- `window.__sim.eagle`, `window.__sim.relay` and `window.__sim.flock` expose the birds for scripted checks.
 
 ## Viewer
 

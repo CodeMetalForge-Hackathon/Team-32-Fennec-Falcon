@@ -158,6 +158,13 @@ body.cine #cineBars{display:block}
 #cineBars::before{top:0}#cineBars::after{bottom:0}
 #cineCap{position:absolute;left:50%;bottom:calc(9vh + 18px);transform:translateX(-50%);font:600 13px var(--font-data);letter-spacing:.12em;text-transform:uppercase;color:#f1efe6;text-shadow:0 1px 8px #000;width:max-content;max-width:min(92vw,960px);text-align:center;text-wrap:balance}
 #cineThermal{position:absolute;inset:9vh 0;display:none;background:#000}
+#cineVotes{position:absolute;left:50%;bottom:calc(9vh + 54px);transform:translateX(-50%);display:none;gap:8px;flex-wrap:wrap;justify-content:center;width:max-content;max-width:94vw}
+#cineVotes.show{display:flex}
+#cineVotes span{font:600 12px var(--font-data);letter-spacing:.08em;text-transform:uppercase;padding:5px 10px;border-radius:999px;border:1px solid rgba(241,239,230,.35);background:rgba(0,0,0,.55);color:#cfd6d4}
+#cineVotes span.ok{border-color:#80e0ff;color:#80e0ff}
+#cineVotes span.no{color:#8f9694;border-color:rgba(143,150,148,.45)}
+#cineVotes span.wait{color:#ffb347;border-color:rgba(255,179,71,.6)}
+#cineVotes span.send{background:#80e0ff;color:#07181c;border-color:#80e0ff}
 #cineThermal canvas{width:100%;height:100%;object-fit:contain;image-rendering:pixelated}
 #cineExit{position:fixed;right:max(16px,env(safe-area-inset-right,0px));top:calc(12px + env(safe-area-inset-top,0px));z-index:16;display:none}
 body.cine #cineExit{display:block}
@@ -253,7 +260,7 @@ body.nopanels #rgHostBanner{bottom:calc(16px + env(safe-area-inset-bottom,0px))}
   <div id="labels" aria-hidden="true"></div>
   <div id="loading">Growing the jungle…</div>
 </div>
-<div id="cineBars" aria-hidden="true"><div id="cineThermal"><canvas id="cineCv" width="640" height="480"></canvas></div><div id="cineCap"></div></div>
+<div id="cineBars" aria-hidden="true"><div id="cineThermal"><canvas id="cineCv" width="640" height="480"></canvas></div><div id="cineVotes"></div><div id="cineCap"></div></div>
 <button id="cineExit" class="ghost" type="button">Exit cinematic (Esc)</button>
 <div id="present" hidden>
   <div class="pvis panel float" id="pvis"><canvas id="pvTh" width="1280" height="960" aria-label="Eagle cam, thermal"></canvas><canvas id="pvChart" width="840" height="320" aria-label="P(operator) over time"></canvas><canvas id="pvMap" width="840" height="840" aria-label="ATAK-style map"></canvas><div class="pvcap" id="pvCap"></div></div>
@@ -282,7 +289,7 @@ body.nopanels #rgHostBanner{bottom:calc(16px + env(safe-area-inset-bottom,0px))}
 </header>
 <div id="viewbar" class="panel">
   <div class="seg viewbtns" role="group" aria-label="Camera">
-    <button data-cam="orbit" class="on">Orbit</button><button data-cam="cine">Cinematic</button><button data-cam="eagle">Eagle eye</button><button data-cam="operator">Operator</button><button data-cam="top">Top-down</button>
+    <button data-cam="orbit" class="on">Orbit</button><button data-cam="cine">Cinematic</button><button data-cam="eagle">Eagle eye</button><button data-cam="operator">Operator</button><button data-cam="top">Top-down</button><button data-cam="craft">Craft</button>
   </div>
   <button id="hidePanels" class="ghost" title="Hide panels (H)">Hide panels</button>
   <button id="exportBtn" class="ghost" title="Export the scene as JSON for Unreal Engine">Export to Unreal</button>
@@ -304,6 +311,7 @@ body.nopanels #rgHostBanner{bottom:calc(16px + env(safe-area-inset-bottom,0px))}
       <label><input type="checkbox" id="ov-snd" checked> Sound ring</label>
       <label><input type="checkbox" id="ov-int" checked> Intercept ring</label>
       <label><input type="checkbox" id="ov-lkl" checked> LKL circle</label>
+      <label><input type="checkbox" id="ov-pent" checked> Pentagon, 5 birds</label>
       <label><input type="checkbox" id="ov-fr" checked> Camera cone</label>
       <label><input type="checkbox" id="ov-lbl" checked> Labels</label>
     </div>
@@ -598,8 +606,8 @@ function ribbon(fz, x0, x1, step, width, lift, mat, tcat) {
 TEX.waterN.repeat.set(1, 1);
 const waterMat = new THREE.MeshStandardMaterial({ color: C(0x16302f), roughness: 0.06, metalness: 0.0, normalMap: TEX.waterN, normalScale: new THREE.Vector2(0.35, 0.35), envMapIntensity: 1.2 });
 const water = ribbon(streamZ, -400, 400, 4, x => 5.5 + 2 * Math.sin(x / 60), 1.35, waterMat, 'water');
-ribbon(trailZ, -398, 398, 4, 1.7, 0.12, std(0x6b5a40, 0.95), 'ground');
-ribbon(roadZ, -398, 398, 4, 5.5, 0.1, std(0x8a826d, 0.95), 'ground');
+const trailRib = ribbon(trailZ, -398, 398, 4, 1.7, 0.12, std(0x6b5a40, 0.95), 'ground');
+const roadRib = ribbon(roadZ, -398, 398, 4, 5.5, 0.1, std(0x8a826d, 0.95), 'ground');
 
 // ---------- vegetation ----------
 const wind = { uTime: { value: 0 }, uWind: { value: 0.35 } };
@@ -886,7 +894,81 @@ let eagleHd = 0;                         // heading on the perch: faces the oper
 function perchEagle() { eagleD.perch(W.eagle, eagleHd); eagleD.lookAt(W.op); }
 function applyEagleLook() {
   const lv = S.livery || 'hawkEagle'; if (eagleD.livery === lv) return;
-  eagleD.setLivery(lv); relayD.setLivery(lv); tagTree(eagle, 'drone'); tagTree(relay, 'drone'); collectPip(); shadowDirty = true;
+  eagleD.setLivery(lv); tagTree(eagle, 'drone'); flock.forEach(b => { b.d.setLivery(lv); tagTree(b.d.object, 'drone'); }); collectPip(); shadowDirty = true;
+}
+
+// ---------- the other four: Eagles 2-5 (decision chain D, J, Q-S, X) ----------
+// The craft brings five birds. Over the search area they fly one circle round his predicted position, 72 degrees apart, so
+// the five always stand on the corners of a pentagon; Eagle-1's corner stays empty while it is down on its perch. Eagle-2
+// is also the model's relay (whisper: it circles right over Eagle-1; the mission flies it away with the report).
+const flock = [relayD, ...[0, 1, 2].map(() => new EagleDrone({ livery: 'hawkEagle', quality: EAGLE_Q, mode: 'soar' }))].map((d, i) => {
+  if (i) { d.setMode('auto'); scene.add(tagTree(d.object, 'drone')); }
+  return { d, n: i + 2, slot: i + 1, ctl: 'loop', vote: null, voteAt: 0 };
+});
+const PENT = { c: new THREE.Vector3(), dir: new THREE.Vector3(1, 0, 0), r: 150, alt: new Float32Array(144), w: 11 / 150 };
+let flockT = 0;
+const pentA = (slot, t = flockT) => t * PENT.w + slot * Math.PI * 2 / 5;
+function pentAlt(a) { const n = PENT.alt.length, f = ((a / (Math.PI * 2)) % 1 + 1) % 1 * n, i = Math.floor(f) % n; return lerp(PENT.alt[i], PENT.alt[(i + 1) % n], f - Math.floor(f)); }
+function pentPos(a, out = new THREE.Vector3()) { return out.set(PENT.c.x + Math.cos(a) * PENT.r, pentAlt(a), PENT.c.z + Math.sin(a) * PENT.r); }
+const pentHd = a => Math.atan2(-Math.sin(a), Math.cos(a));   // heading along the circle, angle increasing
+function layoutPentagon() {
+  // his predicted path runs from the parachute (LKL) the way he was heading; the circle is centred 40 m short of him on it
+  const d = PENT.dir.set(W.op.x - LKL.x, 0, W.op.z - LKL.z); if (d.lengthSq() < 1) d.set(-1, 0, 0); d.normalize();
+  const m = HALF - 8 - PENT.r; PENT.c.set(clamp(W.op.x - d.x * 40, -m, m), 0, clamp(W.op.z - d.z * 40, -m, m)); PENT.c.y = H(PENT.c.x, PENT.c.z);
+  // 35 m over the crowns, eased round the circle so the birds climb and sink slowly
+  const n = PENT.alt.length, raw = new Float32Array(n);
+  for (let i = 0; i < n; i++) { const a = i / n * Math.PI * 2; raw[i] = overTrees(PENT.c.x + Math.cos(a) * PENT.r, PENT.c.z + Math.sin(a) * PENT.r); }
+  const mx = raw.map((_, i) => { let v = -Infinity; for (let k = -8; k <= 8; k++) v = Math.max(v, raw[(i + k + n) % n]); return v; });
+  for (let i = 0; i < n; i++) { let s2 = 0; for (let k = -6; k <= 6; k++) s2 += mx[(i + k + n) % n]; PENT.alt[i] = s2 / 13 + 35; }
+  // his predicted path, draped over the crowns: from the parachute through where he is now, on the way he was heading
+  const a = new THREE.Vector3(LKL.x, 0, LKL.z), b = W.op.clone().addScaledVector(d, 90); b.x = clamp(b.x, -392, 392); b.z = clamp(b.z, -392, 392); const pts = [];
+  for (let i = 0; i < 32; i++) { const q = a.clone().lerp(b, i / 31); q.y = overTrees(q.x, q.z) + 2; pts.push(q); }
+  setLine(pathLine, pts); PENT.pathEnd = pts[31]; PENT.path = pts;
+}
+const pathPts = () => (PENT.path || []).map(p => p.clone().setY(p.y + 1.5));
+const pentPathEnd = v => v.copy(PENT.pathEnd || W.op).setY((PENT.pathEnd || W.op).y + 4);
+function updatePentOverlay() {
+  const on = cine.on ? !!cine.showPent : (camMode === 'orbit' || camMode === 'top') && $('#ov-pent').checked;
+  pentLine.visible = pathLine.visible = on; if (!on) return;
+  const pts = []; for (let k = 0; k <= 5; k++) pts.push(pentPos(pentA(k % 5))); setLine(pentLine, pts);
+}
+function flockFly(b, pts, opts = {}) { b.ctl = 'own'; b.d.follow(pts, Object.assign({ speed: 11 }, opts)); }
+// back to its corner: fly to where the corner will be when it gets there, then the loop takes over again
+function flockRejoin(b) {
+  const p0 = b.d.object.position.clone(); let pts = null, T = 0;
+  for (let it = 0; it < 4; it++) {
+    const a = pentA(b.slot, flockT + T), q = pentPos(a), lead = q.clone().addScaledVector(new THREE.Vector3(-Math.sin(a), 0, Math.cos(a)), -30);
+    pts = [p0, ...overCrowns(p0, lead, 10).slice(1), q]; let L = 0; for (let i = 1; i < pts.length; i++) L += pts[i].distanceTo(pts[i - 1]); T = Math.max(1, L / 11);
+  }
+  flockFly(b, pts, { duration: T, onDone: () => { b.ctl = 'loop'; b.d.setMode('auto'); } });
+}
+// Q-R: Eagle-1 calls the other four; each flies in over him and looks, circling 14-25 m out, 14-26 m over the crowns, three
+// laps, then goes back to the pentagon. cut: start them 35-65 m out (the cinematic cuts in as they arrive)
+const VOTES = [true, false, true, false];   // illustrative: two of the four get a clear line on him, so 3 of 5 agree
+function flockConverge(cut) {
+  const top = overTrees(W.op.x, W.op.z);
+  flock.forEach((b, i) => {
+    const R = 14 + i * 3.6, y = top + 14 + i * 4, a0 = i * 1.7 + 0.6, dir = new THREE.Vector3(Math.cos(a0), 0, Math.sin(a0));
+    if (cut) { const s0 = W.op.clone().addScaledVector(dir, R + 21 + i * 10); s0.y = Math.max(y + 5, overTrees(s0.x, s0.z) + 10); b.d.stop(); b.d.object.position.copy(s0); b.d.setHeading(Math.atan2(-dir.x, -dir.z)); }
+    const p0 = b.d.object.position.clone(), entry = W.op.clone().addScaledVector(dir, R); entry.y = y;
+    const pts = [p0, ...overCrowns(p0, entry, 8).slice(1)]; let L = 0; for (let k = 1; k < pts.length; k++) L += pts[k].distanceTo(pts[k - 1]);
+    for (let k = 1; k <= 72; k++) { const a = a0 + k / 24 * Math.PI * 2; pts.push(new THREE.Vector3(W.op.x + Math.cos(a) * R, y + Math.sin(k * 0.4) * 0.6, W.op.z + Math.sin(a) * R)); }
+    b.vote = null; b.voteAt = flockT + L / 11 + 1.4;   // it has looked once it is a few seconds into its circle
+    flockFly(b, pts, { onDone: () => flockRejoin(b) });
+  });
+}
+function flockReset() { flock.forEach(b => { b.d.stop(); b.ctl = 'loop'; b.d.setMode('auto'); b.vote = null; b.d.object.visible = true; if (b.prey) b.prey.visible = false; }); }
+function updateFlock(rawDt) {
+  const dt = Math.min(0.25, rawDt); flockT += dt;
+  flock.forEach((b, i) => {
+    const d = b.d;
+    if (b.ctl === 'loop') {
+      if (i === 0 && relayFlight.parked) { /* the mission flies the relay along its own path (stepFlight) */ }
+      else if (i === 0 && W.relayOver) { const ang = flockT * 0.4; d.object.position.set(W.relayC.x + Math.cos(ang) * W.relayR, W.relayC.y + Math.sin(flockT * 0.3) * 4, W.relayC.z + Math.sin(ang) * W.relayR); d.object.rotation.set(0, -ang, 0); }
+      else { const a = pentA(b.slot); pentPos(a, d.object.position); d.object.rotation.set(0, pentHd(a), 0); }
+    } else if (b.voteAt && b.vote == null && flockT >= b.voteAt) b.vote = VOTES[i];
+    d.update(dt);
+  });
 }
 
 // perch props
@@ -941,23 +1023,15 @@ const hut = new THREE.Group(); scene.add(hut);
 const crops = inst(new THREE.BoxGeometry(1, 1, 1), std(0x6e8f37, 0.85), 420, 'leaf', false);
 { let n = 0; const r = mulberry32(12); while (n < 420) { const a = r() * 6.283, rr = r() * (FARM.r - 8), x = FARM.x + Math.cos(a) * rr, z = FARM.z + Math.sin(a) * rr; if (Math.hypot(x - hut.position.x, z - hut.position.z) < 6) continue; setInst(crops, n++, x, H(x, z) + 0.25, z, 0.5, 0.5 + r() * 0.4, 0.5); } crops.instanceMatrix.needsUpdate = true; }
 
-// enemy outpost on the ridge: bunkers, camouflage net, DF mast, truck, generator
+// enemy outpost on the ridge: bunkers, camouflage net, truck, generator
 const outpost = new THREE.Group(); scene.add(outpost);
 const OY = H(OUTPOST.x, OUTPOST.z); outpost.position.set(OUTPOST.x, OY, OUTPOST.z);
-const mastTop = new THREE.Vector3();
 { const earth = std(0x5d5240, 0.95);
   const bunker = (x, z, w, d, ry) => { const g4 = new THREE.Group(); g4.position.set(x, -0.6, z); g4.rotation.y = ry; const b = new THREE.Mesh(new THREE.BoxGeometry(w, 2.2, d), earth); b.position.y = 1.1; g4.add(b); const roof = new THREE.Mesh(new THREE.BoxGeometry(w + 0.6, 0.4, d + 0.6), std(0x4a4532)); roof.position.y = 2.4; g4.add(roof); outpost.add(g4); return g4; };
   bunker(-8, -4, 6, 4, 0.2); bunker(7, 5, 5, 4, -0.4);
   const sb = new THREE.InstancedMesh(new THREE.BoxGeometry(0.62, 0.26, 0.34), M_.sandbag, 220); sb.castShadow = true; sb.receiveShadow = true; sb.frustumCulled = false; sb.userData.tcat = 'ground';
   { let n = 0; for (let ring = 0; ring < 2; ring++) for (let k = 0; k < 55 && n < 220; k++) for (let lay = 0; lay < 2 && n < 220; lay++) { const a = k / 55 * Math.PI * 2, R = ring ? 15 : 10.5, x = Math.cos(a) * R, z = Math.sin(a) * R; if (ring && k % 11 === 0) continue; setInst(sb, n++, x, H(OUTPOST.x + x, OUTPOST.z + z) - OY + 0.1 + lay * 0.26, z, 1, 1, 1, -a); } sb.count = n; sb.instanceMatrix.needsUpdate = true; } outpost.add(sb);
   const tent = new THREE.Mesh(new THREE.ConeGeometry(2.4, 2.2, 4), std(0x4a4c35)); tent.position.set(0, 1.1, -9); tent.rotation.y = 0.78; outpost.add(tent);
-  // DF / antenna mast (lattice) with an Adcock-style DF ring on top
-  const mast = new THREE.Group(); mast.position.set(3, 0, -3); outpost.add(mast); const leg = [];
-  for (const [x, z] of [[-0.6, -0.6], [0.6, -0.6], [0.6, 0.6], [-0.6, 0.6]]) { const l = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.05, 16, 5), M_.metal); l.position.set(x * 0.55, 8, z * 0.55); l.rotation.set(-z * 0.04, 0, x * 0.04); mast.add(l); leg.push(l); }
-  for (let y = 1; y < 16; y += 1.6) { const br = new THREE.Mesh(new THREE.TorusGeometry(0.42 * (1 - y / 40), 0.015, 3, 4), M_.metal); br.rotation.x = Math.PI / 2; br.rotation.z = Math.PI / 4; br.position.y = y; mast.add(br); }
-  const ringG = new THREE.Mesh(new THREE.TorusGeometry(1.1, 0.03, 4, 16), M_.metal); ringG.rotation.x = Math.PI / 2; ringG.position.y = 16.2; mast.add(ringG);
-  for (let k = 0; k < 8; k++) { const a = k / 8 * Math.PI * 2, d = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 1.4, 4), M_.metal); d.position.set(Math.cos(a) * 1.1, 16.6, Math.sin(a) * 1.1); mast.add(d); }
-  const yagi = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.05, 0.05), M_.metal); yagi.position.set(0, 15.2, 0); mast.add(yagi);
   // truck under a camouflage net, generator
   const truck = new THREE.Group(); truck.position.set(-3, 0, 7); truck.rotation.y = 1.2; outpost.add(truck);
   const cab = new THREE.Mesh(new THREE.BoxGeometry(2.3, 2.0, 2.0), std(0x46503a)); cab.position.set(0, 1.4, 2.4); cab.userData.tcat = 'engine'; truck.add(cab); const bed = new THREE.Mesh(new THREE.BoxGeometry(2.4, 2.0, 4.2), M_.camo); bed.position.set(0, 1.6, -0.9); truck.add(bed);
@@ -967,9 +1041,135 @@ const mastTop = new THREE.Vector3();
   const netGeo = new THREE.PlaneGeometry(16, 11, 12, 8); netGeo.rotateX(-Math.PI / 2); { const p = netGeo.attributes.position; for (let i = 0; i < p.count; i++) { const x = p.getX(i), z = p.getZ(i); p.setY(i, 3.0 - 0.9 * (Math.cos(x / 16 * Math.PI) * Math.cos(z / 11 * Math.PI)) * 0.0 - 0.6 * Math.abs(Math.sin(x * 0.35)) * Math.abs(Math.sin(z * 0.5)) - (Math.abs(x) > 7 || Math.abs(z) > 4.5 ? 1.6 : 0)); } netGeo.computeVertexNormals(); }
   const net = new THREE.Mesh(netGeo, new THREE.MeshStandardMaterial({ map: TEX.net, alphaTest: 0.4, side: THREE.DoubleSide, roughness: 0.95, transparent: false })); net.position.set(-2, 0, 5); net.castShadow = true; net.customDepthMaterial = depthFor(TEX.net); outpost.add(net);
   outpost.children.forEach(ch => { if (ch !== sb) ch.position.y += H(OUTPOST.x + ch.position.x, OUTPOST.z + ch.position.z) - OY; });
-  mastTop.set(OUTPOST.x + 3, OY + mast.position.y + 16.6, OUTPOST.z - 3);
   tagTree(outpost, 'metal'); net.userData.tcat = 'leaf'; sb.userData.tcat = 'ground'; tent.userData.tcat = 'roof'; outpost.traverse(o => { if (o.isMesh && o.material === earth) o.userData.tcat = 'ground'; });
 }
+
+// ---------- the delivery craft: a Saronic-type autonomous boat ~20 km offshore (decision chain D, F, G, Y) ----------
+// The project docs: SOCOM sends "an autonomous delivery craft (assumed: a Saronic-type uncrewed boat)" that carries the birds,
+// runs in overnight to ~20 km offshore, releases them back to back, listens for their reports and forwards them by satellite.
+// Built to the Corsair class's published size (24 ft, 7.3 m); the shape is a generic low-freeboard autonomous boat, not the
+// vendor's drawings. It sits in its own patch of sea west of the map, shown only in the Craft view and the cinematic.
+const CRAFT = { x: -3200, z: -150, hd: 0.72, len: 7.3 };
+const offshore = new THREE.Group(); offshore.visible = false; offshore.userData.noPip = true; scene.add(offshore);
+const craft = new THREE.Group(); craft.position.set(CRAFT.x, 0, CRAFT.z); craft.rotation.y = CRAFT.hd; offshore.add(craft);
+const craftBody = new THREE.Group(); craft.add(craftBody);   // heaves, pitches and rolls on the swell
+const deckY = z => lerp(0.62, 1.04, Math.pow(clamp((z + 3.65) / 7.3, 0, 1), 2.2));   // deck (sheer) height along the boat: low freeboard
+const RACK = [[-0.8, -3.0], [0, -3.0], [0.8, -3.0], [-0.42, -2.2], [0.42, -2.2]].map(([x, z]) => new THREE.Vector3(x, deckY(z) + 0.47, z));
+{
+  // hull: chined deep-V planing hull; stations from the transom (t = 0) to the stem (t = 1); half-section keel, chine, sheer
+  const L = CRAFT.len, NS = 30, sec = t => { const bow = smooth(0.6, 1, t);
+    return [[0, lerp(-0.46, 0.4, Math.pow(smooth(0.55, 1, t), 1.7))], [lerp(1.02, 0.03, Math.pow(bow, 1.5)), lerp(-0.12, 0.6, Math.pow(smooth(0.5, 1, t), 1.4))], [lerp(1.3, 0.03, Math.pow(bow, 2.1)), deckY(-L / 2 + t * L)]]; };
+  const panel = (a, b, col) => {   // quads between section points a -> b on both sides, smooth inside the panel
+    const pos = [], cols = [], idx = []; let n = 0;
+    for (const side of [1, -1]) { const base = n;
+      for (let i = 0; i <= NS; i++) { const t = i / NS, z = -L / 2 + t * L, s = sec(t);
+        for (const k of [a, b]) { const x = s[k][0] * side, y = s[k][1]; pos.push(x, y, z); const c = col(y); cols.push(c.r, c.g, c.b); n++; } }
+      for (let i = 0; i < NS; i++) { const q = base + i * 2; if (side > 0) idx.push(q, q + 2, q + 1, q + 1, q + 2, q + 3); else idx.push(q, q + 1, q + 2, q + 1, q + 3, q + 2); } }
+    const gq = new THREE.BufferGeometry(); gq.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); gq.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3)); gq.setIndex(idx); gq.computeVertexNormals(); return gq.toNonIndexed(); };
+  const hullC = C(0x474e55), boot = C(0x101214), anti = C(0x24282c), deckC = C(0x3a4045);
+  const hullCol = y => y < -0.03 ? anti : y < 0.13 ? boot : hullC;
+  const deck = (() => { const pos = [], cols = [], idx = []; let n = 0;
+    for (let i = 0; i <= NS; i++) { const t = i / NS, z = -L / 2 + t * L, s = sec(t), w = s[2][0], y = s[2][1]; for (const f of [-1, -0.5, 0, 0.5, 1]) { pos.push(w * f, y + 0.035 * (1 - f * f), z); cols.push(deckC.r, deckC.g, deckC.b); n++; } }
+    for (let i = 0; i < NS; i++) for (let j = 0; j < 4; j++) { const q = i * 5 + j; idx.push(q, q + 1, q + 5, q + 1, q + 6, q + 5); }
+    const gq = new THREE.BufferGeometry(); gq.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); gq.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3)); gq.setIndex(idx); gq.computeVertexNormals(); return gq.toNonIndexed(); })();
+  const transom = (() => { const s = sec(0), z = -L / 2, P = [[0, s[0][1]], [s[1][0], s[1][1]], [s[2][0], s[2][1]], [-s[2][0], s[2][1]], [-s[1][0], s[1][1]]], pos = [], cols = [];
+    for (let i = 1; i < P.length - 1; i++) for (const k of [0, i + 1, i]) { pos.push(P[k][0], P[k][1], z); const c = hullCol(P[k][1]); cols.push(c.r, c.g, c.b); }
+    pos.push(0, s[0][1], z, -s[2][0], s[2][1], z, -s[1][0], s[1][1], z); [s[0][1], s[2][1], s[1][1]].forEach(y => { const c = hullCol(y); cols.push(c.r, c.g, c.b); });
+    const gq = new THREE.BufferGeometry(); gq.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); gq.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3)); gq.computeVertexNormals(); return gq; })();
+  const hullGeo = THREE.BufferGeometryUtils.mergeBufferGeometries([panel(0, 1, hullCol), panel(1, 2, hullCol), deck, transom]);
+  const hull = new THREE.Mesh(hullGeo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.2, side: THREE.DoubleSide, envMapIntensity: 0.8 })); craftBody.add(hull);
+  // rubbing strake along the sheer
+  const sheerPts = []; for (let i = 0; i <= 40; i++) { const t = i / 40, s = sec(t); sheerPts.push(new THREE.Vector3(s[2][0] + 0.02, s[2][1] - 0.05, -L / 2 + t * L)); }
+  for (let i = 39; i >= 0; i--) { const t = i / 40, s = sec(t); sheerPts.push(new THREE.Vector3(-s[2][0] - 0.02, s[2][1] - 0.05, -L / 2 + t * L)); }
+  craftBody.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(sheerPts), 160, 0.045, 6, false), std(0x0e0f10, 0.8)));
+  // faceted deck cover (it carries no crew): a low wedge, high aft, running down into the foredeck
+  // its section: base, chamfer shoulder, flat top; lofted from the after end (high, wide) to the fore end (low, narrow)
+  const yA = deckY(-1.0), yF = deckY(2.3), secC = (z, bw, sw, tw, sh, th) => { const y = deckY(z); return [[-bw, y, z], [-sw, y + sh, z], [-tw, y + th, z], [tw, y + th, z], [sw, y + sh, z], [bw, y, z]]; };
+  const SA = secC(-1.35, 1.0, 0.92, 0.62, 0.42, 0.62), SF = secC(2.55, 0.52, 0.42, 0.2, 0.12, 0.2), cp = [], quad = (a, b, c, d) => cp.push(...a, ...b, ...c, ...a, ...c, ...d);
+  for (let i = 0; i < 5; i++) quad(SA[i], SF[i], SF[i + 1], SA[i + 1]);
+  for (let i = 1; i < 5; i++) { cp.push(...SA[0], ...SA[i], ...SA[i + 1]); cp.push(...SF[0], ...SF[i + 1], ...SF[i]); }
+  const cg = new THREE.BufferGeometry(); cg.setAttribute('position', new THREE.Float32BufferAttribute(cp, 3)); cg.computeVertexNormals();
+  const cover = new THREE.Mesh(cg, std(0x24282c, 0.42, { metalness: 0.3, side: THREE.DoubleSide })); craftBody.add(cover);
+  // a dark sensor band across the front of the cover, cleats at the corners
+  const band = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.06, 0.02), new THREE.MeshStandardMaterial({ color: 0x050607, roughness: 0.08, metalness: 0.6 })); band.position.set(0, deckY(2.4) + 0.12, 2.5); band.rotation.x = -0.35; craftBody.add(band);
+  for (const [sd, col] of [[1, 0xff3020], [-1, 0x30ff70]]) { const nl = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.05, 0.09), new THREE.MeshBasicMaterial({ color: col })); nl.position.set(sd * 0.47, deckY(2.2) + 0.15, 2.2); craftBody.add(nl); }   // side lights: red to port (+X), green to starboard
+  for (const [x, z] of [[-0.95, -3.35], [0.95, -3.35], [-0.6, 2.9], [0.6, 2.9]]) { const cl = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.05, 0.2), std(0x7a8288, 0.4, { metalness: 0.7 })); cl.position.set(x, deckY(z) + 0.03, z); craftBody.add(cl); }
+  // vents along the cover's flanks and a hatch
+  for (const sd of [-1, 1]) for (let k = 0; k < 3; k++) { const z = -0.9 + k * 0.55, w = lerp(0.96, 0.52, (z + 1.35) / 3.9); const v = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.12, 0.38), std(0x0c0d0f, 0.7)); v.position.set(sd * (w - 0.03), deckY(z) + 0.2, z); v.rotation.z = sd * 0.1; craftBody.add(v); }
+  const hatch = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.02, 0.7), std(0x1c1f22, 0.55)); hatch.position.set(0, deckY(-1.35) + 0.63, -0.25); craftBody.add(hatch);
+  // sensor mast on the cover: radome, satcom dome (forwards the reports), EO/IR ball, whips (one listens on 915 MHz), light
+  const mast = new THREE.Group(); mast.position.set(0, deckY(-1.35) + 0.62, -0.95); craftBody.add(mast); const grey = std(0x5c636a, 0.45, { metalness: 0.5 }), white = std(0xd9dcdc, 0.35);
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.075, 1.9, 10), grey); pole.position.y = 0.95; mast.add(pole);
+  const bar = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.05, 0.06), grey); bar.position.y = 1.32; mast.add(bar);
+  for (const sd of [-1, 1]) { const w = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.01, sd > 0 ? 1.15 : 0.8, 5), std(0x111111, 0.6)); w.position.set(sd * 0.48, 1.32 + (sd > 0 ? 0.6 : 0.42), 0); mast.add(w); }
+  const rad = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.24, 0.16, 20), white); rad.position.y = 1.98; mast.add(rad);
+  const radCap = new THREE.Mesh(new THREE.SphereGeometry(0.26, 20, 8, 0, Math.PI * 2, 0, Math.PI / 2), white); radCap.scale.y = 0.35; radCap.position.y = 2.06; mast.add(radCap);
+  const sat = new THREE.Mesh(new THREE.SphereGeometry(0.17, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2), white); sat.position.set(0.32, 1.38, -0.05); mast.add(sat);
+  const satB = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.06, 18), grey); satB.position.set(0.32, 1.36, -0.05); mast.add(satB);
+  const ball = new THREE.Mesh(new THREE.SphereGeometry(0.13, 16, 12), std(0x2a2d31, 0.35, { metalness: 0.4 })); ball.position.set(0, 0.78, 0.14); mast.add(ball);
+  const lens = new THREE.Mesh(new THREE.CircleGeometry(0.055, 16), new THREE.MeshStandardMaterial({ color: 0x050608, roughness: 0.05, metalness: 0.9 })); lens.position.set(0, 0.78, 0.272); mast.add(lens);
+  const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.035, 10, 8), new THREE.MeshBasicMaterial({ color: 0xfff6e0 })); lamp.position.y = 2.18; mast.add(lamp);
+  CRAFT.sat = sat; CRAFT.lamp = lamp; CRAFT.whip = new THREE.Vector3(0.48, 1.9, 0); CRAFT.mast = mast;
+  // launch rack on the after deck: five padded perches, one bird on each
+  const post = std(0x6a7177, 0.45, { metalness: 0.6 }), pad = std(0x141516, 0.85);
+  RACK.forEach(r => { const pz = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.03, 0.44, 8), post); pz.position.set(r.x, r.y - 0.24, r.z); craftBody.add(pz);
+    const pb = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.36, 10), pad); pb.rotation.x = Math.PI / 2; pb.position.set(r.x, r.y - 0.02, r.z); craftBody.add(pb); });
+  const rail = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.04, 0.05), post); rail.position.set(0, deckY(-3.3) + 0.06, -3.3); craftBody.add(rail);
+  // exhausts and a tow eye
+  for (const sd of [-1, 1]) { const ex = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.12, 12), std(0x18191b, 0.6)); ex.rotation.x = Math.PI / 2; ex.position.set(sd * 0.55, 0.18, -3.66); craftBody.add(ex); }
+  craftBody.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; o.userData.tcat = 'metal'; } });
+  lamp.castShadow = false;
+}
+// foam round the hull where it sits in the swell
+const foamTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 256; const x = c.getContext('2d'), im = x.createImageData(256, 256);
+  for (let j = 0; j < 256; j++) for (let i = 0; i < 256; i++) { const u = i / 256, v = j / 256, n = pfbm(u, v, 6, 4, 71), d = Math.abs(v - 0.5) * 2, edge = smooth(1, 0.2, d) * smooth(0, 0.25, 1 - d); const a = smooth(0.46, 0.7, n) * edge; const k = (j * 256 + i) * 4; im.data[k] = im.data[k + 1] = im.data[k + 2] = 255; im.data[k + 3] = a * 255; }
+  x.putImageData(im, 0, 0); const t = new THREE.CanvasTexture(c); t.wrapS = THREE.RepeatWrapping; t.wrapT = THREE.ClampToEdgeWrapping; return t; })();
+const foam = (() => { const pts = [], uv = [], idx = [], N = 64; for (let i = 0; i <= N; i++) { const a = i / N * Math.PI * 2; for (const [r, v] of [[0.9, 0], [1.25, 1]]) { pts.push(Math.cos(a) * 1.35 * r, 0.03, Math.sin(a) * 3.95 * r - 0.1); uv.push(i / N * 6, v); } }
+  for (let i = 0; i < N; i++) { const q = i * 2; idx.push(q, q + 2, q + 1, q + 1, q + 2, q + 3); }
+  const gq = new THREE.BufferGeometry(); gq.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3)); gq.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); gq.setIndex(idx);
+  const m = new THREE.Mesh(gq, new THREE.MeshBasicMaterial({ map: foamTex, transparent: true, opacity: 0.75, depthWrite: false, color: 0xe8ecec })); m.renderOrder = 3; craft.add(m); return m; })();
+// the sea: wind waves from a tiling normal map in two scales (no geometry waves; the boat rides a swell computed below)
+const seaN = canvasTex(256, 256, (x, w, h) => { const hh = new Float32Array(w * h), r = mulberry32(5), W8 = [];
+  for (let k = 0; k < 40; k++) { const ang = -0.5 + (r() - 0.5) * 1.9, f = 3 + r() * r() * 26; W8.push([Math.round(Math.cos(ang) * f), Math.round(Math.sin(ang) * f), 1 / (1 + f * 0.35), r() * 6.283]); }
+  for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) { let v = 0; for (const [a, b, A, ph] of W8) v += A * Math.sin(2 * Math.PI * (a * i / w + b * j / h) + ph); hh[j * w + i] = v * 0.45 + 0.55 * pfbm(i / w, j / h, 6, 4, 9); }
+  const im = x.createImageData(w, h); for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) { const dx = hh[j * w + (i + 1) % w] - hh[j * w + (i - 1 + w) % w], dy = hh[((j + 1) % h) * w + i] - hh[((j - 1 + h) % h) * w + i], n = new THREE.Vector3(-dx * 2.2, -dy * 2.2, 1).normalize(), o = (j * w + i) * 4;
+    im.data[o] = (n.x * 0.5 + 0.5) * 255; im.data[o + 1] = (n.y * 0.5 + 0.5) * 255; im.data[o + 2] = (n.z * 0.5 + 0.5) * 255; im.data[o + 3] = 255; }
+  x.putImageData(im, 0, 0); }, { srgb: false, repeat: true });
+seaN.repeat.set(640, 640);
+const SEA_U = { uSeaT: { value: 0 } };
+const seaMat = new THREE.MeshStandardMaterial({ color: C(0x0a2430), roughness: 0.22, metalness: 0, normalMap: seaN, normalScale: new THREE.Vector2(0.32, 0.32), envMapIntensity: 0.9 });
+seaMat.onBeforeCompile = sh => { sh.uniforms.uSeaT = SEA_U.uSeaT; sh.fragmentShader = 'uniform float uSeaT;\n' + sh.fragmentShader.replace('vec3 mapN = texture2D( normalMap, vUv ).xyz * 2.0 - 1.0;',
+  'vec3 mapN = texture2D( normalMap, vUv + vec2(uSeaT * 0.011, uSeaT * 0.004) ).xyz * 2.0 - 1.0; vec3 mapN2 = texture2D( normalMap, vUv * 0.23 + vec2(-uSeaT * 0.0021, uSeaT * 0.0035) ).xyz * 2.0 - 1.0; vec3 mapN3 = texture2D( normalMap, vUv * 0.071 + vec2(uSeaT * 0.0009, -uSeaT * 0.0006) ).xyz * 2.0 - 1.0; mapN = normalize(vec3(mapN.xy * 0.7 + mapN2.xy * 0.6 + mapN3.xy * 0.45, mapN.z)); mapN.xy *= mix(1.0, 0.3, smoothstep(50.0, 450.0, length(vViewPosition)));'); };
+const sea = new THREE.Mesh(new THREE.PlaneGeometry(3600, 3600, 1, 1).rotateX(-Math.PI / 2), seaMat); sea.position.set(CRAFT.x, 0, CRAFT.z); offshore.add(sea);
+// the coast in the dawn haze: the island's mountains well inshore of the boat
+const coast = (() => { const pos = [], idx = [], N = 140, R0 = 2600, a0 = -0.75, a1 = 0.75, hdg = Math.atan2(1, 0);
+  for (let i = 0; i <= N; i++) { const a = hdg + a0 + (a1 - a0) * i / N, h = 70 + 190 * Math.pow(Math.max(0, fbm(i / 16, 3.7, 4) * 0.5 + 0.5), 1.6) + 120 * Math.exp(-Math.pow((i - 82) / 18, 2));
+    const x = CRAFT.x + Math.sin(a) * R0, z = CRAFT.z + Math.cos(a) * R0; pos.push(x, -2, z, x, h, z); }
+  for (let i = 0; i < N; i++) { const q = i * 2; idx.push(q, q + 2, q + 1, q + 1, q + 2, q + 3); }
+  const gq = new THREE.BufferGeometry(); gq.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); gq.setIndex(idx);
+  const m = new THREE.Mesh(gq, new THREE.ShaderMaterial({ uniforms: { uCol: { value: new THREE.Color() } }, transparent: true, depthWrite: false, fog: false, side: THREE.DoubleSide,
+    vertexShader: 'varying float vY; void main(){ vec4 wp = modelMatrix * vec4(position, 1.0); vY = wp.y; gl_Position = projectionMatrix * viewMatrix * wp; }',
+    fragmentShader: 'uniform vec3 uCol; varying float vY; void main(){ gl_FragColor = vec4(uCol, 0.62 * smoothstep(2.0, 90.0, vY)); }' }));
+  m.renderOrder = -2; offshore.add(m); return m; })();
+// a swell for the boat to ride (m, s): heave, pitch and roll from three long waves
+function swellAt(x, z, t) { return 0.16 * Math.sin(0.11 * x + 0.05 * z + t * 0.74) + 0.1 * Math.sin(0.07 * x - 0.12 * z + t * 0.93 + 1.3) + 0.05 * Math.sin(0.23 * x + 0.19 * z + t * 1.6 + 0.4); }
+const _cw = new THREE.Vector3();
+function stepCraft(t) {
+  if (!offshore.visible) return; SEA_U.uSeaT.value = t;
+  const fwd = new THREE.Vector3(Math.sin(CRAFT.hd), 0, Math.cos(CRAFT.hd)), stb = new THREE.Vector3(fwd.z, 0, -fwd.x), c = craft.position;
+  const hb = swellAt(c.x + fwd.x * 3, c.z + fwd.z * 3, t), hs = swellAt(c.x - fwd.x * 3, c.z - fwd.z * 3, t), hp = swellAt(c.x + stb.x, c.z + stb.z, t), hq = swellAt(c.x - stb.x, c.z - stb.z, t);
+  craftBody.position.y = (hb + hs + hp + hq) / 4 + 0.02; craftBody.rotation.set(-Math.atan2(hb - hs, 6), 0, Math.atan2(hp - hq, 2) * 1.4);
+  if (t - (CRAFT.flashT || -9) < 0.6) CRAFT.lamp.material.color.setRGB(0.6, 1.6, 2.2); else CRAFT.lamp.material.color.setRGB(1, 0.96, 0.85).multiplyScalar(Math.sin(t * 2.1) > 0.97 ? 1.6 : 0.8);   // blinks; cyan when a report checks out
+  coast.material.uniforms.uCol.value.copy(scene.fog.color).lerp(new THREE.Color(0x2d3a48), 0.28);
+}
+const rackWorld = i => { craftBody.updateMatrixWorld(true); return craftBody.localToWorld(RACK[i].clone()); };
+const craftWorld = v => { craftBody.updateMatrixWorld(true); return craftBody.localToWorld(v.clone()); };
+// what sits in each bird's talons on the way in (decision chain G: it launches "with prey"; what the prey is, is still open)
+function makePrey() { const g5 = new THREE.Group(), fur = std(0x6e5a48, 0.95);
+  const b = new THREE.Mesh(new THREE.SphereGeometry(0.03, 10, 8), fur); b.scale.set(1, 0.9, 1.7); g5.add(b);
+  const hd = new THREE.Mesh(new THREE.SphereGeometry(0.018, 8, 6), fur); hd.position.z = 0.055; g5.add(hd);
+  const tl = new THREE.Mesh(new THREE.CylinderGeometry(0.003, 0.0015, 0.08, 4), std(0x9a7c6a, 0.9)); tl.rotation.x = Math.PI / 2 + 0.3; tl.position.set(0, -0.01, -0.085); g5.add(tl);
+  g5.position.set(0, -0.135, 0.03); g5.visible = false; g5.traverse(o => { if (o.isMesh) { o.castShadow = true; o.userData.tcat = 'fur'; } }); return g5; }
 
 // ---------- atmosphere extras ----------
 function noiseTex(seed) { const c = document.createElement('canvas'); c.width = c.height = 256; const x = c.getContext('2d'), im = x.createImageData(256, 256); for (let j = 0; j < 256; j++) for (let i = 0; i < 256; i++) { const n = pfbm(i / 256, j / 256, 3, 5, seed); const a = smooth(0.42, 0.75, n); const k = (j * 256 + i) * 4; im.data[k] = im.data[k + 1] = im.data[k + 2] = 255; im.data[k + 3] = a * 255; } x.putImageData(im, 0, 0); const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; return t; }
@@ -1028,22 +1228,33 @@ const rings = {
   snd: new Ring(0xffb347, 0.8, 160), th: new Ring(0xff6a3d, 0.85, 120), int: new Ring(0xff8080, 0.7, 200, true), lkl: new Ring(0xe8e4d8, 0.35, 240, true),
   ceFill: new Ring(0x80e0ff, 0.22, 64, false, true), ce: new Ring(0x80e0ff, 0.95, 64),
 };
-function line3(hex, opacity, dashed) { const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6 * 3), 3)); geo.setDrawRange(0, 2); const mat = dashed ? new THREE.LineDashedMaterial({ color: C(hex), dashSize: 4, gapSize: 3, transparent: true, opacity, depthTest: false, toneMapped: false, fog: false }) : new THREE.LineBasicMaterial({ color: C(hex), transparent: true, opacity, depthTest: false, toneMapped: false, fog: false }); const l = new THREE.Line(geo, mat); l.renderOrder = 31; l.frustumCulled = false; l.userData.noPip = true; l.visible = false; OV.add(l); return l; }
+function line3(hex, opacity, dashed, n = 6) { const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 3), 3)); geo.setDrawRange(0, 2); const mat = dashed ? new THREE.LineDashedMaterial({ color: C(hex), dashSize: 4, gapSize: 3, transparent: true, opacity, depthTest: false, toneMapped: false, fog: false }) : new THREE.LineBasicMaterial({ color: C(hex), transparent: true, opacity, depthTest: false, toneMapped: false, fog: false }); const l = new THREE.Line(geo, mat); l.renderOrder = 31; l.frustumCulled = false; l.userData.noPip = true; l.visible = false; OV.add(l); return l; }
 function setLine(l, pts) { const a = l.geometry.attributes.position; pts.forEach((p, i) => a.setXYZ(i, p.x, p.y, p.z)); l.geometry.setDrawRange(0, pts.length); a.needsUpdate = true; if (l.material.isLineDashedMaterial) l.computeLineDistances(); }
 const bearing = line3(0x80e0ff, 0.95, false), beam = line3(0x80e0ff, 0.9, true), whisperBeam = line3(0x80e0ff, 0.45, false), dfLine = line3(0xff5050, 0.95, false), arrowLine = line3(0xffb347, 0.95, true);
+const earPt = () => patrolA[0].position.clone().add(new THREE.Vector3(0, 1.5, 0));   // the patrol's radio receiver: what hears a burst near him
+const pentLine = line3(0x80e0ff, 0.55, true), pathLine = line3(0xffb347, 0.8, true, 32), uplink = line3(0x80e0ff, 0.9, true);   // the pentagon, his predicted path, the craft's satellite uplink
+pentLine.material.dashSize = 6; pentLine.material.gapSize = 4;
 const frustum = (() => { const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(16 * 3), 3)); const l = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: C(0xff8a4a), transparent: true, opacity: 0.55, depthTest: false, toneMapped: false, fog: false })); l.renderOrder = 31; l.frustumCulled = false; l.userData.noPip = true; OV.add(l); return l; })();
 const dot = new THREE.Sprite(new THREE.SpriteMaterial({ map: radialTex([[0, 'rgba(255,255,255,1)'], [0.25, 'rgba(128,224,255,1)'], [1, 'rgba(128,224,255,0)']]), depthTest: false, transparent: true, toneMapped: false, fog: false }));
 dot.scale.setScalar(9); dot.renderOrder = 32; dot.visible = false; dot.userData.noPip = true; OV.add(dot);
+// at sea (the Craft view, the cinematic's first and last shots): the boat's patch of sea shows, the island is put away
+let atSea = false, LAND = null;
+function setSea(on) {
+  if (!LAND) LAND = [terrain, ...Object.values(veg), lianas, ...mist, water, trailRib, roadRib, crops, hut, flies].filter(Boolean);
+  if (atSea === on) return; atSea = on; offshore.visible = on; LAND.forEach(o => { o.visible = !on; });
+  if (on) sun.target.position.set(CRAFT.x, 0, CRAFT.z); else { const cx = (W.eagleBase.x + W.op.x) / 2, cz = (W.eagleBase.z + W.op.z) / 2; sun.target.position.set(cx, H(cx, cz), cz); }
+  moon.target.position.copy(sun.target.position); sun.position.copy(KEY_DIR).multiplyScalar(500).add(sun.target.position); shadowDirty = true; updateOverlays();
+}
 const fxPool = []; function fxRing(hex, cx, cz, r0, r1, dur, delay = 0) { let f = fxPool.find(o => !o.on); if (!f) { f = { ring: new Ring(hex, 0.9, 120) }; fxPool.push(f); } f.ring.mat.color.copy(C(hex)); Object.assign(f, { on: true, cx, cz, r0, r1, dur, t: -delay }); f.ring.show(false); return f; }
 
 // ---------- labels ----------
 const LBL = [];
-function label(text, cls, posFn, visFn) { const el = document.createElement('div'); el.className = 'lbl ' + (cls || ''); el.textContent = text; $('#labels').appendChild(el); const o = { el, posFn, visFn: visFn || (() => true) }; LBL.push(o); return o; }
+function label(text, cls, posFn, visFn, sea = false) { const el = document.createElement('div'); el.className = 'lbl ' + (cls || ''); el.textContent = text; $('#labels').appendChild(el); const o = { el, posFn, visFn: visFn || (() => true), sea }; LBL.push(o); return o; }
 const _v = new THREE.Vector3();
 function updateLabels(cam = camera) {
   const on = $('#ov-lbl').checked && camMode !== 'cine', w = canvas.clientWidth, h = canvas.clientHeight;
   for (const L of LBL) {
-    if (!on || !L.visFn()) { L.el.style.transform = 'translate(-9999px,0)'; continue; }
+    if (!on || L.sea !== atSea || !L.visFn()) { L.el.style.transform = 'translate(-9999px,0)'; continue; }
     L.posFn(_v); _v.project(cam); if (_v.z > 1 || _v.z < -1) { L.el.style.transform = 'translate(-9999px,0)'; continue; }
     const x = (_v.x * 0.5 + 0.5) * w, y = (-_v.y * 0.5 + 0.5) * h; L.el.style.transform = `translate(${(x - L.el.offsetWidth / 2) | 0}px,${(y - L.el.offsetHeight - 12) | 0}px)`;
   }
@@ -1102,12 +1313,12 @@ function updateEnvironment() {
   sun.position.copy(KEY_DIR).multiplyScalar(500).add(sun.target.position);
   hemi.intensity = lerp(overcast ? 0.35 : 0.5, overcast ? 0.45 : 0.25, day); hemi.color.set(day > 0.5 ? 0xcfe0ee : 0x7d97c8); hemi.groundColor.set(day > 0.5 ? 0x33351f : 0x10161a);
   moon.intensity = 0;
-  stars.material.opacity = overcast ? 0 : night * 0.9; moonSpr.visible = !overcast && night > 0.4; moonSpr.position.copy(MOON_DIR).multiplyScalar(2700);
+  stars.material.opacity = overcast ? 0 : night * 0.9; moonSpr.visible = !overcast && night > 0.4; moonSpr.position.copy(MOON_DIR).multiplyScalar(2700).add(camera.position);
   renderer.toneMappingExposure = lerp(2.1, overcast ? 0.8 : 0.55, day);
   wind.uWind.value = S.weather === 'typhoon' ? 1.8 : S.weather === 'rain' ? 0.6 : 0.3;
   rain.visible = overcast; splashes.visible = overcast; rain.material.uniforms.uSpeed.value = S.weather === 'typhoon' ? 16 : 10; rain.material.uniforms.uWindX.value = S.weather === 'typhoon' ? 9 : 1.5; rain.material.uniforms.uOpacity.value = S.weather === 'typhoon' ? 0.42 : 0.3;
   const mistO = misty ? 0.42 : overcast ? 0.3 : (hour > 4.5 && hour < 7.5 ? 0.26 : night > 0.5 ? 0.1 : 0.05);
-  mist.forEach((m, i) => { m.material.opacity = mistO * (1 - i * 0.12); m.material.color.copy(fc).lerp(new THREE.Color(0xffffff), day * 0.35); });
+  mist.forEach((m, i) => { m.userData.base = m.material.opacity = mistO * (1 - i * 0.12); m.material.color.copy(fc).lerp(new THREE.Color(0xffffff), day * 0.35); });
   flies.material.uniforms.uOn.value = night > 0.6 && !overcast ? 1 : 0;
   TERR_U.uWet.value = wet ? 1 : misty ? 0.35 : 0; terrMat.roughness = wet ? 0.5 : 0.95; terrMat.envMapIntensity = wet ? 1.2 : 0.5;
   // translucency light: sun by day, moon by night
@@ -1149,6 +1360,7 @@ function placeActors() {
     W.relayOff = Math.abs(rx) > 330 || Math.abs(rz) > 330; if (W.relayOff) { const kk = Math.min(330 / Math.abs(rx), 330 / Math.abs(rz)); rx *= kk; rz *= kk; }
     W.relayC.set(rx, H(rx, rz) + S.relayAlt_m, rz); W.relayR = W.relayOff ? 90 : 120; }
   chute.position.set(LKL.x, canopyTopAt(LKL.x, LKL.z) + 1.5, LKL.z);
+  layoutPentagon();
   const animals = S.animals !== false;
   const mq = trees.slice(0, Math.floor(trees.length * 0.25)).map(t => ({ t, d: Math.hypot(t.x - 40, t.z + 150) })).sort((a, b) => a.d - b.d).slice(0, 5);
   macaques.forEach((q, i) => { const t = mq[i].t; q.position.set(t.x + Math.cos(i) * t.r * 0.4, t.y + t.h + t.r * 0.1 - 0.4, t.z + Math.sin(i) * t.r * 0.4); q.rotation.y = i * 1.3; q.visible = animals; });
@@ -1178,8 +1390,8 @@ function updateOverlays() {
   const acc = g(R, 'output.accuracy', {}), found = g(R, 'find.status', 'NOT FOUND') !== 'NOT FOUND' && running.showFix;
   const ceR = Math.max(1, acc.ce_m || 10); rings.ce.set(W.opEst.x, W.opEst.z, ceR, clamp(ceR * 0.04, 0.25, 2), 1.2); rings.ceFill.set(W.opEst.x, W.opEst.z, ceR, 0, 1.1);
   rings.ce.show(found); rings.ceFill.show(found);
-  bearing.visible = found && !!ac.detected; setLine(bearing, [W.eagle, new THREE.Vector3(W.opEst.x, W.opEst.y + 0.5, W.opEst.z)]);
-  if (camMode === 'eagle' || camMode === 'operator' || camMode === 'cine') Object.values(rings).forEach(r => r.show(false));
+  bearing.visible = found && !!ac.detected && !atSea; setLine(bearing, [W.eagle, new THREE.Vector3(W.opEst.x, W.opEst.y + 0.5, W.opEst.z)]);
+  if (camMode === 'eagle' || camMode === 'operator' || camMode === 'cine' || atSea) Object.values(rings).forEach(r => r.show(false));
   OV.visible = camMode !== 'operator'; eagle.visible = camMode !== 'eagle' || flight.hold;
 }
 function updateFrustum() {
@@ -1187,7 +1399,7 @@ function updateFrustum() {
   pipCam.updateMatrixWorld(); const tH = Math.tan(pipCam.fov * Math.PI / 360) * far, tW = tH * pipCam.aspect, a = frustum.geometry.attributes.position;
   const c = [[-tW, -tH], [tW, -tH], [tW, tH], [-tW, tH]].map(([x, y]) => new THREE.Vector3(x, y, -far).applyMatrix4(pipCam.matrixWorld)), o = pipCam.position;
   let k = 0; const put = v => a.setXYZ(k++, v.x, v.y, v.z); for (let i = 0; i < 4; i++) { put(o); put(c[i]); put(c[i]); put(c[(i + 1) % 4]); } a.needsUpdate = true;
-  frustum.visible = $('#ov-fr').checked && !flight.hold && camMode !== 'cine' && camMode !== 'eagle';
+  frustum.visible = $('#ov-fr').checked && !flight.hold && camMode !== 'cine' && camMode !== 'eagle' && !atSea;
 }
 
 // ---------- Eagle cam: thermal / visible / ID (all respect leaf alpha) ----------
@@ -1303,6 +1515,7 @@ function aimPip() {
 }
 function withPass(kind, fn) {
   const au = renderer.shadowMap.autoUpdate; renderer.shadowMap.autoUpdate = false;
+  const sea = atSea; if (sea) LAND.forEach(o => { o.visible = true; });
   const bg = scene.background, fog = scene.fog, env = scene.environment, ev = eagle.visible; eagle.visible = false; pipHidden.forEach(o => { o.userData._v = o.visible; if (kind !== 'visible' || !o.userData.keepVis) o.visible = false; });
   if (kind !== 'visible') {
     pipMeshes.forEach(m => { m.userData._m = m.material; m.material = passMat(kind, m); });
@@ -1312,7 +1525,7 @@ function withPass(kind, fn) {
   }
   try { fn(); } finally {
     if (kind !== 'visible') pipMeshes.forEach(m => { m.material = m.userData._m; });
-    pipHidden.forEach(o => { o.visible = o.userData._v; }); eagle.visible = ev; scene.background = bg; scene.fog = fog; scene.environment = env; renderer.shadowMap.autoUpdate = au;
+    pipHidden.forEach(o => { o.visible = o.userData._v; }); if (sea) LAND.forEach(o => { o.visible = false; }); eagle.visible = ev; scene.background = bg; scene.fog = fog; scene.environment = env; renderer.shadowMap.autoUpdate = au;
   }
 }
 const IRON = (() => { const st = [[0, 0, 0, 0], [0.12, 30, 0, 90], [0.3, 120, 0, 150], [0.5, 210, 40, 90], [0.66, 245, 110, 10], [0.82, 255, 190, 30], [0.94, 255, 240, 140], [1, 255, 255, 255]]; const t = new Uint8Array(256 * 3); for (let i = 0; i < 256; i++) { const v = i / 255; let k = 0; while (k < st.length - 2 && v > st[k + 1][0]) k++; const a = st[k], b = st[k + 1], f = (v - a[0]) / (b[0] - a[0]); for (let c = 0; c < 3; c++) t[i * 3 + c] = Math.round(a[c + 1] + (b[c + 1] - a[c + 1]) * f); } return t; })();
@@ -1483,9 +1696,16 @@ function drawMap(cv = mapCv) {
   const ringC = (wx, wz, r, col, dash) => { const [a, b] = m(wx, wz); x.beginPath(); x.arc(a, b, r * s, 0, Math.PI * 2); x.setLineDash(dash || []); x.strokeStyle = col; x.lineWidth = 1.5 * lw; x.stroke(); x.setLineDash([]); };
   ringC(LKL.x, LKL.z, (S.lklRadius_km || 1) * 1000, 'rgba(232,228,216,.5)', [4, 4]);
   { const [a, b] = m(LKL.x, LKL.z); x.strokeStyle = '#ffb347'; x.lineWidth = 2 * lw; x.beginPath(); x.moveTo(a - 5 * lw, b - 5 * lw); x.lineTo(a + 5 * lw, b + 5 * lw); x.moveTo(a + 5 * lw, b - 5 * lw); x.lineTo(a - 5 * lw, b + 5 * lw); x.stroke(); x.fillStyle = '#ffb347'; x.fillText('LKL', a + 7 * lw, b - 4 * lw); }
-  if (S.enemy !== 'none') { const [a, b] = m(OUTPOST.x, OUTPOST.z); x.save(); x.translate(a, b); x.rotate(Math.PI / 4); x.fillStyle = 'rgba(255,128,128,.3)'; x.strokeStyle = '#ff8080'; x.lineWidth = 2 * lw; x.fillRect(-5 * lw, -5 * lw, 10 * lw, 10 * lw); x.strokeRect(-5 * lw, -5 * lw, 10 * lw, 10 * lw); x.restore(); x.fillStyle = '#ff8080'; x.fillText('OUTPOST · DF', Math.min(a - 60 * lw, Wc - 70 * lw), b + 9 * lw); }
+  if (S.enemy !== 'none') { const [a, b] = m(OUTPOST.x, OUTPOST.z); x.save(); x.translate(a, b); x.rotate(Math.PI / 4); x.fillStyle = 'rgba(255,128,128,.3)'; x.strokeStyle = '#ff8080'; x.lineWidth = 2 * lw; x.fillRect(-5 * lw, -5 * lw, 10 * lw, 10 * lw); x.strokeRect(-5 * lw, -5 * lw, 10 * lw, 10 * lw); x.restore(); x.fillStyle = '#ff8080'; x.fillText('OUTPOST', Math.min(a - 40 * lw, Wc - 50 * lw), b + 9 * lw); }
   { const [a, b] = m(W.eagleBase.x, W.eagleBase.z); x.fillStyle = 'rgba(128,224,255,.25)'; x.strokeStyle = '#80e0ff'; x.lineWidth = 2 * lw; x.beginPath(); x.arc(a, b + 3 * lw, 6 * lw, Math.PI, 0); x.closePath(); x.fill(); x.stroke(); x.fillStyle = '#80e0ff'; x.fillText('EAGLE-1', a + 8 * lw, b - 8 * lw); }
-  { const [a, b] = m(W.relayC.x, W.relayC.z); x.strokeStyle = '#80e0ff'; x.lineWidth = 1.5 * lw; x.beginPath(); x.arc(a, b + 2 * lw, 5 * lw, Math.PI, 0); x.closePath(); x.stroke(); x.fillStyle = '#80e0ff'; x.fillText(W.relayOff ? 'RELAY ' + fmtDist(S.relayDist_m) : 'RELAY', a + 7 * lw, b - 2 * lw); }
+  { // the pentagon round his predicted path: Eagles 2-5 on its corners, Eagle-1's corner empty while it is down on its perch
+    const cs = [0, 1, 2, 3, 4].map(k => { const a = pentA(k); return m(PENT.c.x + Math.cos(a) * PENT.r, PENT.c.z + Math.sin(a) * PENT.r); });
+    if (PENT.pathEnd) { const [a0, b0] = m(LKL.x, LKL.z), [a1, b1] = m(PENT.pathEnd.x, PENT.pathEnd.z); x.setLineDash([5 * lw, 4 * lw]); x.strokeStyle = 'rgba(255,179,71,.85)'; x.lineWidth = 1.4 * lw; x.beginPath(); x.moveTo(a0, b0); x.lineTo(a1, b1); x.stroke(); }
+    x.setLineDash([3 * lw, 3 * lw]); x.strokeStyle = 'rgba(128,224,255,.75)'; x.lineWidth = 1.2 * lw; x.beginPath(); cs.forEach(([a, b], i) => i ? x.lineTo(a, b) : x.moveTo(a, b)); x.closePath(); x.stroke(); x.setLineDash([]);
+    x.strokeStyle = '#80e0ff'; x.lineWidth = 1.2 * lw; x.beginPath(); x.arc(cs[0][0], cs[0][1], 3.2 * lw, 0, Math.PI * 2); x.stroke();
+    flock.forEach(b => { const p = b.d.object.position, [a, c] = m(p.x, p.z); x.fillStyle = '#80e0ff'; x.beginPath(); x.arc(a, c, 2.6 * lw, 0, Math.PI * 2); x.fill(); x.fillText(String(b.n), a + 4 * lw, c - 3 * lw); });
+    const [pa, pb] = m(PENT.c.x, PENT.c.z - PENT.r); x.fillStyle = '#80e0ff'; x.fillText('PENTAGON · 5 BIRDS', clamp(pa - 40 * lw, 2, Wc - 92 * lw), Math.max(10 * lw, pb - 5 * lw));
+    const [ca, cb] = m(-HALF, clamp(CRAFT.z, -HALF + 20, HALF - 20)); x.fillStyle = '#e8e4d8'; x.beginPath(); x.moveTo(ca + 2 * lw, cb); x.lineTo(ca + 9 * lw, cb - 4 * lw); x.lineTo(ca + 9 * lw, cb + 4 * lw); x.closePath(); x.fill(); x.fillText('CRAFT ~20 km', ca + 11 * lw, cb + 3.5 * lw); }
   const st = g(R, 'find.status', 'NOT FOUND'), reported = st === 'REPORTED' && running.showFix;
   if (reported) { const acc = g(R, 'output.accuracy', {}); ringC(W.opEst.x, W.opEst.z, Math.max(3, acc.ce_m || 10), 'rgba(128,224,255,.9)'); const [a, b] = m(W.opEst.x, W.opEst.z); x.fillStyle = 'rgba(128,224,255,.35)'; x.strokeStyle = '#80e0ff'; x.lineWidth = 2 * lw; x.fillRect(a - 6 * lw, b - 4 * lw, 12 * lw, 8 * lw); x.strokeRect(a - 6 * lw, b - 4 * lw, 12 * lw, 8 * lw); x.fillStyle = '#80e0ff'; x.fillText('PR · P ' + num(g(R, 'processing.finalP', 0), 2), a + 8 * lw, b + 8 * lw);
     const pk = (performance.now() - mapPulse) / 2400; if (pk >= 0 && pk < 1) { x.beginPath(); x.arc(a, b, (8 + 40 * pk) * lw, 0, Math.PI * 2); x.strokeStyle = `rgba(128,224,255,${(1 - pk).toFixed(2)})`; x.lineWidth = 2.5 * lw; x.stroke(); } }
@@ -1717,7 +1937,7 @@ function stepFlight(now) {
   // the Eagle moves itself (eagleD.update); the relay follows its path here and banks and flaps from its own motion
   if (relayFlight.active) { const k = clamp((now - relayFlight.t0) / relayFlight.dur, 0, 1), q = pathAt(relayFlight.pts, k); relay.position.copy(q.p); relay.rotation.set(0, Math.atan2(q.d.x, q.d.z), 0); if (k >= 1) relayFlight.active = false; }
 }
-function resetEagle() { flight.active = false; flight.hold = false; flight.onEnd = null; eagleD.stop(); perchEagle(); eagle.visible = camMode !== 'eagle'; relayFlight.active = false; relayFlight.parked = false; }
+function resetEagle() { flight.active = false; flight.hold = false; flight.onEnd = null; eagleD.stop(); eagleD.object.visible = true; if (eagleD.prey) eagleD.prey.visible = false; perchEagle(); eagle.visible = camMode !== 'eagle'; const wasOut = relayFlight.parked; relayFlight.active = false; relayFlight.parked = false; if (wasOut) flockRejoin(flock[0]); }
 const dotFlight = { pts: null, t0: 0, dur: 1 };
 function flyDot(pts, dur, hex = 0x80e0ff) { dotFlight.pts = pts; dotFlight.t0 = performance.now(); dotFlight.dur = dur; dot.material.color.copy(C(hex)); dot.visible = true; }
 
@@ -1741,7 +1961,7 @@ async function runMission() {
     else if (/detect/.test(name)) { pipMode = 'thermal'; $$('#pipMode button').forEach(x => x.classList.toggle('on', x.dataset.pip === 'thermal')); pipDirty = true; camGoal('eagle-wide'); }
     else if (/track/.test(name)) { camGoal('orbit'); }
     else if (/evidence/.test(name)) { if (g(R, 'input.acoustic.codeDetected', false)) { for (let k = 0; k < 3; k++) fxRing(0xffb347, W.op.x, W.op.z, 0.5, Math.max(15, Math.min(g(R, 'input.acoustic.signalRange_m', 30), 160)), 1.1, k * 0.45); operator.userData.signalT = 2.6; bearing.visible = true; setLine(bearing, [W.eagle, up(W.op, 0.4)]); } camGoal('op'); }
-    else if (/decide/.test(name)) { running.showFix = true; updateOverlays(); drawMap(); camGoal('fix'); }
+    else if (/decide/.test(name)) { running.showFix = true; updateOverlays(); drawMap(); camGoal('fix'); flockConverge(false); tick(`${t} · ${s.step}: ${s.note || ''} · Eagle-1 calls the other four in to look (3 of 5 must agree)`); }
     else if (/move away/.test(name)) {
       if (ch === 'whisper') {   // the relay overhead carries the FIX away before its satellite burst
         const to = up(W.away, 120); arrowLine.visible = true; setLine(arrowLine, [relay.position.clone(), to]); flyRelay([relay.position.clone(), to], RM ? 900 : 3200); camGoal('away'); await sleep(RM ? 900 : 3200);
@@ -1756,8 +1976,8 @@ async function runMission() {
     else if (/transmit/.test(name)) {
       const ir = Math.min(opt.interceptRadius_m || 0, 600), hears = !!opt.enemyHears && S.enemy !== 'none';
       if (ch === 'moveAway') { const p = W.away; if (ir) { fxRing(0xff8080, p.x, p.z, 2, ir, 1.6); fxRing(0xff8080, p.x, p.z, 2, ir, 1.6, 0.6); } tick(`${t} · ${g(R, 'output.message.bytes', 48)}-byte burst ${fmtDist(opt.emitDistFromOp_m)} from him, heard to ${fmtDist(opt.interceptRadius_m)}: any DF bearing points away from him`); }
-      else if (ch === 'perch') { if (ir) { fxRing(0xff8080, W.eagle.x, W.eagle.z, 2, ir, 1.6); fxRing(0xff8080, W.eagle.x, W.eagle.z, 2, ir, 1.6, 0.6); } if (hears) { dfLine.visible = true; setLine(dfLine, [mastTop, W.eagle]); camGoal('df'); } tick(`${t} · burst from the perch ${fmtDist(opt.emitDistFromOp_m)} from him, heard to ${fmtDist(opt.interceptRadius_m)}${hears ? ': the outpost DF mast gets a bearing on the perch' : ''}`); }
-      else if (ch === 'whisper') { whisperBeam.visible = true; setLine(whisperBeam, [W.eagle, relay.position.clone()]); flyDot([W.eagle.clone(), relay.position.clone()], 900); if (ir) fxRing(0xff8080, W.eagle.x, W.eagle.z, 1, ir, 1.4); if (hears) { dfLine.visible = true; setLine(dfLine, [mastTop, W.eagle]); } camGoal('whisper'); tick(`${t} · whisper straight up at ${num(opt.tx_dBm, 0)} dBm, heard on the ground to ${fmtDist(opt.interceptRadius_m)}${hears ? ': the enemy is inside that' : ''}`); }
+      else if (ch === 'perch') { if (ir) { fxRing(0xff8080, W.eagle.x, W.eagle.z, 2, ir, 1.6); fxRing(0xff8080, W.eagle.x, W.eagle.z, 2, ir, 1.6, 0.6); } if (hears) { dfLine.visible = true; setLine(dfLine, [earPt(), W.eagle]); camGoal('df'); } tick(`${t} · burst from the perch ${fmtDist(opt.emitDistFromOp_m)} from him, heard to ${fmtDist(opt.interceptRadius_m)}${hears ? ': the patrol\'s receiver gets a bearing on the perch' : ''}`); }
+      else if (ch === 'whisper') { whisperBeam.visible = true; setLine(whisperBeam, [W.eagle, relay.position.clone()]); flyDot([W.eagle.clone(), relay.position.clone()], 900); if (ir) fxRing(0xff8080, W.eagle.x, W.eagle.z, 1, ir, 1.4); if (hears) { dfLine.visible = true; setLine(dfLine, [earPt(), W.eagle]); } camGoal('whisper'); tick(`${t} · whisper straight up at ${num(opt.tx_dBm, 0)} dBm, heard on the ground to ${fmtDist(opt.interceptRadius_m)}${hears ? ': the enemy is inside that' : ''}`); }
     }
     else if (/relay/.test(name)) { const src = relay.position.clone(), from = ch === 'moveAway' ? W.away.clone() : ch === 'perch' ? W.eagle.clone() : null, sat = up(src, 420); const pts = from ? [from, src, sat] : [src, sat]; beam.visible = true; setLine(beam, pts); flyDot(pts, 1600); }
     else if (/marker/.test(name)) { mapPulse = performance.now(); drawMap(); }
@@ -1773,7 +1993,9 @@ let camAnim = null;
 function setCamMode(m) {
   if (m === 'cine') { startCine(); return; }
   if (camMode === 'cine') stopCine(true);
-  camMode = m; $$('.viewbtns button').forEach(b => b.classList.toggle('on', b.dataset.cam === m)); controls.enabled = m === 'orbit' || m === 'top'; updateOverlays();
+  const wasSea = camMode === 'craft'; camMode = m; $$('.viewbtns button').forEach(b => b.classList.toggle('on', b.dataset.cam === m)); controls.enabled = m === 'orbit' || m === 'top' || m === 'craft'; setSea(m === 'craft'); updateOverlays();
+  if (m === 'craft') { camAnim = null; controls.target.copy(craftWorld(new THREE.Vector3(0, 1.3, -0.4))); camera.position.copy(craftWorld(new THREE.Vector3(-8.5, 4.4, -10.5))); controls.update(); }
+  else if (wasSea) { camAnim = null; camera.position.set(-160, 120, 120); controls.target.set(-40, 30, -50); }
   if (m === 'orbit') camGoal('orbit');
   if (m === 'top') { const c = W.eagleBase.clone().lerp(W.op, 0.5); flyCam(new THREE.Vector3(c.x, 620, c.z + 1), new THREE.Vector3(c.x, 0, c.z)); }
   RG.syncState();
@@ -1790,60 +2012,117 @@ function camGoal(kind) {
   else if (kind === 'away') { const c = ex.clone().lerp(W.away, 0.5); flyCam(c.clone().add(side.clone().multiplyScalar(260)).add(new THREE.Vector3(0, 220, 0)), c); }
   else if (kind === 'coast') { const c = ex.clone().lerp(new THREE.Vector3(-395, ex.y, ex.z), 0.5); flyCam(c.clone().add(new THREE.Vector3(40, 200, 260)), c); }
   else if (kind === 'whisper') flyCam(ex.clone().add(side.clone().multiplyScalar(90)).add(new THREE.Vector3(0, 50, 0)), ex.clone().add(new THREE.Vector3(0, 55, 0)));
-  else if (kind === 'df') { const c = W.eagle.clone().lerp(mastTop, 0.5); flyCam(c.clone().add(new THREE.Vector3(-150, 230, -90)), c); }
+  else if (kind === 'df') { const c = W.eagle.clone().lerp(earPt(), 0.5), d = Math.max(60, W.eagle.distanceTo(earPt())); flyCam(c.clone().add(side.clone().multiplyScalar(d * 0.9)).add(new THREE.Vector3(0, d * 0.75 + 20, 0)), c); }
   else { const c = mid.clone(), d = 135 + span * 1.1, dir = new THREE.Vector3(-0.9, 0, 0.42).normalize(); const p = c.clone().add(dir.multiplyScalar(d)); p.y = Math.max(H(p.x, p.z) + 22, c.y + 14 + span * 0.2); flyCam(p, c.clone().setY(c.y + 4)); }
 }
-const cine = { on: false, i: 0, el: 0, shots: null, pipSize: null, dest: null, destDir: null, ringAt: -1, ringFx: null };
+const cine = { on: false, i: 0, el: 0, shots: null, pipSize: null, dest: null, destDir: null, ringAt: -1, ringFx: null, showPent: false, e1loop: false, launched: null, votesHtml: '' };
 const FLY_MS = 12;   // flying speed in the cinematic, m/s (cruise 11)
+const CAST = () => [eagleD, ...flock.map(b => b.d)];   // Eagle-1 .. Eagle-5
+// bold versions of the pentagon and the predicted path for the cinematic's high shot (a line is one pixel wide)
+function ribbonMesh(hex, n, opacity) { const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 6), 3)); const idx = []; for (let i = 0; i < n - 1; i++) { const a = i * 2; idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3); } geo.setIndex(idx);
+  const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: C(hex), transparent: true, opacity, depthTest: false, depthWrite: false, side: THREE.DoubleSide, toneMapped: false, fog: false })); m.renderOrder = 31; m.frustumCulled = false; m.visible = false; m.userData.noPip = true; OV.add(m); return m; }
+function setRibbon(m, pts, w, dashEvery = 0) { const a = m.geometry.attributes.position, up = new THREE.Vector3(0, 1, 0), sd = new THREE.Vector3();
+  pts.forEach((p, i) => { const q = pts[Math.min(i + 1, pts.length - 1)], o = pts[Math.max(i - 1, 0)]; sd.subVectors(q, o).cross(up).setY(0).normalize().multiplyScalar(w / 2); a.setXYZ(i * 2, p.x - sd.x, p.y, p.z - sd.z); a.setXYZ(i * 2 + 1, p.x + sd.x, p.y, p.z + sd.z); });
+  const idx = []; for (let i = 0; i < pts.length - 1; i++) { if (dashEvery && Math.floor(i / dashEvery) % 2) continue; const b = i * 2; idx.push(b, b + 2, b + 1, b + 1, b + 2, b + 3); } m.geometry.setIndex(idx); a.needsUpdate = true; }
+const pentRib = ribbonMesh(0x80e0ff, 61, 0.75), pathRib = ribbonMesh(0xffb347, 32, 0.85);
+const uplinkTex = canvasTex(8, 64, (x, w, h) => { x.clearRect(0, 0, w, h); x.fillStyle = '#fff'; x.fillRect(0, 0, w, h * 0.55); }, { repeat: true }); uplinkTex.repeat.set(1, 70);
+const uplinkBeam = (() => { const geo = new THREE.CylinderGeometry(0.035, 0.035, 520, 6, 1, true); geo.translate(0, 260, 0); const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: C(0x80e0ff), map: uplinkTex, transparent: true, opacity: 0.85, depthWrite: false, toneMapped: false, fog: false }));
+  m.renderOrder = 32; m.frustumCulled = false; m.visible = false; m.userData.noPip = true; scene.add(m); return m; })();
+const markTex = radialTex([[0, 'rgba(255,255,255,1)'], [0.28, 'rgba(128,224,255,.95)'], [1, 'rgba(128,224,255,0)']]);
+const birdMarks = [0, 1, 2, 3, 4].map(() => { const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: markTex, depthTest: false, transparent: true, toneMapped: false, fog: false, sizeAttenuation: false }));
+  sp.scale.setScalar(0.028); sp.renderOrder = 33; sp.visible = false; sp.userData.noPip = true; OV.add(sp); return sp; });
 function cineShots() {
-  const ex = W.eagle.clone(), op = W.op.clone(), mt = mastTop.clone(), out = outpost.position.clone();
-  const toSun = new THREE.Vector3(sunDir.x, 0, sunDir.z); if (toSun.lengthSq() < 1e-4) toSun.set(1, 0, 0); toSun.normalize();
+  const ex = W.eagle.clone(), op = W.op.clone(), V3 = THREE.Vector3; craft.updateMatrixWorld(true);
+  const toSun = new V3(sunDir.x, 0, sunDir.z); if (toSun.lengthSq() < 1e-4) toSun.set(1, 0, 0); toSun.normalize();
   const vx0 = ex.x - 90, vz0 = streamZ(ex.x - 90) + 22, vTop = canopyTopAt(vx0, vz0), lookZ = clamp(toSun.z / Math.max(0.35, Math.abs(toSun.x)), -1, 1) * 0.5;
-  const pushDir = new THREE.Vector3(OP_DIR.x, 0, OP_DIR.y).applyAxisAngle(new THREE.Vector3(0, 1, 0), 0.22);
+  const pushDir = new V3(OP_DIR.x, 0, OP_DIR.y).applyAxisAngle(new V3(0, 1, 0), 0.22);
   const eyeY = ex.y + eagleD.eyeHeight * 0.85;   // the perched bird's head height
-  const o = openDir(), oS = new THREE.Vector3(o.z, 0, -o.x);   // the perch's open side (the bird comes and goes that way), and across it
+  const o = openDir(), oS = new V3(o.z, 0, -o.x);   // the perch's open side (the bird comes and goes that way), and across it
   const besidePerch = ex.clone().addScaledVector(oS, 3.0).addScaledVector(o, 0.6).setY(eyeY + 0.2);   // beside the branch, off the flight line, clear of both trunks
   const longLens = d => clamp(34 * Math.pow(12 / Math.max(d, 1), 0.8), 8, 34);   // a longer lens while the bird is far off: it stays a fifth of the frame
-  const perchView = (dist, ang, dy) => ex.clone().addScaledVector(pushDir.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), ang), dist).setY(eyeY + dy);
+  const perchView = (dist, ang, dy) => ex.clone().addScaledVector(pushDir.clone().applyAxisAngle(new V3(0, 1, 0), ang), dist).setY(eyeY + dy);
+  const L3 = (x, y, z) => craft.localToWorld(new V3(x, y, z));
+  // the pentagon from 60 degrees up, the far edge of the frame still inside the map
+  const back = new V3(-0.62, 0, 0.78).normalize(), meanAlt = PENT.alt.reduce((s2, v) => s2 + v, 0) / PENT.alt.length;
+  const overP = PENT.c.clone().addScaledVector(back, 215); overP.y = meanAlt + 330; const overT = PENT.c.clone().addScaledVector(back, 40).setY(meanAlt - 30);
+  const u = op.clone().sub(ex).setY(0).normalize(), sd = new V3(-u.z, 0, u.x), topOp = overTrees(op.x, op.z), away = op.clone().sub(new V3(SNAG.x, op.y, SNAG.z)).setY(0).normalize();
+  const courier = g(R, 'output.chosen', null) === 'courier', mo = g(R, 'output.options', []).find(x => x.key === 'moveAway') || {}, ir = Math.min(mo.interceptRadius_m || 200, 400);
   const shots = [
-    { cap: '05:45 dawn · crane up over the canopy', dur: 8000, f: k => { const p = new THREE.Vector3(vx0 + k * 45, vTop + 3 + k * 88, vz0 - k * 8); return { p, t: new THREE.Vector3(vx0 + 460, vTop + 26 + k * 22, vz0 + lookZ * 460) }; } },
-    // from beside the branch, looking out over the open side: the bird comes in towards the lens on a long lens, swoops up
+    // D-G: the craft at its release point; one bird after another springs off the rack, peels away and turns for the coast
+    { cap: 'D-G · The craft: a Saronic-type autonomous boat, 24 ft, ~20 km offshore · five eagles launch one by one', dur: 8500, sea: true, launch: true, raw: true, fov: k => lerp(40, 50, smooth01((k - 0.25) / 0.7)), f: k => {
+      const e2 = smooth01(k), w = smooth01((k - 0.22) / 0.72);
+      return { p: L3(lerp(6.8, 11, e2), lerp(2.2, 7.5, e2), lerp(-10.5, -15, e2)), t: L3(lerp(0.1, 6, w), lerp(1.4, 4.5, w), lerp(-2.6, 12, w)) }; } },
+    { cap: '05:45 dawn · over the canopy, the five head for his last known position', dur: 6500, hideE1: true, regroup: true, f: k => { const p = new V3(vx0 + k * 45, vTop + 3 + k * 88, vz0 - k * 8); return { p, t: new V3(vx0 + 460, vTop + 26 + k * 22, vz0 + lookZ * 460) }; } },
+    // J: behind one bird on the circle, then up and back until all five and the pentagon they make are in frame
+    { cap: 'J · Pentagon: the five circle his predicted path 72° apart, 300 m across, 35 m over the crowns', dur: 9000, pent: true, raw: true, fov: k => lerp(38, 54, smooth01((k - 0.3) / 0.6)), f: k => {
+      const bp = flock[1].d.object.position, hd = pentHd(pentA(flock[1].slot)), fw = new V3(Math.sin(hd), 0, Math.cos(hd)), w = smooth01((k - 0.3) / 0.62);
+      const p = bp.clone().addScaledVector(fw, -4.8).add(new V3(0, 1.0, 0)), t = bp.clone().addScaledVector(fw, 2).add(new V3(0, -0.2, 0));
+      return { p: p.lerp(overP, w), t: t.lerp(overT, w) }; } },
+    // K: from beside the branch, looking out over the open side: it comes in towards the lens on a long lens, swoops up
     // onto the branch, flares, feet forward, hops round to face the operator and folds its wings
-    { cap: 'Eagle-1 comes in · long glide, swoop up, flare, feet forward, hop round, wings folded', dur: 8200, arrive: true, track: true, fov: (k, d) => longLens(d), f: (k, bird) => {
-      const w = smooth01((k - 0.72) / 0.26); return { p: besidePerch.clone().lerp(ex.clone().setY(eyeY), w * 0.2), t: bird.clone().add(new THREE.Vector3(0, 0.05, 0)) }; } },
-    { cap: 'On the perch · wings folded along its back, motor off, head scanning', dur: 7500, close: true, f: k => {
+    { cap: 'K · Eagle-1 drops out of the circle to a branch · long glide, swoop up, flare, feet forward, wings folded', dur: 8200, arrive: true, track: true, fov: (k, d) => longLens(d), f: (k, bird) => {
+      const w = smooth01((k - 0.72) / 0.26); return { p: besidePerch.clone().lerp(ex.clone().setY(eyeY), w * 0.2), t: bird.clone().add(new V3(0, 0.05, 0)) }; } },
+    { cap: 'L-M · On the perch · wings folded along its back, motor off, it searches on board', dur: 6500, close: true, f: k => {
       const a = lerp(0.62, -0.5, k), p = perchView(lerp(2.5, 1.75, k), a, lerp(0.05, -0.18, k)); p.y = Math.max(p.y, H(p.x, p.z) + 0.6);
       return { p, t: ex.clone().setY(eyeY - 0.12) }; } },
-    { cap: `Thermal · what the Eagle sees · him, outlined, ${S.opDist_m} m away, then 2.5× digital zoom`, dur: 7000, thermal: true, f: () => ({ p: ex.clone().add(pushDir.clone().multiplyScalar(2)), t: ex.clone() }) },
+    { cap: `N-O · Thermal: what the Eagle sees · him, outlined, ${S.opDist_m} m away, then 2.5× digital zoom`, dur: 7000, thermal: true, f: () => ({ p: ex.clone().add(pushDir.clone().multiplyScalar(2)), t: ex.clone() }) },
+    // Q-S: over the crowns behind the perch, looking out over him as the other four come in and circle
+    // from just over the crowns on his far side, looking up past him at the four circling against the sky
+    { cap: 'Q-S · Eagle-1 calls the other four · they fly in over him and look · 3 of 5 must agree before anything is sent', dur: 9000, converge: true, votes: true, raw: true, fov: () => 46, f: k => {
+      const p = op.clone().addScaledVector(away, 27 - k * 5).addScaledVector(sd, 5 - k * 3); p.y = Math.max(overTrees(p.x, p.z), topOp) + 9; return { p, t: op.clone().addScaledVector(away, -3).setY(topOp + 19) }; } },
+    // V: the release, from beside the branch: it drops off on the open side, wings open, and flies out over the valley on the long lens
+    { cap: courier ? 'V · Off the branch: courier to the coast, no radio over land' : `V · Hop first: off the branch at 12 m/s, radio silent until ${num(S.moveAway_km, 1)} km from him`,
+      dur: 6000, takeoff: true, track: true, fov: (k, d) => longLens(d), f: (k, bird) => ({ p: besidePerch.clone(), t: bird.clone() }) },
+    // W: it comes head-on at a camera just beyond the send point, against the sky, and passes over it; the ring spreads as the
+    // camera cranes up and looks back over the forest towards him
+    { cap: courier ? 'W · The coast: the report goes out by hand, nothing on the air' : `W · The burst: ${g(R, 'output.message.bytes', 48)}-byte report sent${mo.emitDistFromOp_m ? ' ' + fmtDist(mo.emitDistFromOp_m) : ''} from him, heard to ${fmtDist(ir)}`,
+      dur: 8500, burst: true, track: true, ring: courier ? 0 : ir, fov: (k, d) => lerp(longLens(d), 42, smooth01((k - 0.6) / 0.32)), f: (k, bird) => {
+      const d = cine.dest || bird, dir = cine.destDir || new V3(0, 0, 1), w = courier ? 0 : smooth01((k - 0.6) / 0.32);   // the courier: it passes over and is gone
+      // hold on the spot 8 m short of the camera once it gets there, so it leaves through the top of the frame
+      const tb = bird.clone().sub(d).dot(dir) < -8 ? bird.clone() : d.clone().addScaledVector(dir, -8).setY(bird.y);
+      // the crane stays low (40 m) and looks back inland, so the frame never shows past the edge of the map
+      const camA = d.clone().addScaledVector(dir, 3).add(new V3(0, -3, 0)), camB = d.clone().addScaledVector(dir, 3).add(new V3(0, 40, 0));
+      const rf = cine.ringFx, kr = !rf ? 0 : rf.on ? clamp(rf.t / rf.dur, 0, 1) : 1, reach = courier ? 60 : Math.max(70, ir * (1 - Math.pow(1 - kr, 2)) * 0.85);
+      const look = d.clone().addScaledVector(dir, -reach); look.y = H(look.x, look.z);   // follows the ring's front edge inland
+      return { p: camA.lerp(camB, w), t: tb.lerp(look, w) }; } },
+    // X-Z: back at the craft: the report comes in over the water, the lamp blinks (tag checked), it goes up to the satellite
+    // from seaward of the boat looking east to the coast: the last hop comes in from the land, then the report goes up
+    { cap: 'X-Z · Bird to bird to the craft · it checks the tag and forwards the sealed report by satellite · a marker on ATAK at base', dur: 7000, sea: true, uplink: true, hideE1: true, raw: true, fov: k => lerp(40, 48, smooth01(k)), f: k => {
+      const e2 = smooth01(k); return { p: L3(lerp(-11, -15.5, e2), lerp(2.0, 4.6, e2), lerp(-5.2, -8.2, e2)), t: L3(lerp(1.5, 2.5, e2), lerp(2.6, 6.5, e2), lerp(0.4, 1.2, e2)) }; } },
   ];
-  if (S.enemy !== 'none') shots.push({ cap: 'The target · DF mast on the ridge, ~500 m from him', dur: 7000, f: k => ({ p: new THREE.Vector3(out.x - 95 + k * 45, out.y + 34 - k * 10, out.z - 75 + k * 12), t: mt.clone().setY(mt.y - 8) }) });
-  // the release, from beside the branch: it drops off on the open side, wings open, and flies out over the valley on the long lens
-  const courier = g(R, 'output.chosen', null) === 'courier', mo = g(R, 'output.options', []).find(x => x.key === 'moveAway') || {}, ir = Math.min(mo.interceptRadius_m || 200, 400);
-  shots.push({ cap: courier ? 'The release · off the branch: courier to the coast, no radio over land' : 'The release · off the branch and out at 12 m/s, radio silent until far from him',
-    dur: 6000, takeoff: true, track: true, fov: (k, d) => longLens(d), f: (k, bird) => ({ p: besidePerch.clone(), t: bird.clone() }) });
-  // it comes head-on at a camera just beyond the send point, against the sky, and passes over it; the ring spreads as the camera cranes up
-  // and looks back over the forest towards him
-  shots.push({ cap: courier ? 'The coast · the report goes out by hand, nothing on the air' : `The burst · ${g(R, 'output.message.bytes', 48)}-byte report sent${mo.emitDistFromOp_m ? ' ' + fmtDist(mo.emitDistFromOp_m) : ''} from him, heard to ${fmtDist(ir)}`,
-    dur: 8500, burst: true, track: true, ring: courier ? 0 : ir, fov: (k, d) => lerp(longLens(d), 42, smooth01((k - 0.6) / 0.32)), f: (k, bird) => {
-    const d = cine.dest || bird, dir = cine.destDir || new THREE.Vector3(0, 0, 1), w = courier ? 0 : smooth01((k - 0.6) / 0.32);   // the courier: it passes over and is gone
-    // hold on the spot 8 m short of the camera once it gets there, so it leaves through the top of the frame
-    const tb = bird.clone().sub(d).dot(dir) < -8 ? bird.clone() : d.clone().addScaledVector(dir, -8).setY(bird.y);
-    // the crane stays low (40 m) and looks back inland, so the frame never shows past the edge of the map
-    const camA = d.clone().addScaledVector(dir, 3).add(new THREE.Vector3(0, -3, 0)), camB = d.clone().addScaledVector(dir, 3).add(new THREE.Vector3(0, 40, 0));
-    const rf = cine.ringFx, kr = !rf ? 0 : rf.on ? clamp(rf.t / rf.dur, 0, 1) : 1, reach = courier ? 60 : Math.max(70, ir * (1 - Math.pow(1 - kr, 2)) * 0.85);
-    const look = d.clone().addScaledVector(dir, -reach); look.y = H(look.x, look.z);   // follows the ring's front edge inland
-    return { p: camA.lerp(camB, w), t: tb.lerp(look, w) }; } });
   return shots;
 }
 function startCine() {
   stopMission(); RG.send({ t: 'cine', on: true }); camMode = 'cine'; cine.on = true; cine.i = 0; cine.ringAt = -1; document.body.classList.add('cine'); controls.enabled = false; idleT = 0;
-  envHourOverride = 5.75; updateEnvironment(); cine.shots = cineShots(); resize(); frustum.visible = false; bearing.visible = false;
+  envHourOverride = 5.75; updateEnvironment(); cine.fog0 = scene.fog.density; cine.shots = cineShots(); resize(); frustum.visible = false; bearing.visible = false;
   $$('.viewbtns button').forEach(b => b.classList.toggle('on', b.dataset.cam === 'cine')); updateOverlays(); startShot();
+}
+// D-G: every bird stands on its perch on the rack, facing out over the side it will leave by, prey in its talons
+function launchSetup() {
+  Object.assign(flight, { active: true, hold: true, onEnd: null }); flock.forEach(b => { b.ctl = 'own'; });
+  CAST().forEach((d, i) => { d.stop(); d.object.visible = true; if (!d.prey) { d.prey = makePrey(); d.rig.by.tarsusR.add(d.prey); } d.prey.visible = false;
+    d.launchSide = i % 2 ? 1 : -1; d.perch(rackWorld(i), CRAFT.hd + d.launchSide * Math.PI / 2); });
+  cine.launched = [false, false, false, false, false];
+}
+function launchBird(d, i) {   // spring off the rack, out over the side, climb, then turn for the coast
+  const V3 = THREE.Vector3, r = d.object.position.clone(), sv = new V3(Math.cos(CRAFT.hd), 0, -Math.sin(CRAFT.hd)).multiplyScalar(d.launchSide), fw = new V3(Math.sin(CRAFT.hd), 0, Math.cos(CRAFT.hd)), up = new V3(0, 1, 0), east = new V3(1, 0, 0);
+  const p1 = r.clone().addScaledVector(sv, 3.2).addScaledVector(up, 1.1), p2 = r.clone().addScaledVector(sv, 9).addScaledVector(fw, 3).addScaledVector(up, 4), p3 = r.clone().addScaledVector(sv, 13).addScaledVector(fw, 15).addScaledVector(up, 9.5);
+  const p4 = p3.clone().addScaledVector(east, 55).addScaledVector(fw, 8 + i * 4).addScaledVector(up, 13), p5 = p4.clone().addScaledVector(east, 380).add(new V3(0, 42, (i - 2) * 26));
+  d.prey.visible = true; d.takeoff([r, p1, p2, p3], { speed: 11, onDone: () => d.follow([p3, p4, p5], { speed: 11 }) });
 }
 function startShot() {
   const sh = cine.shots[cine.i], pv = $('#pip'); $('#cineCap').textContent = `${cine.i + 1}/${cine.shots.length} · ${sh.cap}`; $('#cineThermal').style.display = sh.thermal ? 'block' : 'none';
+  setSea(!!sh.sea); cine.showPent = !!sh.pent; cine.e1loop = false; mist.forEach(m2 => { m2.material.opacity = m2.userData.base || 0; }); if (cine.fog0) scene.fog.density = cine.fog0; pentRib.visible = pathRib.visible = false; pathRib.userData.set = false; uplinkBeam.visible = false; birdMarks.forEach(m2 => { m2.visible = false; }); uplink.visible = false; dot.visible = false; dot.scale.setScalar(9);
+  $('#cineVotes').classList.toggle('show', !!sh.votes); cine.votesHtml = ''; $('#cineVotes').innerHTML = '';
+  if (sh.launch) launchSetup(); else CAST().forEach(d => { if (d.prey) d.prey.visible = false; });
+  if (sh.hideE1) { Object.assign(flight, { active: false, hold: true, onEnd: null }); eagleD.stop(); eagleD.object.visible = false; }
+  if (sh.regroup) flockReset();
+  if (sh.pent) { flockReset(); Object.assign(flight, { active: false, hold: true, onEnd: null }); eagleD.stop(); eagleD.setMode('auto'); eagleD.object.visible = true; cine.e1loop = true; }
   if (sh.thermal) { cine.pipSize = [pv.width, pv.height]; pv.width = 1280; pv.height = 960; pipMode = 'thermal'; pipZoom = 1; pipDirty = true; RG.syncState(); }
-  if (sh.arrive) arriveEagle(5.2);
+  if (sh.arrive) { eagleD.object.visible = true; arriveEagle(5.2); }
+  if ((sh.close || sh.thermal || sh.converge || sh.takeoff) && eagleD.object.position.distanceTo(W.eagle) > 2) { Object.assign(flight, { active: false, hold: false, onEnd: null }); eagleD.stop(); eagleD.object.visible = true; perchEagle(); }
+  if (sh.converge) flockConverge(true);
+  if (sh.uplink) flockReset();   // the five are inland by now
   const relDest = () => g(R, 'output.chosen', null) === 'courier' ? coastPt() : W.away.clone(), dirTo = (a, b) => { const d = b.clone().sub(a).setY(0); return d.lengthSq() < 1 ? openDir() : d.normalize(); };
   if (sh.takeoff) {   // out over the open side and round towards where it is going
     const o = openDir(), toA = dirTo(W.eagle, relDest()), go = W.eagle.clone().addScaledVector(o, 45).addScaledVector(toA, 35); go.y = overTrees(go.x, go.z) + 10;
@@ -1860,18 +2139,37 @@ function startShot() {
 }
 const _cineFwd = new THREE.Vector3(), cineCam = { p: null, t: null, last: 0 };
 function stepCine(now, rawDt) {
-  // one clock for the shots and the bird: both advance by the frame time (up to 1 s), so a stalled or hidden tab
-  // pauses the film instead of letting the shots run ahead of the bird
-  if (!cine.on) return; cine.el += rawDt * 1000; const sh = cine.shots[cine.i], k = clamp(cine.el / sh.dur, 0, 1), e = k * k * (3 - 2 * k);
+  // one clock for the shots and the birds: both advance by the frame time (up to 1 s), so a stalled or hidden tab
+  // pauses the film instead of letting the shots run ahead of the birds
+  if (!cine.on) return; cine.el += rawDt * 1000; const sh = cine.shots[cine.i], k = clamp(cine.el / sh.dur, 0, 1), e = k * k * (3 - 2 * k), V3 = THREE.Vector3;
+  if (sh.launch) CAST().forEach((d, i) => {   // on the rack they ride the boat; each goes at its turn, 1.2 s apart
+    if (!cine.launched[i] && cine.el >= (0.9 + 1.2 * i) * 1000) { cine.launched[i] = true; launchBird(d, i); }
+    else if (!cine.launched[i]) { d.object.position.copy(rackWorld(i)); d.object.position.y += d.perchOffset; } });
+  if (cine.e1loop) { const a = pentA(0); pentPos(a, eagleD.object.position); eagleD.object.rotation.set(0, pentHd(a), 0); }
   let v;
   if (sh.track) {   // tracking shots follow the bird itself, smoothed so its wingbeat and turns do not shake the camera
     eagleD.object.getWorldDirection(_cineFwd); _cineFwd.y = 0; if (_cineFwd.lengthSq() < 1e-6) _cineFwd.set(0, 0, 1); _cineFwd.normalize();
     const raw = sh.f(k, eagleD.object.position.clone(), _cineFwd.clone()), dt = Math.min(0.1, Math.max(0, (now - cineCam.last) / 1000)); cineCam.last = now;
     if (!cineCam.p || cineCam.shot !== sh) { cineCam.p = raw.p.clone(); cineCam.t = raw.t.clone(); cineCam.shot = sh; }
     const a = 1 - Math.exp(-dt * 5.5); cineCam.p.lerp(raw.p, a); cineCam.t.lerp(raw.t, Math.min(1, a * 1.6)); v = { p: cineCam.p, t: cineCam.t };
-  } else v = sh.f(e);
+  } else v = sh.f(sh.raw ? k : e);
   if (cine.ringAt >= 0 && cine.el >= cine.ringAt && sh.ring) { cine.ringAt = -1; const d = cine.dest; cine.ringFx = fxRing(0xff8080, d.x, d.z, 2, sh.ring, 3.2); fxRing(0xff8080, d.x, d.z, 2, sh.ring, 3.2, 0.8); }
+  if (sh.pent) { const w = smooth01((k - 0.3) / 0.5), w2 = smooth01((k - 0.58) / 0.3); CAST().forEach((d, i) => { const m2 = birdMarks[i]; m2.visible = w2 > 0.02; m2.position.copy(d.object.position); m2.material.opacity = w2; }); mist.forEach(m2 => { m2.material.opacity = (m2.userData.base || 0) * (1 - 0.8 * w); }); scene.fog.density = cine.fog0 * (1 - 0.55 * w);
+    // the pentagon edges, 12 points each, drawn as a 3 m band; his predicted path as a dashed 4 m band on the crowns
+    const pp = []; for (let c = 0; c < 5; c++) { const A = pentPos(pentA(c)), B = pentPos(pentA(c + 1)); for (let j = 0; j < 12; j++) pp.push(A.clone().lerp(B, j / 12)); } pp.push(pentPos(pentA(0)));
+    setRibbon(pentRib, pp, 3, 0); pentRib.visible = pathRib.visible = w2 > 0.02; pentRib.material.opacity = 0.75 * w2; pathRib.material.opacity = 0.85 * w2; if (!pathRib.userData.set) { setRibbon(pathRib, pathPts(), 4, 2); pathRib.userData.set = true; } }
   if (sh.thermal) pipZoom = 1 + 1.5 * smooth01((k - 0.3) / 0.38);
+  if (sh.votes) {   // Eagle-1 has him; the others' answers come in as each one has looked
+    const vs = [true, ...flock.map(b => b.vote)], n = vs.filter(x => x === true).length;
+    const html = vs.map((x, i) => `<span class="${x === true ? 'ok' : x === false ? 'no' : 'wait'}">Eagle-${i + 1} ${x === true ? '✓ sees him' : x === false ? '✗ no clear line' : '· looking'}</span>`).join('') + (n >= 3 ? `<span class="send">${n} of 5 agree · send</span>` : '');
+    if (html !== cine.votesHtml) { cine.votesHtml = html; $('#cineVotes').innerHTML = html; } }
+  if (sh.uplink) {   // the last hop comes in from the coast to the listening whip, then the report goes up from the satcom dome
+    const t = cine.el / 1000, whip = craftWorld(CRAFT.whip), satP = CRAFT.sat.getWorldPosition(new V3()).add(new V3(0, 0.15, 0)), from = craft.position.clone().add(new V3(260, 38, 12)), sky = satP.clone().add(new V3(0, 520, 0));
+    dot.scale.setScalar(t < 2.2 ? 2.2 : 1.6);
+    if (t < 0.6) dot.visible = false;
+    else if (t < 2.1) { dot.visible = true; dot.position.lerpVectors(from, whip, smooth01((t - 0.6) / 1.5)); }
+    else if (t < 2.9) { dot.visible = false; CRAFT.flashT = time; }
+    else { uplinkBeam.visible = true; uplinkBeam.position.copy(satP); uplinkTex.offset.y = -t * 1.6; uplinkBeam.material.opacity = 0.85 * smooth01((t - 2.9) / 0.4); dot.visible = t < 5.2; dot.position.lerpVectors(satP, sky, smooth01((t - 2.9) / 2.3)); } }
   let fov = sh.fov ? sh.fov(k, v.p.distanceTo(eagleD.object.position)) : sh.track || sh.close ? 34 : 42;
   if (sh.fov) { fov = cineCam.fovShot === sh ? lerp(cineCam.fov, fov, 1 - Math.exp(-Math.min(0.1, Math.max(0, (now - (cineCam.fovT || now)) / 1000)) * 4)) : fov; cineCam.fov = fov; cineCam.fovShot = sh; cineCam.fovT = now; }
   camera.position.copy(v.p); camera.lookAt(v.t); if (Math.abs(camera.fov - fov) > 1e-3) { camera.fov = fov; camera.updateProjectionMatrix(); }
@@ -1881,7 +2179,8 @@ function stepCine(now, rawDt) {
 function stopCine(silent) {
   if (!cine.on && !document.body.classList.contains('cine')) return;
   RG.send({ t: 'cine', on: false, silent: !!silent });
-  pipZoom = 1; cine.on = false; cine.ringAt = -1; document.body.classList.remove('cine'); $('#cineThermal').style.display = 'none'; if (cine.pipSize) { $('#pip').width = cine.pipSize[0]; $('#pip').height = cine.pipSize[1]; cine.pipSize = null; }
+  cine.on = false; cine.ringAt = -1; cine.showPent = false; cine.e1loop = false; document.body.classList.remove('cine'); $('#cineThermal').style.display = 'none'; $('#cineVotes').classList.remove('show'); if (cine.pipSize) { $('#pip').width = cine.pipSize[0]; $('#pip').height = cine.pipSize[1]; cine.pipSize = null; }
+  pipZoom = 1; birdMarks.forEach(m2 => { m2.visible = false; }); pentRib.visible = pathRib.visible = false; uplink.visible = false; uplinkBeam.visible = false; dot.visible = false; dot.scale.setScalar(9); setSea(false); flockReset();
   resetEagle(); envHourOverride = null; updateEnvironment(); camera.fov = 48; camera.updateProjectionMatrix(); resize(); pipDirty = true;
   if (!silent) { camMode = 'orbit'; $$('.viewbtns button').forEach(b => b.classList.toggle('on', b.dataset.cam === 'orbit')); controls.enabled = true; updateOverlays(); camGoal('orbit'); }
 }
@@ -1918,12 +2217,12 @@ function camShot(kind) {
 }
 const PSTEPS = [
   { kick: 'Eagle · jungle find', title: () => 'Find a downed aviator who carries nothing',
-    body: () => `${hhmm(S.hour)} in Taiwan's Central Mountain Range. He is hiding with no radio, beacon or phone, because anything that transmits can be located. A bird-sized drone has to find him and report where he is without giving him away.`,
+    body: () => `${hhmm(S.hour)} in Taiwan's Central Mountain Range. He is hiding with no radio, beacon or phone, because anything that transmits can be located. An uncrewed boat offshore has launched five bird-sized drones; they circle the search area, and the one that finds him has to report where he is without giving him away.`,
     stats: () => [['0', 'radios or beacons on him', 'ok'], [fmtDist((S.lklRadius_km || 1) * 1000), 'search radius around his parachute'], [S.enemy === 'none' ? 'none' : fmtDist(S.enemyDist_m), 'to the nearest enemy patrol', S.enemy === 'none' ? 'ok' : 'bad']],
     enter() { presetIf('night'); setPip('thermal'); camShot('overview'); }, dur: 12000 },
   { kick: 'The threat', title: () => 'Anything that transmits gets found',
-    body: () => { const p = optOf('perch'); return `A patrol walks the trail ${fmtDist(S.enemyDist_m)} from him and a direction-finding mast watches the valley from the ridge. One radio burst from beside him would be heard ${fmtDist(p.interceptRadius_m)} away${p.enemyHears ? ', and the patrol is inside that' : ''}.`; },
-    stats: () => { const p = optOf('perch'); return [[fmtDist(p.interceptRadius_m), 'a burst beside him carries', 'bad'], [p.enemyHears ? 'yes' : 'no', 'the patrol would hear it', p.enemyHears ? 'bad' : 'ok'], ['DF mast', 'on the ridge, takes a bearing on any emitter', 'bad']]; },
+    body: () => { const p = optOf('perch'); return `A patrol walks the trail ${fmtDist(S.enemyDist_m)} from him and an outpost holds the ridge ${fmtDist(W.op.distanceTo(outpost.position))} away; the enemy can take a bearing on any radio. One radio burst from beside him would be heard ${fmtDist(p.interceptRadius_m)} away${p.enemyHears ? ', and the patrol is inside that' : ''}.`; },
+    stats: () => { const p = optOf('perch'); return [[fmtDist(p.interceptRadius_m), 'a burst beside him carries', 'bad'], [p.enemyHears ? 'yes' : 'no', 'the patrol would hear it', p.enemyHears ? 'bad' : 'ok'], [fmtDist(W.op.distanceTo(outpost.position)), 'to the enemy outpost on the ridge', 'bad']]; },
     enter() { camShot('threat'); presentPulse('threat', 3200); }, dur: 11000 },
   { kick: 'The Eagle', title: () => 'Perch, motor off, listen',
     body: () => `A flapping-wing drone built to a Mountain Hawk-Eagle's size, 1.6 m across the wings${S.livery === 'airframe' ? ', shown here without its disguise,' : ' and dressed as a ' + (S.livery === 'serpentEagle' ? 'Crested Serpent Eagle' : 'Mountain Hawk-Eagle') + ','} lands on a branch ${PERCH_H[S.perch]} m up, folds its wings and switches its motor off. From here it only looks and listens. Nothing leaves it until it is sure.`,
@@ -2021,7 +2320,7 @@ const RG_ICE = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.co
 const RG_OK = typeof RTCPeerConnection === 'function' && typeof HTMLCanvasElement.prototype.captureStream === 'function';
 // claude.ai frames its pages in a sandbox that does not allow direct video connections, so there the panel says how to do it instead
 const RG_WHY = window.claude ? 'Streaming cannot run inside claude.ai: the page is not allowed to open a direct video connection here. Use the copy in the Team-32 repo: run node simulator/serve.mjs on the GPU computer and open the address it prints on this one (same network). From anywhere, Chrome Remote Desktop shows the GPU computer\'s whole screen in a browser tab.' : 'This browser cannot stream (WebRTC or canvas capture is missing).';
-const RG_CAMS = ['orbit', 'eagle', 'operator', 'top'], RG_PIPS = ['thermal', 'visible', 'id'], RG_Q = ['auto', 'low', 'med', 'high'];
+const RG_CAMS = ['orbit', 'eagle', 'operator', 'top', 'craft'], RG_PIPS = ['thermal', 'visible', 'id'], RG_Q = ['auto', 'low', 'med', 'high'];
 Object.assign(RG, { transport: null, peers: [], peerOf: null, hostPeer: null, gpu: '', sid: null, pc: null, ctl: null, camCh: null, req: null, answered: false, offerPkg: null, inbox: {}, timers: {}, status: 'Off.', camPose: null, poseHist: [], lag: 150, lastPose: '', lastPoseT: 0, frames: 0, lastFrameT: 0, stats: {}, mainTrack: null, pipTrack: null, wake: null, retryT: 0, sizeT: 0, prevStat: null, hsPrev: null, hostHidden: false });
 RG.send = m => { if (RG.role === 'viewer' && RG.ctl && RG.ctl.readyState === 'open') { try { RG.ctl.send(JSON.stringify(m)); } catch (err) { /* channel closing */ } } };
 RG.syncState = () => {
@@ -2175,7 +2474,7 @@ function rgCleanS(src) {
 function rgApplyState(m) {
   const next = rgCleanS(m.S);
   if (JSON.stringify(next) !== JSON.stringify(S)) { S = next; activePreset = typeof m.ap === 'string' && M.presets[m.ap] ? m.ap : ''; syncControls(); stopMission(); update(); }
-  if (RG_CAMS.includes(m.cam) && m.cam !== camMode) { camMode = m.cam; $$('.viewbtns button').forEach(b => b.classList.toggle('on', b.dataset.cam === camMode)); }
+  if (RG_CAMS.includes(m.cam) && m.cam !== camMode) { camMode = m.cam; setSea(camMode === 'craft'); $$('.viewbtns button').forEach(b => b.classList.toggle('on', b.dataset.cam === camMode)); }
   if (RG_PIPS.includes(m.pip) && m.pip !== pipMode) { pipMode = m.pip; $$('#pipMode button').forEach(x => x.classList.toggle('on', x.dataset.pip === pipMode)); pipDirty = true; }
   if (Array.isArray(m.pipAim) && m.pipAim.every(v => typeof v === 'number' && isFinite(v))) { pipYaw = m.pipAim[0]; pipPitch = clamp(m.pipAim[1], -1.3, 1.3); pipDirty = true; }
   if (Array.isArray(m.pipSize)) rgHostResize(Object.assign({}, RG.hostSize, { pw: m.pipSize[0], ph: m.pipSize[1], dpr: RG.hostSize ? RG.hostSize.pr : 1 }));
@@ -2317,8 +2616,8 @@ function exportScene() {
   const A = []; const add = (id, kind, o, extra) => { const p = o.getWorldPosition(new THREE.Vector3()); A.push(Object.assign({ id, kind, x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2), yaw_deg: Math.round(THREE.MathUtils.radToDeg(o.rotation.y)), heading_deg: heading(o) }, extra || {})); };
   add('eagle-1', flight.hold ? 'eagle_flying' : 'eagle_perched', flight.hold ? eagleFly : eagle, { perch: S.perch, perch_h_m: PERCH_H[S.perch] });
   add('operator', 'operator', operator, { posture: operator.userData.posture, state: S.opState, carries: 'nothing' });
-  if (S.enemy !== 'none') { patrolA.forEach((p, i) => add('patrol-a-' + (i + 1), 'patrol', p)); if (S.enemy === 'target') patrolB.forEach((p, i) => add('patrol-b-' + (i + 1), 'patrol', p)); troops.forEach((t, i) => t.visible && add('troop-' + (i + 1), 'troop', t)); add('outpost', 'outpost', outpost); A.push({ id: 'df-mast', kind: 'df_mast', x: +mastTop.x.toFixed(2), y: +mastTop.y.toFixed(2), z: +mastTop.z.toFixed(2), yaw_deg: 0, heading_deg: 0 }); }
-  add('relay', 'relay_bird', relay, { altitude_m: S.relayAlt_m }); add('parachute', 'parachute_lkl', chute);
+  if (S.enemy !== 'none') { patrolA.forEach((p, i) => add('patrol-a-' + (i + 1), 'patrol', p)); if (S.enemy === 'target') patrolB.forEach((p, i) => add('patrol-b-' + (i + 1), 'patrol', p)); troops.forEach((t, i) => t.visible && add('troop-' + (i + 1), 'troop', t)); add('outpost', 'outpost', outpost); }
+  add('relay', 'relay_bird', relay, { altitude_m: S.relayAlt_m, bird: 'eagle-2' }); flock.slice(1).forEach(b => add('eagle-' + b.n, 'eagle_flying', b.d.object, { pentagon_slot: b.slot })); add('parachute', 'parachute_lkl', chute);
   if (S.locals) locals.forEach((l, i) => add('local-' + (i + 1), 'local', l));
   if (S.animals !== false) { muntjacs.forEach((m, i) => add('muntjac-' + (i + 1), 'muntjac', m)); macaques.forEach((m, i) => add('macaque-' + (i + 1), 'macaque', m)); add('boar', 'wild_boar', boar); add('sambar', 'sambar', sambar); }
   const out = { units: 'm', up: '+Y (three.js, right-handed; north = -Z, east = +X)', unreal_note: 'Unreal is cm, Z-up, left-handed: X_ue = -z*100 (north), Y_ue = x*100 (east), Z_ue = y*100; Yaw_ue = heading_deg', hour: S.hour, weather: S.weather,
@@ -2405,7 +2704,7 @@ $$('#tabs button').forEach(b => b.addEventListener('click', () => { $$('#tabs bu
 controls.addEventListener('start', () => { camAnim = null; idleT = 0; });
 
 // ---------- animation ----------
-let last = performance.now(), time = 0, idleT = 0, pipT = 0;
+let last = performance.now(), time = 0, idleT = 0, pipT = 0, mapT = 0;
 const _sunScreen = new THREE.Vector3();
 const MAXFPS = +window.__EAGLE_MAXFPS || 0; let lastDraw = -1e9, frameNo = 0;
 function animate(now) {
@@ -2418,14 +2717,15 @@ function animate(now) {
   walkGroup(patrolA, W.patrolAnchor, W.patrolDir, 0); walkGroup(patrolB, W.patrolB, new THREE.Vector3(0.8, 0, 0.6), 20);
   troops.forEach((t, i) => { if (t.visible) poseHuman(t, i % 3 === 2 ? 'sitting' : 'standing', time + i, 'idle'); });
   locals.forEach((l, i) => poseHuman(l, 'standing', time + i * 1.7, 'work'));
-  if (!relayFlight.parked) { const ang = time * (W.relayOver ? 0.4 : W.relayOff ? 0.18 : 0.12); relay.position.set(W.relayC.x + Math.cos(ang) * W.relayR, W.relayC.y + Math.sin(time * 0.3) * 4, W.relayC.z + Math.sin(ang) * W.relayR); relay.rotation.set(0, -ang, 0); }
   macaques.forEach((q, i) => { q.position.y += Math.sin(time * 3 + i) * 0.003; q.rotation.y += Math.sin(time * 0.7 + i) * 0.004; });
   boar.rotation.y = 0.8 + Math.sin(time * 0.4) * 0.5; muntjacs.forEach((q, i) => { q.rotation.y = -0.6 + i * 1.7 + Math.sin(time * 0.3 + i) * 0.4; }); sambar.rotation.y = 1.9 + Math.sin(time * 0.2) * 0.3;
   // wall-clock time (up to 1 s a frame, in steps of 0.1 s), so flights keep pace on slow GPUs and stay in step with the cinematic
-  stepFlight(now); { let edt = rawDt; while (edt > 1e-4) { const st = Math.min(edt, 0.1); eagleD.update(st); edt -= st; } relayD.update(Math.min(0.25, rawDt)); }
+  stepFlight(now); { let edt = rawDt; while (edt > 1e-4) { const st = Math.min(edt, 0.1); eagleD.update(st); edt -= st; } updateFlock(rawDt); }
   fxPool.forEach(f => { if (!f.on) return; f.t += dt; if (f.t < 0) return; const k = f.t / f.dur; if (k >= 1) { f.on = false; f.ring.show(false); return; } const r = lerp(f.r0, f.r1, 1 - Math.pow(1 - k, 2)); f.ring.set(f.cx, f.cz, r, clamp(r * 0.02, 0.6, 5), 2); f.ring.mat.opacity = 0.95 * (1 - k); f.ring.show(true); });
   if (dotFlight.pts && dot.visible) { const k = clamp((now - dotFlight.t0) / dotFlight.dur, 0, 1), segs = dotFlight.pts.length - 1, f = k * segs, i = Math.min(segs - 1, Math.floor(f)); dot.position.copy(dotFlight.pts[i]).lerp(dotFlight.pts[i + 1], f - i); if (k >= 1) dot.visible = false; }
-  rain.material.uniforms.uCenter.value.copy(camera.position); dome.position.copy(camera.position);
+  stepCraft(time); updatePentOverlay();
+  if (now - mapT > 500) { mapT = now; if (mapCv.offsetParent) drawMap(); }
+  rain.material.uniforms.uCenter.value.copy(camera.position); dome.position.copy(camera.position); sky.position.copy(camera.position); stars.position.copy(camera.position); moonSpr.position.copy(MOON_DIR).multiplyScalar(2700).add(camera.position);   // the sky goes where the camera goes (the craft is 3 km out)
   if (splashes.visible && splashes.userData.center.distanceTo(controls.target) > 18) placeSplashes(controls.target.clone());
   mist.forEach((m, i) => { m.material.map.offset.set(time * 0.0025 * (i + 1), time * 0.0015); });
   TEX.waterN.offset.set(time * 0.02, time * 0.05);
@@ -2435,7 +2735,7 @@ function animate(now) {
     if (camAnim) { const k = clamp((now - camAnim.s) / camAnim.d, 0, 1), e = k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2; camera.position.lerpVectors(camAnim.p0, camAnim.p1, e); controls.target.lerpVectors(camAnim.t0, camAnim.t1, e); if (k >= 1) camAnim = null; }
     if (camMode === 'eagle') { camera.position.copy(pipCam.position); camera.quaternion.copy(pipCam.quaternion); if (camera.fov !== 55) { camera.fov = 55; camera.updateProjectionMatrix(); } }
     else if (camMode === 'operator') { const eye = W.op.clone(); eye.y += posture === 'standing' ? 1.65 : posture === 'sitting' ? 1.05 : 0.35; camera.position.copy(eye); camera.lookAt(W.eagle); if (camera.fov !== 70) { camera.fov = 70; camera.updateProjectionMatrix(); } }
-    else { if (camera.fov !== 48) { camera.fov = 48; camera.updateProjectionMatrix(); } controls.autoRotate = camMode === 'orbit' && idleT > 12 && !camAnim && !running.on && !RM; controls.autoRotateSpeed = 0.35; controls.update(); }
+    else { if (camera.fov !== 48) { camera.fov = 48; camera.updateProjectionMatrix(); } controls.autoRotate = (camMode === 'orbit' || camMode === 'craft') && idleT > 12 && !camAnim && !running.on && !RM; controls.autoRotateSpeed = 0.35; controls.update(); }
   }
   if (RG.role === 'host' && RG.pc && RG.camPose) rgApplyPose();   // streaming: the other screen owns the camera
   // light for leaf translucency (view space)
@@ -2472,13 +2772,16 @@ label('OPERATOR · carries nothing', '', v => v.copy(W.op).setY(W.op.y + 1.2));
 label('LKL · parachute', 'lkl', v => v.copy(chute.position).setY(chute.position.y + 4));
 label('PATROL', 'unknown', v => v.copy(patrolA[0].position).setY(patrolA[0].position.y + 2.3), () => S.enemy !== 'none');
 label('PATROL', 'unknown', v => v.copy(patrolB[0].position).setY(patrolB[0].position.y + 2.3), () => S.enemy === 'target');
-label('OUTPOST · DF mast', 'hostile', v => v.copy(mastTop).setY(mastTop.y + 3), () => S.enemy !== 'none');
+label('OUTPOST', 'hostile', v => v.copy(outpost.position).setY(outpost.position.y + 9), () => S.enemy !== 'none');
 label('FARM', 'unknown', v => v.copy(locals[0].position).setY(locals[0].position.y + 2.3), () => !!S.locals);
-label('RELAY', '', v => v.copy(relay.position).setY(relay.position.y + 4));
+flock.forEach(b => label('EAGLE-' + b.n, '', v => v.copy(b.d.object.position).setY(b.d.object.position.y + 3)));
+label('PREDICTED PATH', 'lkl', v => pentPathEnd(v), () => $('#ov-pent').checked && camMode !== 'cine');
+label('CRAFT · Saronic-type autonomous boat, 24 ft', '', v => v.copy(craft.position).setY(4.6), () => true, true);
+label('LAUNCH RACK · 5 eagles', 'neutral', v => v.copy(rackWorld(1)).setY(rackWorld(1).y + 0.9), () => true, true);
 label('macaques', 'neutral', v => v.copy(macaques[0].position).setY(macaques[0].position.y + 2), () => S.animals !== false);
 
 // ---------- test hooks ----------
-window.__sim = { S, R, apply(p) { Object.assign(S, p); activePreset = ''; syncControls(); stopMission(); update(); }, preset: applyPreset, run: runMission, cam: setCamMode, pip(m) { pipMode = m; $$('#pipMode button').forEach(x => x.classList.toggle('on', x.dataset.pip === m)); pipDirty = true; RG.syncState(); }, get pipStats() { return pipStats; }, quality(q) { quality.mode = q; quality.stage = 0; dyn.scale = 1; applyQuality(q === 'auto' ? bootTier() : q); }, exportScene, present: { start: () => presentStart(), stop: () => presentStop(), go: i => presentGo(i), auto: on => presentAuto(on), get state() { return { on: present.on, i: present.i, n: PSTEPS.length, vis: present.vis, auto: present.auto, title: $('#pTitle').textContent }; } }, rg: { host: () => rgStartHost(), view: () => rgStartView(), stop: () => rgStop(), get state() { return { role: RG.role, live: RG.live, status: RG.status, conn: RG.pc ? RG.pc.connectionState : null, stats: Object.assign({}, RG.stats), frames: RG.frames, hostSize: RG.hostSize, transport: RG.transport ? RG.transport.kind : null }; } }, get perf() { return { level: quality.level, mode: quality.mode, stage: quality.stage, scale: dyn.scale, pr: renderer.getPixelRatio(), fps: fpsMon.fps, gpu: gpuName(), tier: bootTier(), frames: frameNo }; }, ready: false, eagle: eagleD, relay: relayD, get cine() { return cine; }, get running() { return running; }, get frames() { return frameNo; }, dbg: () => ({ renderer, scene, camera, controls, pipRender, composer, veg, terrain, QL, quality, sky, dome, envScene, envSky, envDome, pmrem, DOME_U, H, canopyTopAt, W }) };
+window.__sim = { S, R, apply(p) { Object.assign(S, p); activePreset = ''; syncControls(); stopMission(); update(); }, preset: applyPreset, run: runMission, cam: setCamMode, pip(m) { pipMode = m; $$('#pipMode button').forEach(x => x.classList.toggle('on', x.dataset.pip === m)); pipDirty = true; RG.syncState(); }, get pipStats() { return pipStats; }, quality(q) { quality.mode = q; quality.stage = 0; dyn.scale = 1; applyQuality(q === 'auto' ? bootTier() : q); }, exportScene, present: { start: () => presentStart(), stop: () => presentStop(), go: i => presentGo(i), auto: on => presentAuto(on), get state() { return { on: present.on, i: present.i, n: PSTEPS.length, vis: present.vis, auto: present.auto, title: $('#pTitle').textContent }; } }, rg: { host: () => rgStartHost(), view: () => rgStartView(), stop: () => rgStop(), get state() { return { role: RG.role, live: RG.live, status: RG.status, conn: RG.pc ? RG.pc.connectionState : null, stats: Object.assign({}, RG.stats), frames: RG.frames, hostSize: RG.hostSize, transport: RG.transport ? RG.transport.kind : null }; } }, get perf() { return { level: quality.level, mode: quality.mode, stage: quality.stage, scale: dyn.scale, pr: renderer.getPixelRatio(), fps: fpsMon.fps, gpu: gpuName(), tier: bootTier(), frames: frameNo }; }, ready: false, eagle: eagleD, relay: relayD, flock: flock.map(b => b.d), get pent() { return { c: PENT.c, r: PENT.r }; }, craft, get atSea() { return atSea; }, get cine() { return cine; }, get running() { return running; }, get frames() { return frameNo; }, dbg: () => ({ renderer, scene, camera, controls, pipRender, composer, veg, terrain, QL, quality, sky, dome, envScene, envSky, envDome, pmrem, DOME_U, H, canopyTopAt, W }) };
 
 // ---------- boot ----------
 buildMapBase(); buildControls(); syncControls(); collectPip(); buildComposer();

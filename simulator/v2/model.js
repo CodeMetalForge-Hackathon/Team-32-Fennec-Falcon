@@ -118,7 +118,7 @@
       enemy: 'patrol', enemyDist_m: 250, enemyDetector: 'energy', locals: true, animals: true,
       ai: 'hailo8', decisionP: 0.95,
       output: 'auto', moveAway_km: 3, coast_km: 30, relayAlt_m: 300, relayDist_m: 2000, radio: 'sf7bw250',
-      lklRadius_km: 1, birds: 8, dwell_min: 30
+      lklRadius_km: 1, birds: 5, dwell_min: 30
     };
   }
 
