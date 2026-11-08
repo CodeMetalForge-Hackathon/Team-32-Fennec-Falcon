@@ -320,7 +320,8 @@ async function poll(){let s;try{s=await (await fetch('/state')).json()}catch(e){
   const lv=f.audio.level_db;$('alevel').textContent=lv!=null?lv.toFixed(0)+' dBFS':'';
   $('meterbar').style.width=lv==null?'0%':Math.max(0,Math.min(100,(lv+70)/60*100))+'%';
   const hc=s.chips.heat,tc=$('tcap');tc.className='cap'+(hc.on?' on':'');
-  tc.textContent=hc.on?('WARM BODY DETECTED: '+hc.text.replace(' warm body','')):'No warm body';
+  const corro=hc.on&&(s.chips.sound.on||s.chips.vision.on);
+  tc.textContent=!hc.on?'No warm body':corro?('HUMAN DETECTED (heat + '+[s.chips.sound.on?'voice/sound':'',s.chips.vision.on?'camera':''].filter(Boolean).join(' + ')+')'):'WARM BODY DETECTED';
   const h=$('heard');h.textContent=s.chips.sound.on?'Heard: '+s.chips.sound.text:'no human sounds';h.className=s.chips.sound.on?'on':'';
   cam=(a.cam_standard_s!=null&&a.cam_standard_s<5)||a.cam_noir_s==null||a.cam_noir_s>5?'standard':'noir';
   $('camname').textContent=cam==='standard'?'standard':'NoIR wide';
