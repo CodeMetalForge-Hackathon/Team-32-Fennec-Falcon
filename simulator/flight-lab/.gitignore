@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.venv/
+artifacts/*.json
+artifacts/*.png
+artifacts/*.zip
+vendor/
+flight-runtime*/
+logs/
+*.bin
+*.BIN
+*.tmp
+terrain/

@@ -4,6 +4,18 @@ Every build gets an entry here: what we built, why, how it works, what we decide
 
 ---
 
+## 2026-11-07 · Embed GPS-denied navigation demonstration
+
+**What / why:** Add an interactive navigation panel to the existing Jungle Simulator so the GPS-loss story can be presented alongside sensor detection. Include the separate managed ArduPilot SITL service and a local embedded viewer.
+
+**How:** A deterministic kinematic model exposes GPS availability, synthetic visual/inertial fallback, illustrative error growth, local origin and failure transitions. Five scenarios cover baseline, unavailable GPS, degraded canopy, scripted spoof inconsistency and backup loss. Existing sensor physics and mission behavior are preserved. The actual SITL viewer remains explicitly separate from synthetic VIO and jungle collision geometry.
+
+**Decisions / limits:** No RF jammer model, no real camera VIO, no claims of measured accuracy or safe hovering after loss of position. No thermal-cam branch merge. No firmware binaries committed. See [technical notes](navigation-demo.md) and [screenshot](images/navigation-demo.png).
+
+**Verification:** Node scenario and sensor-model regression checks; browser control, layout and local flight-viewer checks (continuous 3D animation suppressed for headless performance); Python heartbeat/coordinate tests. The upstream flight-controller dependency manifest is retained.
+
+---
+
 ## 2026-11-07 · Unreal live thermal demo v1
 
 **Files:** [`unreal-sim/`](../unreal-sim/) · **Docs:** [unreal-sim.md](unreal-sim.md), [unreal-sim/README.md](../unreal-sim/README.md)

@@ -94,3 +94,7 @@ Team 32: Mitch Kirby ([@mitchkirbyEC](https://github.com/mitchkirbyEC)) and Alex
 ## License
 
 [Apache-2.0](LICENSE).
+
+## GPS-denied navigation demo
+
+The Jungle Simulator now includes a navigation scenario panel below Eagle cam, plus an optional embedded local ArduPilot flight-controller viewer. See [setup, scenarios and limitations](docs/navigation-demo.md).
