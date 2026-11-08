@@ -298,7 +298,7 @@ border-radius:8px;font-size:14px;display:none;z-index:30;max-width:80vw}
   <div class="card" id="side"><div id="chips"></div><div id="log"></div></div>
 </div>
 <div id="toast"></div>
-<div id="foot"><button id="rec" title="Record the screen (R)">● REC</button><span id="clock"></span><span id="net"></span><span id="enrolled"></span>
+<div id="foot"><button id="rec" title="Record the screen (R)">● REC</button><a id="vids" href="/videos" target="_blank" style="color:var(--mut);font-size:12px">Recordings</a><span id="clock"></span><span id="net"></span><span id="enrolled"></span>
 <span>All processing on-device (Raspberry Pi 5 + Hailo-8), no cloud</span><span id="hint">Click a panel (or press 1 camera, 2 thermal, 3 sound) to enlarge, Esc to return, R to record</span><span id="nest"></span></div>
 <script>
 const $=id=>document.getElementById(id);const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
@@ -438,6 +438,53 @@ def make_handler(logs: Path, eagle_dir: Path, verdict: Verdict, rec: "ScreenReco
             elif path == "/audio.png":
                 r = audio_view(logs / "live_audio.npz")
                 self._send(200, r[0], "image/png") if r else self.send_error(404)
+            elif path in ("/videos", "/videos/"):
+                files = sorted(rec.out_dir.glob("eagle_demo_*.mp4"), key=lambda q: q.stat().st_mtime, reverse=True)
+                rows = "".join(f"<li><a href='/videos/{f.name}' download>{f.name}</a> "
+                               f"<span>{f.stat().st_size / 1e6:.1f} MB</span> "
+                               f"<a href='/videos/{f.name}'>play</a></li>" for f in files) or "<li>No recordings yet</li>"
+                page = ("<!doctype html><meta name='viewport' content='width=device-width,initial-scale=1'>"
+                        "<title>Recordings</title><style>body{font:17px system-ui;margin:16px;background:#0b0d10;color:#eee}"
+                        "a{color:#5b9cf5}li{margin:12px 0}span{color:#999;margin:0 8px}</style>"
+                        f"<h2>Recordings</h2><p><a href='/'>Back to the search view</a></p><ul>{rows}</ul>")
+                self._send(200, page.encode(), "text/html; charset=utf-8")
+            elif path.startswith("/videos/"):
+                name = os.path.basename(path[len("/videos/"):])
+                f = rec.out_dir / name
+                if not (name.startswith("eagle_demo_") and name.endswith(".mp4") and f.is_file()):
+                    self.send_error(404)
+                    return
+                size = f.stat().st_size
+                start, end = 0, size - 1
+                rng = self.headers.get("Range", "")
+                if rng.startswith("bytes="):
+                    a, _, b = rng[6:].split(",")[0].partition("-")
+                    if a:
+                        start, end = int(a), (int(b) if b else size - 1)
+                    elif b:
+                        start = max(0, size - int(b))
+                    end = min(end, size - 1)
+                    if start > end:
+                        self.send_response(416)
+                        self.send_header("Content-Range", f"bytes */{size}")
+                        self.end_headers()
+                        return
+                self.send_response(206 if rng else 200)
+                self.send_header("Content-Type", "video/mp4")
+                self.send_header("Accept-Ranges", "bytes")
+                self.send_header("Content-Length", str(end - start + 1))
+                if rng:
+                    self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+                self.end_headers()
+                with open(f, "rb") as fh:
+                    fh.seek(start)
+                    left = end - start + 1
+                    while left > 0:
+                        chunk = fh.read(min(1 << 20, left))
+                        if not chunk:
+                            break
+                        self.wfile.write(chunk)
+                        left -= len(chunk)
             elif path.startswith("/cam/") and path.endswith(".jpg") and path[5:-4] in CAMERAS:
                 try:
                     self._send(200, (eagle_dir / f"cam_{path[5:-4]}.jpg").read_bytes(), "image/jpeg")
