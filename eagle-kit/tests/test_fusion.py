@@ -163,3 +163,17 @@ def test_identity_never_lowers_suppresses_or_delays(seed):
         tier = lambda tr: 1 if tr.status == P.LS_RESPONSIVE and tr.flags else PRIORITY[tr.status]  # noqa: E731
         assert [tier(t_) for t_ in rb] == sorted(tier(t_) for t_ in rb)           # tiers keep their order
         assert len(plain.life_persons(now)) == len(ided.life_persons(now))        # every human still reported
+
+
+def test_point_detection_with_singular_covariance_is_usable():
+    """A sound straight below the perch has a rank-1 (or zero) covariance; it must not crash the list."""
+    import numpy as np
+    from eagle.fusion import LifeDetection, LifeList, regularize_cov
+    R = regularize_cov(np.array([[0.04, 0.0], [0.0, 0.0]]))
+    assert np.all(np.linalg.eigvalsh(R) >= 0.01 - 1e-12) and R[0, 0] == pytest.approx(0.04)
+    ll = LifeList(perch_xy=np.zeros(2))
+    for k, cov in enumerate([np.zeros((2, 2)), np.array([[1.0, 1.0], [1.0, 1.0]]), np.eye(2) * 0.25]):
+        ll.update([LifeDetection("SOUND", 10.0 + k, xy=np.zeros(2), cov=cov, category="VOICE", source="t")], now=10.0 + k)
+    assert len(ll.tracks) == 1 and np.isfinite(ll.tracks[0].x).all()
+    with pytest.raises(ValueError):
+        regularize_cov(np.array([[np.nan, 0.0], [0.0, 1.0]]))

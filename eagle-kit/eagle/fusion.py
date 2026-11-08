@@ -76,6 +76,20 @@ PRIORITY = {P.LS_BREATHING: 0, P.LS_MOVING: 2, P.LS_RESPONSIVE: 3, P.LS_WARM_ONL
             P.LS_UNKNOWN: 5, P.LS_RF_ONLY: 6}
 
 
+MIN_POS_VAR_M2 = 0.01                      # (0.1 m)^2: no detection here locates a person better than this
+
+
+def regularize_cov(R, floor: float = MIN_POS_VAR_M2) -> np.ndarray:
+    """Symmetric 2x2 covariance with every eigenvalue >= ``floor``. A sound straight below the perch (range
+    ~0) gives a rank-1 covariance whose inverse does not exist; this keeps it usable (and finite)."""
+    R = np.asarray(R, float)
+    if R.shape != (2, 2) or not np.isfinite(R).all():
+        raise ValueError(f"bad position covariance {R.tolist()}")
+    R = 0.5 * (R + R.T)
+    w, V = np.linalg.eigh(R)
+    return (V * np.maximum(w, floor)) @ V.T
+
+
 @dataclass
 class LifeDetection:
     kind: str                              # SOUND | HEAT | PERSON | VITALS | TAG | MOTION | RF
@@ -220,7 +234,7 @@ class LifeList:
 
     @staticmethod
     def _point_update(tr: LifeTrack, z, R) -> None:
-        Ri = np.linalg.inv(R)
+        Ri = np.linalg.inv(regularize_cov(R))
         tr.Y = tr.Y + Ri
         tr.yv = tr.yv + Ri @ np.asarray(z, float)
 
@@ -258,7 +272,7 @@ class LifeList:
         if len(self._person_tracks()) >= self.max_tracks:
             self.dropped_births += 1
             return None
-        R = det.cov + iso_cov(self.birth_floor)
+        R = regularize_cov(det.cov) + iso_cov(self.birth_floor)
         Y = np.linalg.inv(R)
         tr = LifeTrack(self.next_id, Y, Y @ np.asarray(det.xy, float), det.t, t_pred=det.t)
         self.next_id += 1

@@ -5,16 +5,21 @@
     python apps/life_node.py --config config/local.yaml       # live, radio per radio.transport
     python apps/life_node.py --transport udp --modules thermal --duration 30   # with nest_station --transport udp
     python apps/life_node.py --modules thermal vitals --thermal mlx90640 --vitals-port /dev/ttyACM0
+    python apps/life_node.py --config ../pi/field.yaml --transport udp --record   # field: also save to ~/field_logs
 
 Modules (life.modules in the config; each one is skipped with a log line if its hardware or
 library is missing): audio (mic array: briefed codes + life sounds), thermal (synthetic,
 mlx90640, uvc_y16, gray8), vitals (serial radar bridge / vendor module), rf (BLE allowlist
 scan), vision (JSON lines of person boxes). One log line per step: THERMAL, SOUND, VITALS,
 RF, VISION, LIFE (the list), TX.
+
+``--record [DIR]`` (default ~/field_logs) saves thermal frames (2/s), every mic channel (WAV), and
+every detection, life list and TX (events.jsonl) to DIR/<timestamp>/ (eagle/record.py).
 """
 from __future__ import annotations
 
 import argparse
+import signal
 import sys
 import time
 from pathlib import Path
@@ -55,6 +60,15 @@ class LifeNode:
         self.life = LifeList.from_config(L.get("fusion", {}), perch_xy=self.perch[:2])
         self.mods: dict = {}
         self.next_t: dict = {}
+        self.unavailable: dict = {}
+        self._th_cache = None
+        self.rec = None
+        if getattr(args, "record", None):
+            from eagle.record import Recorder
+            r = L.get("record", {})
+            self.rec = Recorder(args.record, thermal_hz=float(r.get("thermal_hz", 2.0)),
+                                chunk_s=float(r.get("chunk_s", 60.0)), min_free_gb=float(r.get("min_free_gb", 2.0)),
+                                log=log)
         want = list(args.modules or L.get("modules", ALL_MODULES))
         for name in want:
             if name not in ALL_MODULES:
@@ -64,7 +78,11 @@ class LifeNode:
                 getattr(self, f"_init_{name}")()
             except Exception as e:                       # missing library / hardware: keep going
                 log(f"MODULE  {name}: unavailable ({type(e).__name__}: {e})")
+                self.unavailable[name] = f"{type(e).__name__}: {e}"
         log(f"MODULES running: {', '.join(self.mods) or 'none'} (perch ENU {self.perch.tolist()})")
+        if self.rec:
+            self.rec.event("run_start", modules=list(self.mods), unavailable=self.unavailable, perch=self.perch,
+                           config={k: cfg.get(k) for k in ("site", "perch", "audio", "life", "identity") if k in cfg})
         self.radio, self.session = None, None
         if not args.no_radio:
             try:
@@ -146,7 +164,12 @@ class LifeNode:
 
     def step_thermal(self, now):
         src, det = self.mods["thermal"]
-        _, frame, rad = src.read()
+        if self._th_cache is not None and self._th_cache[0] == now:
+            _, frame, rad = self._th_cache
+        else:
+            _, frame, rad = src.read()
+            if self.rec:
+                self.rec.thermal(now, frame)
         blobs = det.detect(frame, rad, now)
         log(f"THERMAL {len(blobs)} warm bod{'y' if len(blobs) == 1 else 'ies'}"
             + "".join(f" | {b}" for b in blobs) + (f" ({len(det.rejected)} rejected)" if det.rejected else ""))
@@ -238,6 +261,8 @@ class LifeNode:
                  "rf": self.L.get("rf", {}).get("every_s", 20.0),
                  "vision": self.L.get("vision", {}).get("every_s", 1.0)}
         dets = []
+        if self.rec:
+            self._record_step(now)
         for name in list(self.mods):
             if not self._due(name, now, float(every[name])):
                 continue
@@ -246,10 +271,34 @@ class LifeNode:
             except Exception as e:
                 log(f"{name.upper():<7} error: {type(e).__name__}: {e}")
         if dets:
-            self.life.update(dets, now=now)
+            if self.rec:
+                self.rec.detections(dets)
+            try:
+                self.life.update(dets, now=now)
+            except Exception as e:                       # one bad detection must not stop the node
+                log(f"LIFE    update error: {type(e).__name__}: {e}")
+                for d in dets:
+                    try:
+                        self.life.update([d], now=now)
+                    except Exception as e1:
+                        log(f"LIFE    dropped {d.kind} from {d.source or '?'}: {type(e1).__name__}: {e1}")
         self.life.evaluate(now)
         self.maybe_report(now)
         return dets
+
+    def _record_step(self, now: float) -> None:
+        """Thermal frames at the recording rate (between detection passes) and new audio samples."""
+        self._th_cache = None
+        try:
+            self.rec.tick()
+            if "thermal" in self.mods and self.rec.thermal_due(now):
+                _, frame, rad = self.mods["thermal"][0].read()
+                self._th_cache = (now, frame, rad)
+                self.rec.thermal(now, frame)
+            if "audio" in self.mods:
+                self.rec.audio(self.mods["audio"]["cap"])
+        except Exception as e:
+            log(f"RECORD  error: {type(e).__name__}: {e}")
 
     # ---- reporting -----------------------------------------------------------------------------
     def maybe_report(self, now: float, force: bool = False):
@@ -264,6 +313,8 @@ class LifeNode:
             return None
         self.last_sig, self.last_report = sig, now
         log("LIFE    list:\n" + "          " + self.life.summary(now).replace("\n", "\n          "))
+        if self.rec:
+            self.rec.event("life_list", summary=self.life.summary(now), persons=self.life.life_persons(now))
         if self.radio is None:
             log("TX      (radio disabled)")
             return None
@@ -273,7 +324,10 @@ class LifeNode:
         head = P.LifeHead(int(time.time()), lat, lon, o.get("hae_m", 0.0) + self.floor_z)
         frames = self.session.encrypt_life(head, self.life.life_persons(now), int(rep.get("max_frame_bytes", 128)))
         self.radio.drain()
-        return self.radio.send_life(frames)
+        out = self.radio.send_life(frames)
+        if self.rec:
+            self.rec.event("tx_life", frames=len(frames), bytes=[len(f) for f in frames])
+        return out
 
     def run(self, duration: float | None = None, step_s: float = 0.5) -> None:
         t_end = None if duration is None else time.time() + duration
@@ -300,19 +354,24 @@ class LifeNode:
                 pass
         if self.radio is not None:
             self.radio.t.close()
+        if self.rec is not None:
+            self.rec.close()
 
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--config", help="YAML overriding config/example.yaml")
     ap.add_argument("--modules", nargs="*", help=f"subset of {' '.join(ALL_MODULES)} (default: life.modules)")
-    ap.add_argument("--thermal", help="override life.thermal.source (synthetic | mlx90640 | uvc_y16 | gray8 | none)")
+    ap.add_argument("--thermal", help="override life.thermal.source (synthetic | mlx90640 | uvc_y16 | gray8 | hti | none)")
     ap.add_argument("--vitals-port", help="override life.vitals.port")
     ap.add_argument("--transport", choices=["serial", "udp", "meshtastic"], help="override radio.transport")
     ap.add_argument("--port", help="override radio.serial_port")
     ap.add_argument("--no-radio", action="store_true", help="never transmit; log only")
     ap.add_argument("--duration", type=float, help="stop after N seconds (default: run until Ctrl-C)")
     ap.add_argument("--step", type=float, default=0.5, help="loop period, s")
+    ap.add_argument("--record", nargs="?", const="~/field_logs", default=None, metavar="DIR",
+                    help="save thermal frames, raw mic channels and every detection to DIR/<timestamp>/ "
+                         "(default DIR ~/field_logs)")
     args = ap.parse_args(argv)
     over: dict = {"radio": {}, "life": {"thermal": {}}}
     if args.transport:
@@ -322,6 +381,10 @@ def main(argv=None) -> int:
     if args.thermal:
         over["life"]["thermal"]["source"] = args.thermal
     cfg = deep_merge(load_config(args.config), over)
+
+    def _term(signum, frame):              # systemd stop: unwind through run()'s finally (closes the recording)
+        raise SystemExit(0)
+    signal.signal(signal.SIGTERM, _term)
     node = LifeNode(cfg, args)
     node.run(args.duration, args.step)
     return 0

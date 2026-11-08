@@ -118,6 +118,19 @@ class LiveCapture:
             idx = (np.arange(end - n, end)) % len(self.buf)
             return self.total - n, self.buf[idx].copy()
 
+    def since(self, total0: int | None) -> tuple:
+        """-> (total, block (n, device_channels)): samples captured after sample ``total0`` (None: none,
+        just the current total). Samples that already left the ring buffer are dropped; the caller sees
+        the gap as ``total - len(block) > total0``."""
+        with self.lock:
+            total = self.total
+            if total0 is None:
+                return total, np.zeros((0, self.channels), np.float32)
+            n = min(total - int(total0), len(self.buf))
+            end = total % len(self.buf)
+            idx = (np.arange(end - n, end)) % len(self.buf)
+            return total, self.buf[idx].copy()
+
     def record(self, seconds: float) -> np.ndarray:
         start = self.total
         while self.total - start < seconds * self.fs:
