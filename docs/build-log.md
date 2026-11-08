@@ -4,6 +4,40 @@ Every build gets an entry here: what we built, why, how it works, what we decide
 
 ---
 
+## 2026-11-08 · Simulator v2: the realistic eagle up close in Cinematic; flights clear of the hillside; published
+
+**Files:** [`simulator/v2/index.src.html`](../simulator/v2/index.src.html) (built into `index.html`), [`simulator/v2/eagle_drone.js`](../simulator/v2/eagle_drone.js) (v1.2) · **Docs:** [simulator-v2.md](simulator-v2.md), [eagle-drone.md](eagle-drone.md#in-simulator-v2)
+
+### What
+Cinematic mode now shows the Hawk-Eagle model up close and at its real speed, and every Eagle flight in the simulator keeps clear of the hillside and the tree crowns. From 3 m beside the branch, Eagle-1 glides in over the valley towards the lens, swoops up, flares, hops round to face the operator and folds its wings; the camera orbits it at 1.75–2.5 m; it drops off the branch and flies out over the valley; then a cut finds it flying head-on at a camera just past the send point, and the intercept ring spreads as the camera rises 40 m and follows its front edge inland (for the courier it passes over a camera at the coast and is gone). Run mission and presenter card 3 use the same arrival. The published Eagle Jungle Simulator page now runs this build.
+
+### Why
+- Mitch was still seeing the old block eagle in the simulator he runs in the browser: the realistic model was in simulator v2 on the `eagle-drone-model` branch, but the published page had not been updated, and the cinematic only saw the bird from 9–60 m.
+- Seen up close, two faults showed. The arrival came in from behind the perch and passed through the hillside above it: its path was laid out as if the ground were flat, but the default perch sits inside the forest on a slope of 25–35°, with crowns up to 60 m above it within 60 m uphill. And the old fly-away crossed the 472 m to the send point in under 11 s (over 40 m/s).
+
+### How it works
+- **Open side.** `openDir()` samples the crowns (`canopyTopAt`) and the ground around the branch, 48 directions from 4 to 52 m, and picks the direction whose crowns stay lowest under a 1-in-4 glide slope. Arrivals glide in from 70 m out and about 22 m up on that side, at least 3 m over the crowns (`overCrowns()` points), then `land()` swoops up onto the branch.
+- **Hop-turn.** A bird lands facing the way it flew in, so `land(..., { faceAfter })` turns it on the branch afterwards: wings half open, a 4.5 cm hop, about 0.85 s. The simulator keeps `flight.hold` until `eagleD.settling` clears, so the Eagle cam's aim does not snap the bird round.
+- **Take-off.** A drop on the open side to pick up speed, a climb-out, then on to the destination at least 9 m over the crowns, climbing early before a rise and sinking slowly after it.
+- **Camera.** Tracking shots aim at the bird each frame, eased (time constant about 0.18 s). Shots can set the lens from the bird's distance: it narrows to 8° while the bird is far off, so the bird stays about a fifth of the frame. A follow shot behind the bird was tried and dropped: over this terrain it showed a small bird against a busy slope. A first arrival camera beside the perch looked through the white snag's trunk; the camera now sits on the side of the branch away from both trunks.
+- **Nothing sped up.** 12 m/s in level flight. The burst is a cut, which stands in for the rest of the flight: the bird is placed 60 m short of the send point and flies it, and the ring fires when it gets there (checked each frame in `stepCine`, so it cannot fire after the cinematic stops). In the cinematic the ring spreads over 3.2 s instead of 1.4 s, and the crane aims at the ring as drawn (it runs slower on a slow frame rate); the crane stays low and looks inland, so the frame never shows past the edge of the map.
+- **One clock.** The shots and the bird advance by the same frame time (up to 1 s a frame; the bird in 0.1 s steps). Before, the shots ran on `performance.now()` and the bird at most 0.25 s a frame; in Chrome on a laptop, with the window in the background, the shots ran about 2.5 s ahead and cut away before the landing.
+
+### Key results
+- Seven shots (six without an enemy), 51.2 s (44.2 s): dawn crane, arrival, perch orbit, thermal, the target, the release, the burst (or the coast).
+- Arrival path in the default scenario: at least 2.6 m over the crowns until it reaches the perch tree (the old path passed about 2 m below the hillside surface on its way in).
+
+### Verification
+- Cinematic in headless Chromium under a fixed-step clock, jumping straight to each shot: frames of the arrival, landing and hop-turn, perch orbit, take-off and burst checked by eye, with the bird's and camera's heights logged against the crowns and the ground; no console errors.
+- `tests/test_present.js` and `tests/test_remote.js` pass.
+- Published page opened in Chrome on a laptop GPU: the glide-in against the sky and the landing play as in the headless frames.
+
+### Open issues / next
+- Watch the whole cinematic at full frame rate on the demo laptop; tune the tracking offsets if the bird turns tighter than modelled.
+- The send point `W.away` is clamped to the corner of the 800 m map; the model puts it 3.0 km out.
+
+---
+
 ## 2026-11-08 · Eagle: airframe refitted inside the disguise; cutaway with every part
 
 **Files:** [`simulator/v2/eagle_drone.js`](../simulator/v2/eagle_drone.js), [`simulator/v2/cutaway.js`](../simulator/v2/cutaway.js) (new), [`simulator/v2/eagle_viewer.src.html`](../simulator/v2/eagle_viewer.src.html), [`simulator/v2/build.js`](../simulator/v2/build.js), [`simulator/v2/assets/`](../simulator/v2/assets/) (re-exported) · **Docs:** [eagle-drone.md](eagle-drone.md#fit-the-airframe-inside-the-disguise)

@@ -197,7 +197,7 @@ open into slots on the upstroke and when soaring.
 | `glide` | Wings held at +5°, slightly swept, primaries a little apart |
 | `soar` | Wings forward, fingers spread wide, tail fanned |
 | `takeoff` (`takeoff(path)`) | Crouch, spring, wings unfold in 0.4 s, hard strokes at 3.4 Hz and ±48°, legs tuck, then cruise |
-| `land` (`land(perch, heading, from)`) | Glide in, drop about 2 m below the perch and swoop up, flare (body up to 58°, wings cupped forward braking, tail fanned down, feet forward, toes open), touch down, two balancing beats, fold in about 1 s |
+| `land` (`land(perch, heading, from)`) | Glide in, drop about 2 m below the perch and swoop up, flare (body up to 58°, wings cupped forward braking, tail fanned down, feet forward, toes open), touch down, two balancing beats, fold in about 1 s. It lands facing the way it flew in; with `faceAfter` it then hop-turns on the branch to that heading (wings half open, a 4.5 cm hop, about 0.85 s) |
 | `perched` | Upright, wings folded, tail down. The head scans in quick turns and holds, the way raptors look around; with `lookAt(point)` it keeps coming back to that point |
 | `auto` | For a bird the caller moves (the relay): banks from its turn rate, flaps when climbing and now and then, soars otherwise |
 
@@ -208,11 +208,26 @@ model.
 ## In simulator v2
 
 - **One bird.** The primitive perched and flying models are gone; the same bird perches and flies.
-  **Run mission** now opens with Eagle-1 arriving: it flaps in over the canopy, flares onto the
-  perch and folds its wings, then the listening starts. For "fly away" and "courier" it springs off
-  the perch and climbs toward its destination instead of rising straight up.
-- **Presenter card 3** ("Perch, motor off, listen") plays the arrival and names the disguise.
-  **Cinematic** gains an arrival shot before the perch shot.
+  **Run mission** now opens with Eagle-1 arriving, then the listening starts.
+- **Flights use the perch's open side.** In the default scenario the perch (the 8 m branch) sits
+  inside the forest on a slope of 25–35°; uphill, the crowns rise to 60 m above it within 60 m. The
+  open side is the direction with the lowest crowns, found by sampling the canopy around the branch
+  (48 directions, out to 52 m, allowing a 1-in-4 glide slope). Eagle-1 glides in on that side from about 22 m above the branch, over the crowns, swoops up
+  onto the branch facing the way it came, flares, hop-turns to face the operator and folds its wings. For "fly away" and "courier" it
+  drops off the branch on the open side to pick up speed, climbs out, and flies on at least 9 m over
+  the trees. The first version came in from behind the perch, through the hillside above it.
+- **Presenter card 3** ("Perch, motor off, listen") plays the arrival from 6 m beside the branch,
+  looking out over the open side, and names the disguise.
+- **Cinematic** shows the bird up close and at its real speed (12 m/s in level flight). From 3 m
+  beside the branch, on a lens that narrows to 8° while the bird is far off so it stays about a fifth
+  of the frame, Eagle-1 glides in over the valley towards the lens, swoops up, flares, puts its feet
+  forward, hops round and folds its wings. Then a slow orbit at 1.75–2.5 m while it sits scanning; the
+  take-off from the same spot as it drops off the branch and flies out over the valley; and a cut to
+  where it sends from: it flies head-on at a camera just past the send point, against the sky, and over
+  it, and the intercept ring spreads as the camera rises 40 m and follows its front edge inland (for
+  the courier it passes over a camera at the coast and is gone). The cut stands in for the rest
+  of the flight, so nothing is sped up. Tracking shots aim at the bird's own position, smoothed so the
+  wingbeat does not shake the frame.
 - **Relay** overhead is a second bird in `auto` mode: it banks in its orbit and flaps when it climbs.
 - **Disguise** selector under *Input · the Eagle*: Mountain Hawk-Eagle, Crested Serpent Eagle, or the
   bare airframe. It is kept across presets and sent to a remote-GPU host.
@@ -220,8 +235,9 @@ model.
   The bird faces where the camera looks.
 - **Thermal and ID views** pose the skinned bird correctly: the pass shader now includes three.js's
   skinning chunks. The bird still reads as category `drone`, air temperature +1 °C.
-- **Timing.** The bird animates on wall-clock frame time, capped at 0.25 s a frame, so its flights
-  keep pace with the mission on a slow GPU.
+- **Timing.** The bird animates on wall-clock frame time, up to 1 s a frame in steps of 0.1 s, so
+  its flights keep pace with the mission on a slow GPU. The cinematic's shots run on the same clock,
+  so a stalled or hidden tab pauses the film instead of letting the shots run ahead of the bird.
 - `window.__sim.eagle` and `window.__sim.relay` expose the two birds for scripted checks.
 
 ## Viewer
@@ -282,7 +298,8 @@ scene.add(bird.object);
 bird.perch(branchTop, heading);                           // toes on branchTop, body faces heading (radians, 0 = +Z)
 bird.lookAt(operatorPosition);                            // head keeps coming back to this point
 bird.takeoff([branchTop, p1, p2], { duration: 6, onDone }); // spring off and fly the path
-bird.land(branchTop, heading, fromPoint, { duration: 5, via: [p1], onDone });
+bird.land(branchTop, heading, fromPoint, { duration: 5, via: [p1], faceAfter: h2, onDone }); // lands facing heading, then turns to h2
+bird.settling;                                            // true while it is still turning round on the branch
 bird.hover('soar');                                       // hold still in the air: 'fly' | 'glide' | 'soar'
 bird.spreadWings(true);                                   // on the perch: open (true) or fold (false)
 bird.setLivery('airframe'); bird.setXray(true);

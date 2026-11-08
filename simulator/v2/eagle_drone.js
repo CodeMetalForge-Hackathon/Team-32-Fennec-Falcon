@@ -557,7 +557,7 @@ function makeEagleDrone(THREE) {
     }
     // stand on a perch: pos = where the toes grip (top of the branch), heading in radians (0 = facing +Z)
     perch(pos, heading = 0) {
-      this.track = null; this.setMode('perched', true); this.applyPose();
+      this.track = null; this._settle = null; this._spin = null; this.setMode('perched', true); this.applyPose();
       this.object.position.copy(pos).add(_v.set(0, this.perchOffset, 0)); this.object.rotation.set(0, heading, 0); this._heading = heading;
       this._prev = null; return this;
     }
@@ -575,13 +575,14 @@ function makeEagleDrone(THREE) {
       if (opts.takeoff) this.setMode('takeoff'); else this.setMode(opts.glide ? 'glide' : 'fly');
       return this;
     }
-    // approach and land on a perch from a point in the air
+    // approach and land on a perch from a point in the air. The last 14 m run along `heading` (it lands facing the way it
+    // flew in); opts.faceAfter = a heading to turn to on the perch afterwards (a hop-turn with the wings half open)
     land(perchPos, heading, from, opts = {}) {
       const end = perchPos.clone(), dir = new THREE.Vector3(Math.sin(heading), 0, Math.cos(heading));
       const a = end.clone().addScaledVector(dir, -14).add(_v.set(0, -2.2, 0)), b = end.clone().addScaledVector(dir, -5).add(_v.set(0, -0.9, 0));
       const pts = from ? [from.clone(), ...(opts.via || []).map(p => p.clone()), a, b] : [a, b];
       if (!from) this.object.position.copy(a);
-      return this.follow(pts, Object.assign({ land: { pos: perchPos.clone(), heading } }, opts));
+      return this.follow(pts, Object.assign({ land: { pos: perchPos.clone(), heading, faceAfter: opts.faceAfter } }, opts));
     }
     takeoff(points, opts = {}) { return this.follow(points, Object.assign({ takeoff: true }, opts)); }
     // on the perch: open the wings (mantling, drying) or fold them again
@@ -589,7 +590,9 @@ function makeEagleDrone(THREE) {
     // hold still in the air (a test stand) and flap, glide or soar
     hover(mode = 'fly') { this.track = null; this._settle = null; this.setMode(mode); return this; }
     // cancel a maneuver (its onDone is not called)
-    stop() { this.track = null; this._settle = null; return this; }
+    stop() { if (this._spin) this.object.position.y = this._spin.y0; this.track = null; this._settle = null; this._spin = null; return this; }
+    // still turning round on the perch after a landing
+    get settling() { return this._spin != null; }
     setHeading(h) { this._heading = h; this.object.rotation.y = h; return this; }
     // look at a world point while perched (null = scan)
     lookAt(p) { this.look.target = p ? p.clone() : null; return this; }
@@ -640,14 +643,18 @@ function makeEagleDrone(THREE) {
         T.bodyRoll = clamp(-this._turn * spd / 9.81, -0.75, 0.75);
         if (k >= 1) {
           const done = tr.onDone, land = tr.land; this.track = null;
-          if (land) { this.object.position.copy(land.pos).add(_v.set(0, this.perchOffset, 0)); this._heading = land.heading; this.object.rotation.set(0, land.heading, 0); this.setMode('perched'); this._settle = 0; }
+          if (land) { this.object.position.copy(land.pos).add(_v.set(0, this.perchOffset, 0)); this._heading = land.heading; this.object.rotation.set(0, land.heading, 0); this.setMode('perched'); this._settle = 0;
+            const d = land.faceAfter == null ? 0 : wrapPi(land.faceAfter - land.heading); this._spin = Math.abs(d) > 0.15 ? { from: land.heading, d, y0: this.object.position.y } : null; }
           else this.setMode(tr.takeoff || this.mode === 'fly' ? 'fly' : this.mode);
           if (done) done();
         }
       } else if (this.mode === 'perched') {
         // after touch-down: two balancing beats with the wings out, then fold
-        if (this._settle != null) { this._settle += dt; const k4 = this._settle;
-          if (k4 < 0.55) { T = Object.assign(basePose(), POSES.spread, { flap: 18 * DEG }); ampT = 24 * DEG * (1 - k4 / 0.55); hz = 3.2; }
+        if (this._settle != null) { this._settle += dt; const k4 = this._settle, sp = this._spin, wingT = sp ? 1.1 : 0.55;
+          // turning round to face the way it will watch: a small hop, wings half open for balance
+          if (sp) { const kt = smooth(0.15, 1.0, k4); this._heading = wrapPi(sp.from + sp.d * kt); this.object.rotation.y = this._heading;
+            this.object.position.y = sp.y0 + 0.045 * Math.sin(Math.PI * clamp((k4 - 0.15) / 0.85, 0, 1)); if (k4 >= 1.0) { this.object.position.y = sp.y0; this._spin = null; } }
+          if (k4 < wingT) { T = Object.assign(basePose(), POSES.spread, { flap: 18 * DEG }); ampT = 24 * DEG * (1 - k4 / wingT); hz = 3.2; }
           else { T = Object.assign(basePose(), POSES.perched); if (k4 > 2.5) this._settle = null; } }
         else T = this.target;
         // scanning head: quick turns, then holds (raptors move the head, not the eyes)
@@ -1088,7 +1095,7 @@ function makeEagleDrone(THREE) {
     return { list, byId, update };
   }
 
-  return { EagleDrone, SPEC, RIG, PRIM, SEC, LIVERIES, POSES, PARTS, BOM, BODY_RINGS, HEAD_RINGS, STACK, POD_RINGS, SENSOR_HEAD_RINGS, LAM, paintAtlas, version: '1.1' };
+  return { EagleDrone, SPEC, RIG, PRIM, SEC, LIVERIES, POSES, PARTS, BOM, BODY_RINGS, HEAD_RINGS, STACK, POD_RINGS, SENSOR_HEAD_RINGS, LAM, paintAtlas, version: '1.2' };
 }
 
 if (typeof module !== 'undefined' && module.exports) module.exports = makeEagleDrone;

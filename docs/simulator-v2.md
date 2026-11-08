@@ -30,7 +30,10 @@ measured.
    the file in Chrome, Edge, Safari or Firefox. It needs internet on first load for three.js r128
    and fonts.
 2. Pick a scenario on the left; every panel updates at once. **Run mission** plays the timeline.
-3. **Cinematic** plays a five-shot flythrough. **Export to Unreal** gives the scene as JSON.
+3. **Cinematic** plays a seven-shot flythrough (six without an enemy), about 51 s: dawn over the
+   canopy, Eagle-1 flying in and landing up close, a close orbit on the perch, its thermal view, the
+   target, the take-off out over the valley, and the burst far from him (or, for the courier, the
+   coast). **Export to Unreal** gives the scene as JSON.
 4. **Present ▶** (or **P**) runs the judges' demo: ten cards with live numbers from the model
    ([Presenter mode](#presenter-mode); run sheet in [demo-runbook.md](demo-runbook.md)).
 
