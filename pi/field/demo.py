@@ -39,7 +39,8 @@ CAMERAS = ("standard", "noir")
 VISION_WINDOW_S = 2.5        # identity/boxes newer than this count as "now"
 HEAT_WINDOW_S = 6.0          # thermal detections arrive about every 0.5 s
 SOUND_WINDOW_S = 10.0        # a sound event is classified over ~1-3 s of audio, then reported
-TARGET_HOLD_S = 3.0          # keep TARGET FOUND up this long after the last level-3 frame
+TARGET_HOLD_S = 3.0
+SIGNAL_SHOW_S = 300.0       # keep SIGNAL SENT on screen this long after the Nest received the FIX          # keep TARGET FOUND up this long after the last level-3 frame
 HUMAN_SOUNDS = {"VOICE": "voice", "DISTRESS": "shout / distress", "BREATH": "breathing", "COUGH": "cough",
                 "SIGNAL": "whistle / knock", "MOVE": "footsteps / movement"}
 LEVEL_NAMES = {1: "appearance", 2: "strong appearance", 3: "face verified"}
@@ -208,6 +209,40 @@ class Verdict:
                 self.last_key = key
             return {"key": key, "level": level, "title": title, "sub": sub, "log": list(self.log)}
 
+    def note_signal(self, sig: dict) -> None:
+        """One verdict-log line per FIX received by the Nest."""
+        with self.lock:
+            if sig["seq"] != getattr(self, "last_signal_seq", None):
+                self.last_signal_seq = sig["seq"]
+                self.log.appendleft({"time": time.strftime("%H:%M:%S"), "key": "signal",
+                                     "title": f"SIGNAL SENT TO RESCUE HQ (FIX #{sig['seq']}, ID-{sig['level']})", "sub": ""})
+
+
+FIX_RE = None
+
+
+def target_signal(nest_log: Path, now: float):
+    """Latest FIX the Nest received and decrypted that carries an identity match, from lines like
+    '[09:44:12] RX      FIX eagle 1 seq 5: 25.1234567, 121.1234567 alt 0 m ce 2 m class UNKNOWN+ID-FACE conf 0.87 ...'.
+    -> dict(age_s, lat, lon, ce_m, level, seq) or None. Only a message that actually arrived counts."""
+    import re
+    global FIX_RE
+    if FIX_RE is None:
+        FIX_RE = re.compile(r"^\[(\d\d):(\d\d):(\d\d)\] RX\s+FIX eagle \S+ seq (\d+): ([-\d.]+), ([-\d.]+) .*?ce (\d+) m "
+                            r"class \S*ID-(FACE|STRONG|APPEARANCE)")
+    for line in reversed(dash.tail_lines(nest_log, 400)):
+        m = FIX_RE.search(line)
+        if not m:
+            continue
+        hh, mm, ss = (int(v) for v in m.group(1, 2, 3))
+        lt = time.localtime(now)
+        t = time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday, hh, mm, ss, 0, 0, -1))
+        if t > now + 60:                                  # logged before midnight
+            t -= 86400
+        return {"age_s": round(now - t), "seq": int(m.group(4)), "lat": float(m.group(5)), "lon": float(m.group(6)),
+                "ce_m": int(m.group(7)), "level": m.group(8)}
+    return None
+
 
 def state(logs: Path, eagle_dir: Path, verdict: Verdict) -> dict:
     now = time.time()
@@ -215,6 +250,11 @@ def state(logs: Path, eagle_dir: Path, verdict: Verdict) -> dict:
     run_dir = run.resolve() if run.exists() else None
     vis = vision_state(latest_vision_lines(eagle_dir), now)
     life = life_state(run_dir, now)
+    sig = target_signal(logs / "nest.log", now)
+    if sig and sig["age_s"] <= SIGNAL_SHOW_S:
+        verdict.note_signal(sig)
+    else:
+        sig = None
     v = verdict.decide(vis, life, now)
     best = vis["best"]
     chips = {
@@ -236,7 +276,7 @@ def state(logs: Path, eagle_dir: Path, verdict: Verdict) -> dict:
              "audio": {"age_s": None if au is None or au[2] is None else round(au[2], 1),
                        "level_db": None if au is None else round(au[1], 1)}}
     nest = [l for l in dash.tail_lines(logs / "nest.log", 300) if "RX" in l or "COT" in l or "FIX" in l][-3:]
-    return {"time": time.strftime("%H:%M:%S"), "verdict": v, "chips": chips, "network": network_state(),
+    return {"time": time.strftime("%H:%M:%S"), "verdict": v, "chips": chips, "network": network_state(), "signal": sig,
             "target_enrolled": (eagle_dir / "target_profile.npz").exists(), "nest": nest, "feeds": feeds,
             "ages": {"vision_s": None if vis["age_s"] is None else round(vis["age_s"], 1),
                      "thermal_s": dash.age_s(logs / "live_thermal.npy"),
@@ -253,6 +293,11 @@ font:16px/1.35 system-ui,-apple-system,sans-serif;display:flex;flex-direction:co
 #banner{border-radius:12px;padding:10px 20px;background:#252b33;transition:background .25s;display:flex;align-items:baseline;gap:18px;flex-wrap:wrap}
 #banner.target{background:var(--green);color:#04210f}#banner.possible{background:var(--amber);color:#2a1800}
 #banner.not_target{background:var(--red);color:#fff}#banner.human{background:var(--blue);color:#fff}
+#signal{margin-left:auto;display:none;align-items:center;gap:12px;background:#0f2a18;color:#d6ffe4;
+border:3px solid var(--green);border-radius:12px;padding:8px 16px;animation:pulse 1.6s ease-in-out 3}
+#signal svg{width:38px;height:38px;flex:none}#signal b{display:block;font-size:clamp(16px,1.7vw,26px);letter-spacing:.02em}
+#signal span{font-size:13px;opacity:.85}@keyframes pulse{50%{box-shadow:0 0 0 10px rgba(34,197,94,.25)}}
+#log .signal{color:#7dffb0;font-weight:700}
 #title{font-size:clamp(24px,3.2vw,46px);font-weight:800}#sub{font-size:clamp(13px,1.3vw,19px);opacity:.92}
 #views{flex:1;display:grid;grid-template-columns:1fr 1fr;gap:10px;min-height:0}
 .card{background:var(--card);border-radius:12px;padding:8px;display:flex;flex-direction:column;min-height:0;position:relative}
@@ -288,7 +333,11 @@ font-size:clamp(14px,1.4vw,20px);background:rgba(37,43,51,.85);color:#cfd5db}
 border-radius:8px;font-size:14px;display:none;z-index:30;max-width:80vw}
 #foot{display:flex;align-items:center;gap:16px;font-size:12px;color:var(--mut);flex-wrap:wrap}.ok{color:var(--green)}.warn{color:var(--amber)}
 </style></head><body>
-<div id="banner"><div id="title">Starting...</div><div id="sub"></div></div>
+<div id="banner"><div id="title">Starting...</div><div id="sub"></div>
+<div id="signal"><svg viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2" stroke-linecap="round">
+<path d="M12 13v8M9 21h6"/><circle cx="12" cy="11" r="2" fill="#22c55e"/><path d="M8.5 7.5a5 5 0 0 0 0 7M15.5 7.5a5 5 0 0 1 0 7"/>
+<path d="M5.6 4.6a9 9 0 0 0 0 12.8M18.4 4.6a9 9 0 0 1 0 12.8"/></svg>
+<div><b>SIGNAL SENT TO RESCUE HQ</b><span id="sigtxt"></span></div></div></div>
 <div id="views">
   <div class="card"><div class="label"><span>Camera: <span id="camname">standard</span></span><span id="camage"></span></div>
     <div class="view"><img id="cam" alt="camera"><div class="stale" id="cstale"></div></div></div>
@@ -313,6 +362,10 @@ async function poll(){let s;try{s=await (await fetch('/state')).json()}catch(e){
   const names={heat:'Heat',sound:'Sound',vision:'Vision',face:'Face ID'};
   $('chips').innerHTML=Object.entries(s.chips).map(([k,c])=>`<div class="chip ${c.on?'on':''}"><b>${names[k]}</b><span>${esc(c.text)}</span></div>`).join('');
   $('log').innerHTML=v.log.slice(0,6).map(l=>`<div class="${l.key}">${l.time}  ${esc(l.title)}</div>`).join('')||'waiting for the first detection';
+  const sg=s.signal,se=$('signal');
+  if(sg){se.style.display='flex';const ag=sg.age_s<60?sg.age_s+' s ago':Math.round(sg.age_s/60)+' min ago';
+    $('sigtxt').textContent=`Encrypted 48-byte FIX · ${sg.lat.toFixed(5)}, ${sg.lon.toFixed(5)} ±${sg.ce_m} m · ID-${sg.level} · ${ag}`}
+  else se.style.display='none';
   const f=s.feeds,a=s.ages;
   stale('tstale',f.thermal.age_s,5,'THERMAL PAUSED: life_node stopped or recording off');
   stale('astale',f.audio.age_s,5,'SOUND PAUSED: life_node stopped or recording off');

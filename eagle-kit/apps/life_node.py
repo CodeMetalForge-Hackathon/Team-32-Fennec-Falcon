@@ -104,6 +104,7 @@ class LifeNode:
             except Exception as e:
                 log(f"RADIO   unavailable ({type(e).__name__}: {e}) - logging only")
         self.last_sig, self.last_report = None, -1e9
+        self.target_fix_t = {}                  # track id -> last time a TARGET FIX was sent
 
     # ---- module setup ---------------------------------------------------------------------
     def _init_thermal(self):
@@ -304,6 +305,7 @@ class LifeNode:
                         log(f"LIFE    dropped {d.kind} from {d.source or '?'}: {type(e1).__name__}: {e1}")
         self.life.evaluate(now)
         self.maybe_report(now)
+        self.maybe_send_target_fix(now)
         return dets
 
     def _record_step(self, now: float) -> None:
@@ -348,6 +350,44 @@ class LifeNode:
         if self.rec:
             self.rec.event("tx_life", frames=len(frames), bytes=[len(f) for f in frames])
         return out
+
+    def maybe_send_target_fix(self, now: float):
+        """One FIX for a track that the identity matcher verified as the missing person.
+
+        LIFE lists carry status and position but no identity, so a face-verified track
+        (``id_level`` >= report.target_fix.min_level, default 3) is reported once as a FIX with the
+        match level in its class byte, then at most every ``every_s`` while it stays verified. The
+        Nest logs it as ``RX FIX ... class ...ID-FACE``; the demo view shows SIGNAL SENT from that
+        line, so the screen reflects a message that was actually received and decrypted."""
+        tf = self.L.get("report", {}).get("target_fix", {})
+        if not tf.get("enabled", True):
+            return None
+        min_level, every_s = int(tf.get("min_level", 3)), float(tf.get("every_s", 60.0))
+        best = None
+        for tr in self.life.ranked(now):
+            if tr.id_level >= min_level and now - self.target_fix_t.get(tr.id, -1e9) >= every_s:
+                if best is None or (tr.id_level, tr.score) > (best.id_level, best.score):
+                    best = tr
+        if best is None:
+            return None
+        self.target_fix_t[best.id] = now
+        x = best.x
+        o = self.cfg["site"]["origin"]
+        from eagle.geo import LocalFrame
+        lat, lon, _ = LocalFrame(o["lat"], o["lon"], o.get("hae_m", 0.0)).to_geodetic(float(x[0]), float(x[1]), 0.0)
+        body = P.FixBody(lat, lon, o.get("hae_m", 0.0) + self.floor_z, best.ce_m,
+                         P.with_identity(P.CLS_UNKNOWN, min(3, best.id_level)), min(1.0, best.score),
+                         int(time.time()))
+        log(f"TARGET  track #{best.id} verified as the missing person (ID-{P.ID_LEVEL_NAMES[min(3, best.id_level)]}) "
+            f"at E {x[0]:.1f} N {x[1]:.1f}, ce {best.ce_m:.1f} m -> FIX")
+        if self.rec:
+            self.rec.event("tx_fix", track=best.id, match_level=int(best.id_level), east_m=float(x[0]),
+                           north_m=float(x[1]), ce_m=float(best.ce_m))
+        if self.radio is None:
+            log("TX      (radio disabled)")
+            return None
+        self.radio.drain()
+        return self.radio.send_fix(body)
 
     def run(self, duration: float | None = None, step_s: float = 0.5) -> None:
         t_end = None if duration is None else time.time() + duration

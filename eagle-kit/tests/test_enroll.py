@@ -194,3 +194,52 @@ def test_add_live_faces_appends_to_existing_profile(en):
     assert p2.description == "navy hoodie"
     assert p2.meta["face_sources"] == {"photos": 3, "live": 3}
     assert [s["summary"] for s in p2.meta["live_scans"]] == [["frontal"], ["down"]]
+
+
+def test_add_photos_to_existing_profile_checks_against_old_faces_and_keeps_them(en):
+    rng = np.random.default_rng(11)
+    me = l2n(rng.normal(size=512))[0]
+    near = lambda: l2n(me + 0.6 * l2n(rng.normal(size=512))[0])[0]          # same person, cos ~0.85
+    old_faces = np.stack([near() for _ in range(5)] + [l2n(rng.normal(size=512))[0]])   # last one: odd old face
+    base = TargetProfile(old_faces, l2n(rng.normal(size=(3, 512))), l2n(rng.normal(size=(4, 512))),
+                         np.zeros((0, 512), np.float32), "navy hoodie",
+                         {"face_sources": {"photos": 4, "live": 2}, "skipped": [["x.jpg", "dup"]]})
+    stranger = l2n(rng.normal(size=512))[0]
+    logs = []
+    kept, dropped = en.consistent_faces([near(), stranger], ["v1.jpg", "v2.jpg"], min_cos=0.30, log=logs.append,
+                                        reference=base.face)
+    joined = "\n".join(logs)
+    assert len(kept) == 1 and [d[0] for d in dropped] == ["v2.jpg"]           # only 2 new faces, still checked
+    assert "OUTLIER v2.jpg" in joined and "WARN   existing profile face #5" in joined
+    assert "CHECK  1/2 new faces agree with the profile's 6 existing face(s)" in joined
+
+    new = TargetProfile(np.stack(kept), l2n(rng.normal(size=(1, 512))), np.zeros((0, 512), np.float32),
+                        np.zeros((0, 512), np.float32), "", {"skipped": [["v2.jpg", "outlier"]]})
+    merged = en.add_photo_profile(base, new, source="frames")
+    assert merged.counts() == {"face": 7, "clip_image": 4, "clip_text": 4, "osnet": 0}
+    assert np.array_equal(merged.face[:6], base.face) and merged.description == "navy hoodie"
+    assert merged.meta["face_sources"] == {"photos": 5, "live": 2}
+    assert merged.meta["photo_adds"][0]["face"] == 1 and len(merged.meta["skipped"]) == 2
+    with_desc = en.add_photo_profile(base, TargetProfile(np.stack(kept), description="yellow quarter-zip"))
+    assert with_desc.description == "navy hoodie / yellow quarter-zip"
+
+
+def test_enroll_uses_reference_faces(en):
+    """enroll(reference_faces=...) runs the same-person check over old + new faces."""
+    rng = np.random.default_rng(4)
+    me = l2n(rng.normal(size=512))[0]
+    other = l2n(rng.normal(size=512))[0]
+
+    class Face:
+        def faces(self, rgb, with_boxes=False):
+            v = me if rgb[0, 0, 0] == 1 else other
+            return [(v, 80.0, 0.9, np.array([10.0, 10, 50, 50])) if with_boxes else (v, 80.0, 0.9)]
+
+    def img(k):
+        a = np.zeros((100, 100, 3), np.uint8)
+        a[0, 0, 0] = k
+        return a
+    logs = []
+    prof = en.enroll([("a.jpg", img(1)), ("b.jpg", img(2))], "", Embedders(face=Face()), None,
+                     log=logs.append, reference_faces=np.stack([me, me, me]))
+    assert prof.counts()["face"] == 1 and any("OUTLIER b.jpg" in m for m in logs)
