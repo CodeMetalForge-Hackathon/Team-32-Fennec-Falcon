@@ -4,6 +4,42 @@ Every build gets an entry here: what we built, why, how it works, what we decide
 
 ---
 
+## 2026-11-08 · Eagle viewer: bring the 3D view back when the browser drops it
+
+**Files:** [`simulator/v2/eagle_viewer.src.html`](../simulator/v2/eagle_viewer.src.html) (built into `eagle_viewer.html`), [`simulator/v2/build.js`](../simulator/v2/build.js) · **Docs:** [eagle-drone.md](eagle-drone.md#viewer)
+
+### What
+The viewer now recovers when the browser takes away its WebGL context: it rebuilds the 3D view on its own, and if the browser keeps refusing it shows still renders of the model with a **Restart 3D view** button. It also uses less graphics memory.
+
+### Why
+On a team laptop the viewer's 3D stage turned white with a small broken-image icon in the corner while the readout kept updating. That is what a page looks like after the browser drops its WebGL context to free graphics memory (several 3D tabs open, the simulator in another tab, a laptop GPU). The page never asked for the view back, so it stayed blank until reloaded.
+
+### How it works
+- The renderer is built by a function. On a lost context the stage shows a short notice; if the browser restores the context, the page rebuilds the reflection map and shadow map and carries on.
+- If the browser has not restored it after 2.5 s, the page builds a new renderer and canvas, keeping the camera angle and the bird's place in the loop.
+- After three tries it stops and shows the still renders (`docs/images/eagle-drone-model.jpg`, embedded at build time) and **Restart 3D view**; 20 s of good frames resets the count.
+- Less graphics memory: pixel density capped at 1.5× (was 2×), shadow map 1024 px (was 2048), default GPU choice instead of asking for the discrete GPU, no drawing while the stage is scrolled out of view.
+
+### Key results
+- Measured in headless Chromium (SwiftShader): after a context the browser never restores, the view was back when checked 6 s later (rebuild set at 2.5 s); after a restored one, back when checked 2.5 s later.
+- Estimated graphics memory on a 1280×720 stage: about 220 MB at 2× (drawing buffer about 150 MB of it), about 110 MB now (drawing buffer about 85 MB at 1.5×, shadow map 8 MB instead of 33 MB).
+
+### Decisions and trade-offs
+| Decision | Why | Cost |
+|---|---|---|
+| Rebuild after 2.5 s instead of waiting for the browser | Browsers never hand back a context dropped for "too many contexts" | A rebuild can push another 3D tab over the browser's limit |
+| Stop after three tries and show a button | A browser that keeps refusing is not asked forever | One click to restart |
+| Pixel density 1.5× | The drawing buffer is most of the page's graphics memory (estimate above) | Slightly softer edges on high-density screens |
+
+### Verification
+- `recover.js` (headless Chromium, not in the repo): context lost then restored → same canvas, live, notice gone; context lost and never restored → new canvas after 2.5 s, live; lost four times in a row → final notice and Restart button, Restart brings it back; no WebGL at all → still renders and Restart, no uncaught errors. All pass, no page errors.
+- Viewer at desktop and phone width, light and dark: no console errors, no horizontal scroll.
+
+### Open issues / next
+- Simulator v2 has the same weakness (no recovery from a lost context); the same change would carry over.
+
+---
+
 ## 2026-11-08 · The Eagle as a 3D model: hawk-eagle size, folding wings, flight and perching
 
 **Files:** [`simulator/v2/eagle_drone.js`](../simulator/v2/eagle_drone.js), [`simulator/v2/index.src.html`](../simulator/v2/index.src.html) (built into `index.html`), [`simulator/v2/eagle_viewer.src.html`](../simulator/v2/eagle_viewer.src.html) (built into `eagle_viewer.html`), [`simulator/v2/assets/`](../simulator/v2/assets/), [`simulator/v2/tools/export_glb.js`](../simulator/v2/tools/export_glb.js) · **Docs:** [eagle-drone.md](eagle-drone.md)

@@ -48,6 +48,11 @@ h1 { margin: 0; font: 700 clamp(34px, 5vw, 56px)/0.95 var(--f-display); letter-s
 .badge { position: absolute; right: 12px; top: 12px; padding: 6px 10px; border-radius: 999px; background: var(--hud-bg); color: var(--hud-ink); font: 500 11px/1 var(--f-data); letter-spacing: 0.08em; text-transform: uppercase; pointer-events: none; }
 .hint { position: absolute; right: 12px; bottom: 10px; color: var(--hud-dim); font: 11px/1 var(--f-data); pointer-events: none; }
 .loading { position: absolute; inset: 0; display: grid; place-items: center; color: var(--hud-dim); font: 13px var(--f-data); }
+.notice { position: absolute; inset: 0; display: grid; place-items: center; background: #1b2626; padding: 16px; z-index: 2; }
+.notice figure { max-width: min(720px, 100%); display: grid; gap: 12px; justify-items: center; text-align: center; }
+.notice img { width: 100%; height: auto; aspect-ratio: 2340 / 540; border-radius: 6px; }
+.notice p { margin: 0; color: var(--hud-ink); font: 14px/1.45 var(--f-body); max-width: 56ch; }
+.notice button { appearance: none; border: 1px solid var(--hud-amber); background: transparent; color: var(--hud-amber); font: 600 14px/1 var(--f-body); padding: 9px 14px; border-radius: 7px; cursor: pointer; }
 
 /* control rail */
 .rail { display: flex; flex-wrap: wrap; gap: 14px 22px; align-items: flex-end; padding: 14px 16px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); }
@@ -101,6 +106,7 @@ footer a { color: var(--accent); }
 
   <div class="stage" id="stage">
     <div class="loading" id="loading">Painting feathers…</div>
+    <div class="notice" id="notice" hidden><figure><img src="@@MODELIMG@@" alt="Still renders of the drone: bare airframe, Mountain Hawk-Eagle disguise in flight, perched with wings folded" width="2340" height="540"><p id="noticeMsg" role="status">Bringing the 3D view back…</p><button type="button" id="restart">Restart 3D view</button></figure></div>
     <div class="hud" aria-live="polite">
       <div class="st" id="hState">Perched</div>
       <div><span>wingbeat</span><span class="v" id="hHz">—</span></div>
@@ -218,11 +224,21 @@ const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const stage = $('#stage');
 
 // ---------- renderer and scene: a dusk ridge in the Central Mountain Range ----------
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(Math.min(2, devicePixelRatio || 1));
-renderer.outputEncoding = THREE.sRGBEncoding; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.92;
-renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-stage.prepend(renderer.domElement);
+// A browser can drop a page's WebGL context to free graphics memory (several 3D tabs open, a laptop GPU). The canvas then
+// goes blank while the page keeps running, so the renderer is built by a function and rebuilt when that happens.
+let renderer = null, controls = null, envRT = null, lostAt = 0, dead = false, frameErr = null, autoTries = 0, restartedAt = 0;
+const notice = $('#notice'), noticeMsg = $('#noticeMsg');
+function showNotice(msg, final) { noticeMsg.textContent = msg; notice.hidden = false; $('#restart').hidden = !final; if (renderer) renderer.domElement.style.visibility = 'hidden'; }
+function hideNotice() { notice.hidden = true; if (renderer) renderer.domElement.style.visibility = ''; }
+function makeRenderer() {
+  const r = new THREE.WebGLRenderer({ antialias: true });   // default power preference: forcing the discrete GPU can itself drop contexts on dual-GPU laptops
+  r.setPixelRatio(Math.min(1.5, devicePixelRatio || 1));   // capped: the drawing buffer is most of this page's GPU memory
+  r.outputEncoding = THREE.sRGBEncoding; r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 0.92;
+  r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap;
+  r.domElement.addEventListener('webglcontextlost', () => { if (r !== renderer) return; lostAt = performance.now(); showNotice('The browser paused the 3D view to free graphics memory. Bringing it back…'); });
+  r.domElement.addEventListener('webglcontextrestored', () => { if (r !== renderer) return; lostAt = 0; freshTargets(); buildEnv(); hideNotice(); });
+  return r;
+}
 const scene = new THREE.Scene();
 const HAZE = new THREE.Color(0x5f7884);
 scene.fog = new THREE.Fog(HAZE, 70, 460);
@@ -264,16 +280,30 @@ const PERCH = new THREE.Vector3(0, 4.045, 0), HEAD = 0;   // where the toes grip
 
 // light: low sun from the west, cool sky fill, environment for the airframe's chrome
 scene.add(new THREE.HemisphereLight(0xbfd3e0, 0x3a3428, 0.45));
-const sun = new THREE.DirectionalLight(0xffd7a8, 2.4); sun.position.set(-30, 22, 18); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
+const sun = new THREE.DirectionalLight(0xffd7a8, 2.4); sun.position.set(-30, 22, 18); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024);
 { const c = sun.shadow.camera; c.left = c.bottom = -4; c.right = c.top = 4; c.near = 1; c.far = 120; } sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.02;
 scene.add(sun, sun.target);
 const rim = new THREE.DirectionalLight(0x9fc4ff, 0.6); rim.position.set(20, 8, -25); scene.add(rim);
-{ // environment for reflections: the same sky as vertex colours on a plain sphere (some GPUs return black from a shader-material capture)
-  const pm = new THREE.PMREMGenerator(renderer), es = new THREE.Scene(), sg = new THREE.SphereGeometry(10, 32, 16), pp = sg.attributes.position, cols = [];
+// environment for reflections: the same sky as vertex colours on a plain sphere (some GPUs return black from a shader-material capture)
+const envScene = new THREE.Scene();
+{ const sg = new THREE.SphereGeometry(10, 32, 16), pp = sg.attributes.position, cols = [];
   const top = new THREE.Color(0x1f3c4f), mid = new THREE.Color(0x7d98a3), low = new THREE.Color(0xe7b98a), gnd = new THREE.Color(0x2c3428);
   for (let i = 0; i < pp.count; i++) { const y = pp.getY(i) / 10; const c = y > 0.08 ? mid.clone().lerp(top, Math.min(1, (y - 0.08) / 0.5)) : y > -0.05 ? low.clone().lerp(mid, (y + 0.05) / 0.13) : gnd.clone(); c.multiplyScalar(0.8); cols.push(c.r, c.g, c.b); }
-  sg.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3)); es.add(new THREE.Mesh(sg, new THREE.MeshBasicMaterial({ side: THREE.BackSide, vertexColors: true })));
-  scene.environment = pm.fromScene(es, 0.04).texture; pm.dispose(); }
+  sg.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3)); envScene.add(new THREE.Mesh(sg, new THREE.MeshBasicMaterial({ side: THREE.BackSide, vertexColors: true }))); }
+function buildEnv() { const pm = new THREE.PMREMGenerator(renderer), rt = pm.fromScene(envScene, 0.04); pm.dispose(); if (envRT) envRT.dispose(); envRT = rt; scene.environment = rt.texture; }
+// render targets belong to one context: drop them so the next frame makes new ones
+function freshTargets() { if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } }
+function attachRenderer() {
+  const old = renderer, r = makeRenderer(); renderer = r;
+  if (old) { stage.replaceChild(r.domElement, old.domElement); try { old.dispose(); old.forceContextLoss(); } catch (e) { /* already gone */ } } else stage.prepend(r.domElement);
+  const t = controls ? controls.target.clone() : null; if (controls) controls.dispose();
+  controls = new THREE.OrbitControls(camera, r.domElement);
+  controls.enableDamping = true; controls.dampingFactor = 0.08; controls.minDistance = 0.8; controls.maxDistance = 60; controls.maxPolarAngle = Math.PI * 0.53;
+  if (t) controls.target.copy(t);
+  freshTargets(); buildEnv(); resize(); controls.update();
+}
+
+try { attachRenderer(); } catch (err) { dead = true; }
 
 // ---------- the bird ----------
 const bird = new EagleDrone({ livery: 'hawkEagle', quality: (navigator.hardwareConcurrency || 4) < 4 ? 'low' : 'high' });
@@ -369,9 +399,8 @@ let speed = 1; $('#speed').addEventListener('click', e => { const b = e.target.c
 let camMode = 'follow'; $('#camseg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; camMode = b.dataset.c; setPressed('camseg', camMode); });
 
 // ---------- camera: follows the bird and keeps the angle you drag to ----------
-const controls = new THREE.OrbitControls(camera, renderer.domElement);
-controls.enableDamping = true; controls.dampingFactor = 0.08; controls.minDistance = 0.8; controls.maxDistance = 60; controls.maxPolarAngle = Math.PI * 0.53;
-camera.position.copy(PERCH).add(new THREE.Vector3(1.9, 0.55, 2.1)); controls.target.copy(PERCH).add(new THREE.Vector3(0, 0.3, 0)); controls.update();
+camera.position.copy(PERCH).add(new THREE.Vector3(1.9, 0.55, 2.1)); camera.lookAt(PERCH);
+if (controls) { controls.target.copy(PERCH).add(new THREE.Vector3(0, 0.3, 0)); controls.update(); }
 const _t = new THREE.Vector3(), _d = new THREE.Vector3(), _prev = new THREE.Vector3().copy(bird.object.position);
 function followCam(dt) {
   if (camMode !== 'follow') return;
@@ -396,18 +425,35 @@ function hud(dt) {
 }
 
 // ---------- loop ----------
-function resize() { const w = stage.clientWidth, h = stage.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+function resize() { if (!renderer) return; const w = Math.max(1, stage.clientWidth), h = Math.max(1, stage.clientHeight); renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
 new ResizeObserver(resize).observe(stage); resize();
+// draw only while the stage is on screen and the tab is visible
+let onScreen = true; new IntersectionObserver(es => { onScreen = es[0].isIntersecting; }).observe(stage);
+function restart3d(manual) {
+  if (manual) autoTries = 0;
+  try { attachRenderer(); lostAt = 0; dead = false; frameErr = null; restartedAt = performance.now(); hideNotice(); }
+  catch (err) { console.warn('3D view restart failed:', err && err.message || err); dead = true; showNotice('The browser will not give this page a 3D view right now. Close other 3D tabs (the simulator, other viewers), then press Restart.', true); }
+}
+$('#restart').addEventListener('click', () => restart3d(true));
+if (dead) showNotice('This browser could not start a 3D view. Close other 3D tabs, then press Restart.', true);
 let last = performance.now(), visible = true;
 document.addEventListener('visibilitychange', () => { visible = !document.hidden; last = performance.now(); });
 function frame(now) {
   requestAnimationFrame(frame); if (!visible) return;
+  // a dropped context that the browser has not handed back after 2.5 s: build a new renderer
+  // (three tries, then a Restart button, so a browser that keeps refusing is not asked forever)
+  if (lostAt && !dead && now - lostAt > 2500) {
+    if (++autoTries <= 3) restart3d(false);
+    else { dead = true; showNotice('The browser keeps taking the 3D view away. Close other 3D tabs (the simulator, other viewers), then press Restart.', true); }
+  }
   const raw = Math.min(0.1, (now - last) / 1000); last = now; const dt = raw * speed; simTime += dt;
   for (let i = waits.length - 1; i >= 0; i--) if (simTime >= waits[i].t) { const w = waits.splice(i, 1)[0]; w.res(); }
   bird.speedScale = 1; bird.update(dt);
   sun.target.position.copy(bird.object.position); sun.position.copy(bird.object.position).add(new THREE.Vector3(-30, 22, 18));
-  followCam(raw); controls.update(); hud(raw); syncButtons();
-  renderer.render(scene, camera);
+  if (controls) { followCam(raw); controls.update(); } hud(raw); syncButtons();
+  if (lostAt || dead || !onScreen || frameErr) return;
+  try { renderer.render(scene, camera); if (autoTries && now - restartedAt > 20000) autoTries = 0; }   // 20 s of good frames: a later loss gets its three tries again
+  catch (err) { frameErr = err; console.error(err); showNotice('The 3D view stopped: ' + (err && err.message || err) + '. Press Restart to try again.', true); }
 }
 requestAnimationFrame(frame);
 setState('perched', 'Perched · folded · scanning');

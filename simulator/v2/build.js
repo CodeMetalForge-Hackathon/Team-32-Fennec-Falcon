@@ -23,7 +23,10 @@ if (fs.existsSync(vsrcPath)) {
   const vsrc = fs.readFileSync(vsrcPath, 'utf8');
   if (!vsrc.includes('/*@@EAGLE@@*/')) throw new Error('eagle_viewer.src.html has no /*@@EAGLE@@*/ marker');
   const ref = 'data:image/jpeg;base64,' + fs.readFileSync(path.join(dir, '../../docs/images/eagle-drone-reference.jpg')).toString('base64');
-  const vbody = vsrc.replace('/*@@EAGLE@@*/', () => eagle).replace('@@REF@@', () => ref);
+  // still renders of the model, shown if the browser will not give the page a 3D view
+  const still = 'data:image/jpeg;base64,' + fs.readFileSync(path.join(dir, '../../docs/images/eagle-drone-model.jpg')).toString('base64');
+  if (!vsrc.includes('@@MODELIMG@@')) throw new Error('eagle_viewer.src.html has no @@MODELIMG@@ marker');
+  const vbody = vsrc.replace('/*@@EAGLE@@*/', () => eagle).replace('@@REF@@', () => ref).replace('@@MODELIMG@@', () => still);
   const viewer = '<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n' +
     '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n</head>\n<body>\n' + vbody + '\n</body>\n</html>\n';
   fs.writeFileSync(path.join(dir, 'eagle_viewer.html'), viewer);

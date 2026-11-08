@@ -121,6 +121,11 @@ perched and scanning, mantling, folding, take-off, a circuit, approach, flare, l
 at a time; **½×** and **¼×** slow it down to watch the fold; **X-ray** shows the airframe inside the
 disguise. The span, length and folded wing shown are measured off the model when the page loads.
 
+If the browser takes the 3D view away to free graphics memory (several 3D tabs open, the simulator
+in another tab), the viewer brings it back on its own within about 3 seconds. If the browser keeps
+refusing, it shows still renders of the model and a **Restart 3D view** button; closing other 3D
+tabs and pressing it brings the view back.
+
 ## glTF for Unreal and Blender
 
 `simulator/v2/assets/eagle_drone_<skin>.glb`, one per skin: one skinned mesh, 95 bones,
