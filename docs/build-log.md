@@ -4,6 +4,33 @@ Every build gets an entry here: what we built, why, how it works, what we decide
 
 ---
 
+## 2026-11-08 · Simulator v2: the Eagle cam sees him (sight line cleared, silhouette outlined); published
+
+**Files:** [`simulator/v2/index.src.html`](../simulator/v2/index.src.html) (built into `index.html`) · **Docs:** [simulator-v2.md](simulator-v2.md)
+
+### What
+In Cinematic's thermal shot the operator is in view and outlined. The Eagle cam traces his silhouette in cyan instead of boxing him, and the shot zooms in 2.5× on him (digital zoom: the same 256×192 pixels, drawn bigger).
+
+### Why
+- Mitch could not see the person in the thermal shot. At High quality the full vegetation is drawn and a tree crown stood between the default perch and his spot, so the frame held 0 px of him. Medium and Low draw fewer trees and showed 59 px.
+
+### How it works
+- **Sight line.** `clearSightLine()` cuts every tree, tree fern, shrub, ground fern, bamboo clump, log and rock that reaches into a cone from the bird's eye to him. The cone is 0.3 m wide at the eye and 1.6 m at him, and each plant is tested as capsules round its trunk and each leaf clump. It also clears the understory within 4.5 m of him.
+- **When it reruns.** Whenever the perch, his spot, the canopy height or the quality level changes; the earlier cuts grow back first.
+- **Flights.** Cut crowns no longer count when flights check the crown height (`canopyTopAt`), and no lianas hang from the trees on that line.
+- **Outline.** Marching squares over his pixels in the ID pass, grown by one pixel so the line sits just outside his warm pixels.
+- **Frame rate.** During the thermal shot the Eagle cam runs at 24 frames a second, and the 3D view it covers is not drawn.
+
+### Key results
+- Default scenario (8 m perch, 20 m from him): 59 px on him at High, Medium and Low (was 0 at High).
+
+### Verification
+- Headless Chromium at High quality, jumping to the thermal shot: 59 px on him, outline drawn, 2.5× zoom on him; no console errors.
+- `tests/test_present.js` passes.
+
+### Open issues / next
+- The model's chance of a clear line (`pLOS`, 34% at 20 m) is unchanged; the scene now always shows the case where the line is clear.
+
 ## 2026-11-08 · Simulator v2: the realistic eagle up close in Cinematic; flights clear of the hillside; published
 
 **Files:** [`simulator/v2/index.src.html`](../simulator/v2/index.src.html) (built into `index.html`), [`simulator/v2/eagle_drone.js`](../simulator/v2/eagle_drone.js) (v1.2) · **Docs:** [simulator-v2.md](simulator-v2.md), [eagle-drone.md](eagle-drone.md#in-simulator-v2)

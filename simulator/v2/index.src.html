@@ -739,31 +739,76 @@ const LEAF_TINT = [0xd8e8b0, 0xc8dca0, 0xb8d098, 0xe0e8a8, 0xa8c48c, 0xd0dc98, 0
 const FLUSH = C(0xe0a888);
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _s = new THREE.Vector3(), _p = new THREE.Vector3(), _e = new THREE.Euler(), _c = new THREE.Color();
 function setInst(mesh, i, x, y, z, sx, sy, sz, ry = 0, rx = 0, rz = 0) { _e.set(rx, ry, rz); _q.setFromEuler(_e); _m.compose(_p.set(x, y, z), _q, _s.set(sx, sy, sz)); mesh.setMatrixAt(i, _m); }
-let canopyTopAt = () => 0, crownBoost = 1;
-function layoutVegetation(canopyH) {
-  trees.forEach((t, i) => {
-    let h = canopyH * (0.8 + 0.4 * t.k), em = t.e > 0.965; if (em) h = Math.max(h, canopyH * (1.35 + 0.3 * t.s));
-    const r = (5.8 + 4.6 * t.s) * (0.75 + canopyH / 50) * crownBoost * (em ? 1.2 : 1); t.h = h; t.r = r * 1.1;
+let canopyTopAt = () => 0, crownBoost = 1, vegCanopyH = 15;
+// one placement function per kind, also used to put back what clearSightLine() cut. shapes(): what the sight-line test
+// checks, as [a, b, radius] capsules (a sphere when a == b)
+const _ctr = (it, f) => [it.x, it.y + f, it.z];
+const VEG = {
+  trees: { arr: trees, set(t, i) {
+    const canopyH = vegCanopyH; let h = canopyH * (0.8 + 0.4 * t.k), em = t.e > 0.965; if (em) h = Math.max(h, canopyH * (1.35 + 0.3 * t.s));
+    const r = (5.8 + 4.6 * t.s) * (0.75 + canopyH / 50) * crownBoost * (em ? 1.2 : 1); t.h = h; t.r = r * 1.1; t.rr = r;
     setInst(veg.trunks, i, t.x, t.y - 0.3, t.z, 0.85 + t.k * 0.8, h - r * 0.45, 0.85 + t.k * 0.8, t.a);
     const col = t.c > 0.95 ? FLUSH : LEAF_TINT[Math.floor(t.c * LEAF_TINT.length) % LEAF_TINT.length];
     for (let j = 0; j < 3; j++) {   // three leafy clumps per crown: a lumpy, cauliflower-like broadleaf crown
       const k = 3 * i + j, a = t.a + j * 2.39, d = j ? r * 0.55 : 0, sc = j ? r * 0.62 : r * 0.86, y = t.y + h - (j ? r * (0.42 + 0.08 * j) : r * 0.28);
       setInst(veg.crowns, k, t.x + Math.cos(a) * d, y, t.z + Math.sin(a) * d, sc, sc * 0.92, sc, a * 1.7); veg.cores.setMatrixAt(k, _m);
       _c.copy(col).multiplyScalar(j ? 0.9 + 0.06 * j : 1.04); veg.crowns.setColorAt(k, _c); veg.cores.setColorAt(k, _c);
-    }
-  });
-  shrubs.forEach((s, i) => { const r = 0.9 + 1.4 * s.s; setInst(veg.shrubs, i, s.x, s.y + r * 0.45, s.z, r * 1.2, r, r * 1.1, s.a); veg.shrubs.setColorAt(i, _c.copy(LEAF_TINT[Math.floor(s.c * 9) % 9]).multiplyScalar(0.9)); });
-  ferns.forEach((f, i) => { const h = 2.2 + 4.2 * f.s; setInst(veg.fernT, i, f.x, f.y - 0.2, f.z, 1, h, 1, f.a); setInst(veg.fernC, i, f.x, f.y + h - 0.1, f.z, 0.9 + f.s * 0.6, 0.9 + f.s * 0.5, 0.9 + f.s * 0.6, f.a); veg.fernC.setColorAt(i, _c.copy(C(f.c > 0.5 ? 0xe8f0c8 : 0xd0e8b0))); });
-  gferns.forEach((f, i) => { const s = 0.7 + f.s * 0.9; setInst(veg.gferns, i, f.x, f.y - 0.05, f.z, s, s, s, f.a); veg.gferns.setColorAt(i, _c.copy(C(f.s > 0.5 ? 0xd8e8b8 : 0xc0d8a0))); });
-  bamboos.forEach((b, i) => setInst(veg.bamboo, i, b.x, b.y - 0.3, b.z, 0.9 + b.s * 0.5, 0.85 + b.s * 0.4, 0.9 + b.s * 0.5, b.a));
-  palms.forEach((p, i) => { const h = 9 + p.s * 5; setInst(veg.palmT, i, p.x, p.y - 0.2, p.z, 0.9, h, 0.9, p.a); setInst(veg.palmC, i, p.x, p.y + h - 0.2, p.z, 1, 1, 1, p.a); });
-  logs.forEach((l, i) => { const len = 4 + l.s * 7; setInst(veg.logs, i, l.x, l.y + 0.25, l.z, len, 1 + l.s * 0.5, 1 + l.s * 0.5, l.a, 0, (l.s - 0.5) * 0.12); });
-  rocks.forEach((r, i) => { const s = 0.5 + r.s * 1.8; setInst(veg.rocks, i, r.x, r.y - s * 0.15, r.z, s * 1.2, s, s, r.a); });
+    } },
+    hide(t, i) { setInst(veg.trunks, i, t.x, t.y, t.z, 0, 0, 0); for (let j = 0; j < 3; j++) { setInst(veg.crowns, 3 * i + j, t.x, t.y, t.z, 0, 0, 0); veg.cores.setMatrixAt(3 * i + j, _m); } },
+    shapes(t) { const r = t.rr, out = [[_ctr(t, 0), _ctr(t, t.h - r * 0.45), 0.6 * (0.85 + t.k * 0.8)]];
+      for (let j = 0; j < 3; j++) { const a = t.a + j * 2.39, d = j ? r * 0.55 : 0, sc = j ? r * 0.62 : r * 0.86, c = [t.x + Math.cos(a) * d, t.y + t.h - (j ? r * (0.42 + 0.08 * j) : r * 0.28), t.z + Math.sin(a) * d]; out.push([c, c, sc * 1.15]); }
+      return out; } },
+  shrubs: { arr: shrubs, brush: true, set(s, i) { const r = 0.9 + 1.4 * s.s; setInst(veg.shrubs, i, s.x, s.y + r * 0.45, s.z, r * 1.2, r, r * 1.1, s.a); veg.shrubs.setColorAt(i, _c.copy(LEAF_TINT[Math.floor(s.c * 9) % 9]).multiplyScalar(0.9)); },
+    hide(s, i) { setInst(veg.shrubs, i, s.x, s.y, s.z, 0, 0, 0); }, shapes(s) { const r = 0.9 + 1.4 * s.s, c = _ctr(s, r * 0.45); return [[c, c, r * 1.35]]; } },
+  ferns: { arr: ferns, brush: true, set(f, i) { const h = 2.2 + 4.2 * f.s; setInst(veg.fernT, i, f.x, f.y - 0.2, f.z, 1, h, 1, f.a); setInst(veg.fernC, i, f.x, f.y + h - 0.1, f.z, 0.9 + f.s * 0.6, 0.9 + f.s * 0.5, 0.9 + f.s * 0.6, f.a); veg.fernC.setColorAt(i, _c.copy(C(f.c > 0.5 ? 0xe8f0c8 : 0xd0e8b0))); },
+    hide(f, i) { setInst(veg.fernT, i, f.x, f.y, f.z, 0, 0, 0); setInst(veg.fernC, i, f.x, f.y, f.z, 0, 0, 0); },
+    shapes(f) { const h = 2.2 + 4.2 * f.s, c = _ctr(f, h); return [[_ctr(f, 0), c, 0.2], [c, c, 2.6 * (0.9 + f.s * 0.6)]]; } },
+  gferns: { arr: gferns, brush: true, set(f, i) { const s = 0.7 + f.s * 0.9; setInst(veg.gferns, i, f.x, f.y - 0.05, f.z, s, s, s, f.a); veg.gferns.setColorAt(i, _c.copy(C(f.s > 0.5 ? 0xd8e8b8 : 0xc0d8a0))); },
+    hide(f, i) { setInst(veg.gferns, i, f.x, f.y, f.z, 0, 0, 0); }, shapes(f) { const s = 0.7 + f.s * 0.9, c = _ctr(f, 0.35 * s); return [[c, c, 1.05 * s]]; } },
+  bamboos: { arr: bamboos, brush: true, set(b, i) { setInst(veg.bamboo, i, b.x, b.y - 0.3, b.z, 0.9 + b.s * 0.5, 0.85 + b.s * 0.4, 0.9 + b.s * 0.5, b.a); },
+    hide(b, i) { setInst(veg.bamboo, i, b.x, b.y, b.z, 0, 0, 0); }, shapes(b) { return [[_ctr(b, 0), _ctr(b, 13 * (0.85 + b.s * 0.4)), 2.6 * (0.9 + b.s * 0.5)]]; } },
+  palms: { arr: palms, set(p, i) { const h = 9 + p.s * 5; setInst(veg.palmT, i, p.x, p.y - 0.2, p.z, 0.9, h, 0.9, p.a); setInst(veg.palmC, i, p.x, p.y + h - 0.2, p.z, 1, 1, 1, p.a); } },
+  logs: { arr: logs, brush: true, set(l, i) { const len = 4 + l.s * 7; setInst(veg.logs, i, l.x, l.y + 0.25, l.z, len, 1 + l.s * 0.5, 1 + l.s * 0.5, l.a, 0, (l.s - 0.5) * 0.12); },
+    hide(l, i) { setInst(veg.logs, i, l.x, l.y, l.z, 0, 0, 0); },
+    shapes(l) { const h = (2 + l.s * 3.5), dx = Math.cos(l.a) * h, dz = -Math.sin(l.a) * h; return [[[l.x - dx, l.y + 0.25, l.z - dz], [l.x + dx, l.y + 0.25, l.z + dz], 0.4 * (1 + l.s * 0.5)]]; } },
+  rocks: { arr: rocks, set(r, i) { const s = 0.5 + r.s * 1.8; setInst(veg.rocks, i, r.x, r.y - s * 0.15, r.z, s * 1.2, s, s, r.a); },
+    hide(r, i) { setInst(veg.rocks, i, r.x, r.y, r.z, 0, 0, 0); }, shapes(r) { const s = 0.5 + r.s * 1.8, c = _ctr(r, 0.2 * s); return [[c, c, 1.25 * s]]; } },
+};
+function layoutVegetation(canopyH) {
+  vegCanopyH = canopyH;
+  for (const k in VEG) VEG[k].arr.forEach((it, i) => { it.cut = false; VEG[k].set(it, i); });
+  vegCut.length = 0;
+  canopyTopAt = (x, z) => { let best = 0; for (const t of trees) { if (t.cut) continue; const d = Math.hypot(t.x - x, t.z - z); if (d < t.r) best = Math.max(best, t.y + t.h + t.r * 0.3 - d * 0.3); } return best || H(x, z) + canopyH; };
+  clearSightLine();
+}
+// The Eagle cam must see him: cut whatever stands in the line from the bird's eye to him (trees, ferns, shrubs, rocks, logs),
+// and clear the brush around him. Re-run whenever the perch, his spot or the vegetation changes; earlier cuts grow back first.
+const vegCut = [];
+function clearSightLine() {
+  for (const [k, i] of vegCut) { const it = VEG[k].arr[i]; it.cut = false; VEG[k].set(it, i); }
+  vegCut.length = 0;
+  if (!W.op.lengthSq()) return finishCut();
+  const E = W.eagle.clone(); E.y += EAGLE_EYE_H;
+  const post = operator.userData.posture, T = W.op.clone(); T.y += post === 'standing' ? 1.0 : post === 'sitting' ? 0.6 : 0.25;
+  const D = T.clone().sub(E), L2 = Math.max(D.lengthSq(), 1e-6), CLEAR_R = 4.5;
+  const hitPt = (c, rad) => { const u = clamp(((c[0] - E.x) * D.x + (c[1] - E.y) * D.y + (c[2] - E.z) * D.z) / L2, 0, 1);
+    const px = E.x + D.x * u, py = E.y + D.y * u, pz = E.z + D.z * u; return Math.hypot(c[0] - px, c[1] - py, c[2] - pz) < rad + 0.3 + 1.3 * u; };
+  const hits = sh => sh.some(([a, b, rad]) => { for (let q = 0; q <= 6; q++) { const f = a === b ? 0 : q / 6; if (hitPt([a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f], rad)) return true; if (a === b) break; } return false; });
+  const far = Math.hypot(D.x, D.z) + 30;
+  for (const k in VEG) { const V = VEG[k]; if (!V.shapes) continue;
+    V.arr.forEach((it, i) => {
+      const dh = Math.min(Math.hypot(it.x - E.x, it.z - E.z), Math.hypot(it.x - T.x, it.z - T.z)); if (dh > far) return;
+      const brush = V.brush && Math.hypot(it.x - T.x, it.z - T.z) < CLEAR_R;
+      if (brush || hits(V.shapes(it))) { it.cut = true; V.hide(it, i); vegCut.push([k, i]); }
+    }); }
+  finishCut();
+}
+function finishCut() {
   Object.values(veg).forEach(m => { m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; });
-  canopyTopAt = (x, z) => { let best = 0; for (const t of trees) { const d = Math.hypot(t.x - x, t.z - z); if (d < t.r) best = Math.max(best, t.y + t.h + t.r * 0.3 - d * 0.3); } return best || H(x, z) + canopyH; };
+  shadowDirty = true; _open.key = '';
 }
 // lianas hanging from crowns near the action
-const lianas = (() => { const parts = [], r = mulberry32(88); let n = 0; for (const t of trees) { if (n >= 110) break; if (near(t.x, t.z) > 160 || r() > 0.35) continue; n++;
+const lianas = (() => { const parts = [], r = mulberry32(88); let n = 0; for (const t of trees) { if (n >= 110) break; if (near(t.x, t.z) > 160 || r() > 0.35) continue; if (Math.hypot(t.x - (SNAG.x + GAP_DIR.x * 12), t.z - (SNAG.z + GAP_DIR.z * 12)) < 22) continue; n++;   // none on the trees cut for the sight line
   const top = new THREE.Vector3(t.x + (r() - 0.5) * 3, t.y + 12 + r() * 3, t.z + (r() - 0.5) * 3), bot = new THREE.Vector3(t.x + (r() - 0.5) * 8, t.y + 0.2, t.z + (r() - 0.5) * 8), mid = top.clone().lerp(bot, 0.5); mid.x += (r() - 0.5) * 3; mid.z += (r() - 0.5) * 3; mid.y -= 1.5;
   const tube = new THREE.TubeGeometry(new THREE.QuadraticBezierCurve3(top, mid, bot), 10, 0.035 + r() * 0.03, 4, false); parts.push(tube.toNonIndexed()); }
   if (!parts.length) return null; parts.forEach(p => { if (p.attributes.uv) p.deleteAttribute('uv'); }); const m = new THREE.Mesh(THREE.BufferGeometryUtils.mergeBufferGeometries(parts), std(0x3a3020, 0.9)); m.castShadow = true; m.userData.tcat = 'trunk'; scene.add(m); return m; })();
@@ -1083,6 +1128,7 @@ function placeActors() {
   if (Math.abs(oz - streamZ(ox)) < 7) oz = streamZ(ox) - 7.5;
   W.op.set(ox, H(ox, oz), oz); operator.position.copy(W.op); operator.rotation.y = Math.atan2(-OP_DIR.x, -OP_DIR.y) + 0.6;
   operator.userData.posture = S.opState === 'unconscious' ? 'lying' : S.opPosture;
+  clearSightLine();
   const be = Math.atan2(W.op.z - W.eagleBase.z, W.op.x - W.eagleBase.x), rel = g(R, 'output.accuracy.relErr_m', 2) || 2;
   W.opEst.set(W.op.x + Math.cos(be) * rel * 0.5, 0, W.op.z + Math.sin(be) * rel * 0.5); W.opEst.y = H(W.opEst.x, W.opEst.z);
   // patrol A at enemyDist from him, toward the trail
@@ -1148,6 +1194,7 @@ function updateFrustum() {
 const pipCam = new THREE.PerspectiveCamera(45, 4 / 3, 0.2, 3000);
 let pipMode = 'thermal', pipYaw = 0, pipPitch = 0, rtT = null, rtI = null, rtV = null, pipW = 0, pipH = 0, pipDirty = true, pipFresh = false;
 const pipBuf = {}, pipStats = { opPx: 0, counts: {}, boxes: {}, at: 0 };
+const pipView = { x0: 0, y0: 0, w: 256, h: 192 }; let pipZoom = 1;   // digital zoom on him (the cinematic's thermal shot)
 const TH_U = { uAmb: { value: 25 }, uBeta: { value: 0.8 }, uLo: { value: -10 }, uHi: { value: 60 }, uSunDir: { value: sunDir } };
 const NOISE_GLSL = `
 float hash31(vec3 p){ p = fract(p*0.3183099 + vec3(0.71,0.113,0.419)); p *= 17.0; return fract(p.x*p.y*p.z*(p.x+p.y+p.z)); }
@@ -1283,7 +1330,7 @@ function pipRender() {
     withPass('visible', () => { renderer.setRenderTarget(rtV); renderer.clear(); renderer.render(scene, pipCamVis()); renderer.readRenderTargetPixels(rtV, 0, 0, 320, 240, pipBuf.vis); renderer.setRenderTarget(null); });
     const im = new ImageData(320, 240), src = pipBuf.vis, isDay = !!R.env.isDay, lux = isDay ? (R.env.wet ? 0.7 : 1) : 0.16, grain = isDay ? 2 : 10;
     for (let y = 0; y < 240; y++) { const sy = 239 - y; for (let x = 0; x < 320; x++) { const i = (sy * 320 + x) * 4, o = (y * 320 + x) * 4, n = randn() * grain, lum = src[i] * 0.3 + src[i + 1] * 0.59 + src[i + 2] * 0.11; for (let c = 0; c < 3; c++) im.data[o + c] = clamp((isDay ? src[i + c] : lum) * lux + n, 0, 255); im.data[o + 3] = 255; } }
-    offT.width = 320; offT.height = 240; offCtx.putImageData(im, 0, 0); ctxP.drawImage(offT, 0, 0, cw, ch); offT.width = w; offT.height = h; pipHud(ctxP, 'visible'); return;
+    offT.width = 320; offT.height = 240; offCtx.putImageData(im, 0, 0); ctxP.drawImage(offT, 0, 0, cw, ch); offT.width = w; offT.height = h; Object.assign(pipView, { x0: 0, y0: 0, w, h }); pipHud(ctxP, 'visible'); return;
   }
   if (pipMode === 'thermal') {
     setThermalTemps();
@@ -1301,27 +1348,50 @@ function pipRender() {
     for (let y = 0; y < h; y++) { const sy = h - 1 - y; for (let x = 0; x < w; x++) { const v = id[(sy * w + x) * 4], o = (y * w + x) * 4, c = v ? (col[ID_KIND(v)] || [170, 255, 170]) : [14, 22, 20]; im.data[o] = c[0]; im.data[o + 1] = c[1]; im.data[o + 2] = c[2]; im.data[o + 3] = 255; } }
     offCtx.putImageData(im, 0, 0);
   }
-  ctxP.drawImage(offT, 0, 0, cw, ch); pipHud(ctxP, pipMode);
+  const ob = pipStats.boxes[1], zw = w / pipZoom, zh = h / pipZoom;   // digital zoom: crop round him, same pixels, bigger
+  if (pipZoom > 1.01 && ob) Object.assign(pipView, { x0: clamp((ob[0] + ob[2] + 1) / 2 - zw / 2, 0, w - zw), y0: clamp((ob[1] + ob[3] + 1) / 2 - zh / 2, 0, h - zh), w: zw, h: zh });
+  else Object.assign(pipView, { x0: 0, y0: 0, w, h });
+  ctxP.drawImage(offT, pipView.x0, pipView.y0, pipView.w, pipView.h, 0, 0, cw, ch); pipHud(ctxP, pipMode);
 }
 let pipVisCam = null; function pipCamVis() { if (!pipVisCam) pipVisCam = new THREE.PerspectiveCamera(50, 4 / 3, 0.2, 5000); pipVisCam.position.copy(pipCam.position); pipVisCam.quaternion.copy(pipCam.quaternion); pipVisCam.fov = pipCam.fov * (pipCam.aspect / (4 / 3)); pipVisCam.aspect = 4 / 3; pipVisCam.updateProjectionMatrix(); return pipVisCam; }
 let _pctx = null; function pipCtx() { if (!_pctx) _pctx = $('#pip').getContext('2d'); return _pctx; }
 function trackFor(kind) { return (g(R, 'processing.tracks', []) || []).find(t => t.kind === kind); }
+// outline of one ID in the Eagle cam: marching squares over his pixels grown by one, drawn as a glowing line
+const MS_SEG = [[], [[3, 0]], [[0, 1]], [[3, 1]], [[1, 2]], [[3, 0], [1, 2]], [[0, 2]], [[3, 2]], [[2, 3]], [[0, 2]], [[0, 1], [2, 3]], [[1, 2]], [[1, 3]], [[0, 1]], [[3, 0]], []];
+function outlineId(x, idv, b, sx, sy, col, ox = 0, oy = 0) {
+  const w = pipW, h = pipH, id = pipBuf.id, x0 = Math.max(0, b[0] - 3), y0 = Math.max(0, b[1] - 3), x1 = Math.min(w - 1, b[2] + 3), y1 = Math.min(h - 1, b[3] + 3), mw = x1 - x0 + 1, mh = y1 - y0 + 1;
+  const own = (cx, cy) => id[((h - 1 - cy) * w + cx) * 4] === idv, m = new Uint8Array(mw * mh);
+  for (let cy = y0; cy <= y1; cy++) for (let cx = x0; cx <= x1; cx++) {   // grow by one pixel (8-neighbours) so the line sits just outside him
+    let on = 0; for (let dy = -1; dy <= 1 && !on; dy++) for (let dx = -1; dx <= 1 && !on; dx++) { const qx = cx + dx, qy = cy + dy; if (qx >= 0 && qy >= 0 && qx < w && qy < h && own(qx, qy)) on = 1; }
+    m[(cy - y0) * mw + (cx - x0)] = on; }
+  const at = (i, j) => i >= 0 && j >= 0 && i < mw && j < mh ? m[j * mw + i] : 0;
+  const E = (i, j, e) => e === 0 ? [i + 1, j + 0.5] : e === 1 ? [i + 1.5, j + 1] : e === 2 ? [i + 1, j + 1.5] : [i + 0.5, j + 1];   // edge midpoints, pixel-centre grid
+  x.beginPath();
+  for (let j = -1; j < mh; j++) for (let i = -1; i < mw; i++) {
+    const c = at(i, j) | at(i + 1, j) << 1 | at(i + 1, j + 1) << 2 | at(i, j + 1) << 3;
+    for (const [e0, e1] of MS_SEG[c]) { const p0 = E(i, j, e0), p1 = E(i, j, e1); x.moveTo((x0 + p0[0] - ox) * sx, (y0 + p0[1] - oy) * sy); x.lineTo((x0 + p1[0] - ox) * sx, (y0 + p1[1] - oy) * sy); }
+  }
+  const lw = Math.max(1.5, x.canvas.width / 300); x.lineJoin = 'round'; x.lineCap = 'round';
+  x.strokeStyle = 'rgba(0,0,0,.65)'; x.lineWidth = lw * 3.2; x.stroke();
+  x.save(); x.shadowColor = col; x.shadowBlur = lw * 5; x.strokeStyle = col; x.lineWidth = lw * 1.4; x.stroke(); x.restore();
+}
 function pipHud(x, mode) {
-  const cw = x.canvas.width, ch = x.canvas.height, sx = cw / pipW, sy = ch / pipH, th = g(R, 'input.thermal', {});
+  const cw = x.canvas.width, ch = x.canvas.height, sx = cw / pipView.w, sy = ch / pipView.h, ox = pipView.x0, oy = pipView.y0, th = g(R, 'input.thermal', {});
   x.save(); const fs = Math.round(clamp(cw / 34, 10, 22)); x.font = `600 ${fs}px "IBM Plex Mono", monospace`; x.textBaseline = 'top';
   if (mode !== 'visible') {
     const seen = new Set();
     Object.entries(pipStats.boxes).forEach(([v, b]) => { v = +v; if ((pipStats.counts[v] || 0) < 3) return; const kind = ID_KIND(v); if (kind === 'other') return; const kKey = kind + (kind === 'patrol' ? '' : v); if (seen.has(kKey) && kind === 'patrol') { } seen.add(kKey);
       const tr = trackFor(kind === 'sambar' ? 'muntjac' : kind), p = kind === 'sambar' ? 0 : tr ? tr.p_operator : null, isOp = kind === 'operator', okTh = isOp ? !!th.detected : true;
       const col = isOp ? (okTh ? '#80e0ff' : '#ffff80') : kind === 'patrol' || kind === 'local' ? '#ffff80' : '#aaffaa', pad = 2;
-      x.strokeStyle = col; x.lineWidth = Math.max(1.5, cw / 260); x.setLineDash(isOp && !okTh ? [6, 5] : []); x.strokeRect((b[0] - pad) * sx, (b[1] - pad) * sy, (b[2] - b[0] + 1 + pad * 2) * sx, (b[3] - b[1] + 1 + pad * 2) * sy); x.setLineDash([]);
+      if (isOp && okTh) outlineId(x, 1, b, sx, sy, col, ox, oy);   // him: his silhouette, traced one pixel outside his warm pixels
+      else { x.strokeStyle = col; x.lineWidth = Math.max(1.5, cw / 260); x.setLineDash(isOp && !okTh ? [6, 5] : []); x.strokeRect((b[0] - pad - ox) * sx, (b[1] - pad - oy) * sy, (b[2] - b[0] + 1 + pad * 2) * sx, (b[3] - b[1] + 1 + pad * 2) * sy); x.setLineDash([]); }
       const name = isOp ? (okTh ? 'PERSON' : 'PERSON? not separable') : kind === 'patrol' ? 'PERSON · group' : kind === 'local' ? 'PERSON · farm' : kind.toUpperCase();
       const txt = `${name}${p != null ? ' · P ' + (p >= 0.995 ? '0.99+' : p.toFixed(2)) : ''}`;
-      const tx = Math.min(Math.max(2, (b[0] - pad) * sx), cw - x.measureText(txt).width - 4), ty = Math.max(2, (b[1] - pad) * sy - fs - 3);
+      const tx = Math.min(Math.max(2, (b[0] - pad - ox) * sx), cw - x.measureText(txt).width - 4), ty = Math.max(2, (b[1] - pad - oy) * sy - fs - 3);
       x.fillStyle = 'rgba(0,0,0,.6)'; x.fillRect(tx - 2, ty - 1, x.measureText(txt).width + 4, fs + 3); x.fillStyle = col; x.fillText(txt, tx, ty); });
   }
   x.strokeStyle = 'rgba(255,255,255,.5)'; x.lineWidth = 1; const mx = cw / 2, my = ch / 2; x.beginPath(); x.moveTo(mx - 14, my); x.lineTo(mx - 5, my); x.moveTo(mx + 5, my); x.lineTo(mx + 14, my); x.moveTo(mx, my - 14); x.lineTo(mx, my - 5); x.moveTo(mx, my + 5); x.lineTo(mx, my + 14); x.stroke();
-  const head = mode === 'visible' ? (R.env.isDay ? 'VISIBLE · daylight' : 'VISIBLE · starlight, no IR lamp') : mode === 'id' ? 'ID PASS · ground truth' : `${(CAMS[S.camera] || {}).short} · ${pipW}×${pipH}`;
+  const head = (mode === 'visible' ? (R.env.isDay ? 'VISIBLE · daylight' : 'VISIBLE · starlight, no IR lamp') : mode === 'id' ? 'ID PASS · ground truth' : `${(CAMS[S.camera] || {}).short} · ${pipW}×${pipH}`) + (pipView.w < pipW - 0.5 ? ` · ${(pipW / pipView.w).toFixed(1)}× digital zoom` : '');
   x.fillStyle = 'rgba(0,0,0,.55)'; x.fillRect(6, 6, x.measureText(head).width + 12, fs + 8); x.fillStyle = '#fff'; x.fillText(head, 12, 10);
   if (mode === 'thermal' && pipStats.tl != null) {
     const bw = cw * 0.035, bh = ch * 0.5, bx = cw - bw - 10, by = ch * 0.14; for (let i = 0; i < bh; i++) { const k = Math.round((1 - i / bh) * 255) * 3; x.fillStyle = `rgb(${IRON[k]},${IRON[k + 1]},${IRON[k + 2]})`; x.fillRect(bx, by + i, bw, 1); }
@@ -1744,7 +1814,7 @@ function cineShots() {
     { cap: 'On the perch · wings folded along its back, motor off, head scanning', dur: 7500, close: true, f: k => {
       const a = lerp(0.62, -0.5, k), p = perchView(lerp(2.5, 1.75, k), a, lerp(0.05, -0.18, k)); p.y = Math.max(p.y, H(p.x, p.z) + 0.6);
       return { p, t: ex.clone().setY(eyeY - 0.12) }; } },
-    { cap: 'Thermal · what the Eagle sees, boxes = warm bodies', dur: 6000, thermal: true, f: () => ({ p: ex.clone().add(pushDir.clone().multiplyScalar(2)), t: ex.clone() }) },
+    { cap: `Thermal · what the Eagle sees · him, outlined, ${S.opDist_m} m away, then 2.5× digital zoom`, dur: 7000, thermal: true, f: () => ({ p: ex.clone().add(pushDir.clone().multiplyScalar(2)), t: ex.clone() }) },
   ];
   if (S.enemy !== 'none') shots.push({ cap: 'The target · DF mast on the ridge, ~500 m from him', dur: 7000, f: k => ({ p: new THREE.Vector3(out.x - 95 + k * 45, out.y + 34 - k * 10, out.z - 75 + k * 12), t: mt.clone().setY(mt.y - 8) }) });
   // the release, from beside the branch: it drops off on the open side, wings open, and flies out over the valley on the long lens
@@ -1772,7 +1842,7 @@ function startCine() {
 }
 function startShot() {
   const sh = cine.shots[cine.i], pv = $('#pip'); $('#cineCap').textContent = `${cine.i + 1}/${cine.shots.length} · ${sh.cap}`; $('#cineThermal').style.display = sh.thermal ? 'block' : 'none';
-  if (sh.thermal) { cine.pipSize = [pv.width, pv.height]; pv.width = 1280; pv.height = 960; pipMode = 'thermal'; pipDirty = true; RG.syncState(); }
+  if (sh.thermal) { cine.pipSize = [pv.width, pv.height]; pv.width = 1280; pv.height = 960; pipMode = 'thermal'; pipZoom = 1; pipDirty = true; RG.syncState(); }
   if (sh.arrive) arriveEagle(5.2);
   const relDest = () => g(R, 'output.chosen', null) === 'courier' ? coastPt() : W.away.clone(), dirTo = (a, b) => { const d = b.clone().sub(a).setY(0); return d.lengthSq() < 1 ? openDir() : d.normalize(); };
   if (sh.takeoff) {   // out over the open side and round towards where it is going
@@ -1801,16 +1871,17 @@ function stepCine(now, rawDt) {
     const a = 1 - Math.exp(-dt * 5.5); cineCam.p.lerp(raw.p, a); cineCam.t.lerp(raw.t, Math.min(1, a * 1.6)); v = { p: cineCam.p, t: cineCam.t };
   } else v = sh.f(e);
   if (cine.ringAt >= 0 && cine.el >= cine.ringAt && sh.ring) { cine.ringAt = -1; const d = cine.dest; cine.ringFx = fxRing(0xff8080, d.x, d.z, 2, sh.ring, 3.2); fxRing(0xff8080, d.x, d.z, 2, sh.ring, 3.2, 0.8); }
+  if (sh.thermal) pipZoom = 1 + 1.5 * smooth01((k - 0.3) / 0.38);
   let fov = sh.fov ? sh.fov(k, v.p.distanceTo(eagleD.object.position)) : sh.track || sh.close ? 34 : 42;
   if (sh.fov) { fov = cineCam.fovShot === sh ? lerp(cineCam.fov, fov, 1 - Math.exp(-Math.min(0.1, Math.max(0, (now - (cineCam.fovT || now)) / 1000)) * 4)) : fov; cineCam.fov = fov; cineCam.fovShot = sh; cineCam.fovT = now; }
   camera.position.copy(v.p); camera.lookAt(v.t); if (Math.abs(camera.fov - fov) > 1e-3) { camera.fov = fov; camera.updateProjectionMatrix(); }
   if (sh.thermal) { const src = $('#pip'), dst = $('#cineCv'), cx = dst.getContext('2d'); if (dst.width !== src.width || dst.height !== src.height) { dst.width = src.width; dst.height = src.height; } cx.drawImage(src, 0, 0); }
-  if (k >= 1) { if (sh.thermal && cine.pipSize) { $('#pip').width = cine.pipSize[0]; $('#pip').height = cine.pipSize[1]; cine.pipSize = null; RG.syncState(); } cine.i++; if (cine.i >= cine.shots.length) { stopCine(); return; } startShot(); }
+  if (k >= 1) { if (sh.thermal) { pipZoom = 1; if (cine.pipSize) { $('#pip').width = cine.pipSize[0]; $('#pip').height = cine.pipSize[1]; cine.pipSize = null; RG.syncState(); } } cine.i++; if (cine.i >= cine.shots.length) { stopCine(); return; } startShot(); }
 }
 function stopCine(silent) {
   if (!cine.on && !document.body.classList.contains('cine')) return;
   RG.send({ t: 'cine', on: false, silent: !!silent });
-  cine.on = false; cine.ringAt = -1; document.body.classList.remove('cine'); $('#cineThermal').style.display = 'none'; if (cine.pipSize) { $('#pip').width = cine.pipSize[0]; $('#pip').height = cine.pipSize[1]; cine.pipSize = null; }
+  pipZoom = 1; cine.on = false; cine.ringAt = -1; document.body.classList.remove('cine'); $('#cineThermal').style.display = 'none'; if (cine.pipSize) { $('#pip').width = cine.pipSize[0]; $('#pip').height = cine.pipSize[1]; cine.pipSize = null; }
   resetEagle(); envHourOverride = null; updateEnvironment(); camera.fov = 48; camera.updateProjectionMatrix(); resize(); pipDirty = true;
   if (!silent) { camMode = 'orbit'; $$('.viewbtns button').forEach(b => b.classList.toggle('on', b.dataset.cam === 'orbit')); controls.enabled = true; updateOverlays(); camGoal('orbit'); }
 }
@@ -2318,7 +2389,7 @@ function pipWanted(now) {
   if (now - pipVisT > 400) { pipVisT = now; pipVisV = getComputedStyle($('#right')).display !== 'none' && !document.body.classList.contains('nopanels'); }
   return pipVisV;
 }
-const pipHz = () => RG.role === 'host' && RG.pc ? 10 : (QL[quality.level].pipHz || 8);
+const pipHz = () => RG.role === 'host' && RG.pc ? 10 : cine.on && cine.shots[cine.i].thermal ? 24 : (QL[quality.level].pipHz || 8);
 
 // ---------- events ----------
 function resize() { const hs = RG.hostSize, w = hs ? hs.w : canvas.clientWidth, h = hs ? hs.h : canvas.clientHeight; if (!w || !h) return; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); if (composer) { composer.setPixelRatio(renderer.getPixelRatio()); composer.setSize(w, h); const pr = renderer.getPixelRatio(); PASS.fxaa.material.uniforms.resolution.value.set(1 / (w * pr), 1 / (h * pr)); } sizePip(); if (RG.role === 'viewer') rgSendSize(); }
@@ -2374,7 +2445,8 @@ function animate(now) {
     // vegetation shadows are static (their depth pass has no wind), so the shadow map is redrawn a few times a second
     // for whatever moves, and at once after any change
     shadowT += dt; if (shadowDirty || shadowT >= 1 / (QL[quality.level].shadowHz || 20)) { renderer.shadowMap.needsUpdate = true; shadowT = 0; shadowDirty = false; }
-    if (composer && QL[quality.level].post) {
+    if (cine.on && cine.shots[cine.i].thermal) { /* the thermal shot covers the screen: only the Eagle cam is drawn */ }
+    else if (composer && QL[quality.level].post) {
       const sp = _sunScreen.copy(sunDir).multiplyScalar(2000).add(camera.position).project(camera), vis = sp.z < 1 && Math.abs(sp.x) < 1.6 && Math.abs(sp.y) < 1.6;
       PASS.rays.uniforms.uSun.value.set(sp.x * 0.5 + 0.5, sp.y * 0.5 + 0.5); PASS.rays.uniforms.uStrength.value = vis && !envLight.overcast && envLight.day > 0.2 ? (0.7 + envLight.dusk * 0.9) : 0;
       PASS.grade.uniforms.uTime.value = time; PASS.grade.uniforms.uGrain.value = envLight.day > 0.5 ? 0.025 : 0.045;
