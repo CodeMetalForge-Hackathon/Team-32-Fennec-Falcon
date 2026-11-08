@@ -49,10 +49,28 @@ RF_TRANSPORTS = ("serial", "meshtastic")
 
 
 def uses_test_keys(cfg: dict) -> bool:
+    """True if the FIX key or the Fennec mission key is one of the public test keys in example.yaml."""
     try:
-        return load_keys(cfg)["fix_aes"] == load_keys(load_config(None))["fix_aes"]
+        if load_keys(cfg)["fix_aes"] == load_keys(load_config(None))["fix_aes"]:
+            return True
     except Exception:
+        pass
+    f = cfg.get("fennec") or {}
+    if f.get("key_file") and Path(f["key_file"]).expanduser().exists():
         return False
+    ex = load_config(None).get("fennec") or {}
+    return bool(f.get("test_key")) or (f.get("key") is not None and f.get("key") == ex.get("key"))
+
+
+def _flag(path) -> float | None:
+    """mtime of a flag file, or None."""
+    if not path:
+        return None
+    p = Path(str(path)).expanduser()
+    try:
+        return p.stat().st_mtime if p.exists() else None
+    except OSError:
+        return None
 
 
 class EagleRuntime(LifeNode):
@@ -94,6 +112,25 @@ class EagleRuntime(LifeNode):
             self.tmodel = make_thermal_model(self.L.get("thermal", {}).get("model"), log=log)
         self.pending: list = []
         self.list_sig, self.list_t = None, -1e9
+        self.fmt, self.codec, self.iridium, self.courier = D["report"].get("format", "fennec15"), None, None, []
+        self.silenced, self.next_status = False, 0.0
+        if self.fmt == "fennec15":
+            from eagle.fennec import EagleCodec, Mission
+            try:
+                f = cfg.get("fennec") or {}
+                mission = Mission.from_config(cfg)
+                ctr = f.get("counter_file") or f"~/.eagle/fennec-{mission.mission_id.hex()}-{cfg['eagle']['id']}.json"
+                self.codec = EagleCodec(mission, int(cfg["eagle"]["id"]), counter_file=ctr)
+            except Exception as e:
+                log(f"FENNEC  unavailable ({type(e).__name__}: {e}): reports use the 48-byte FIX")
+                self.fmt = "fix48"
+        irid = D["paths"].get("iridium")
+        if irid and self.fmt == "fennec15" and not args.no_radio:
+            try:
+                from eagle.iridium import RockBlock
+                self.iridium = RockBlock(irid.get("port"), int(irid.get("baud", 19200)), log=log)
+            except Exception as e:
+                log(f"SBD     RockBLOCK unavailable ({type(e).__name__}: {e})")
         e = self.engine
         log(f"DECIDE  mode {e.mode}: P >= {e.m['p_send']}, {e.m['min_modalities']} modalities or the code rule; "
             f"prior 1 in {1 + float(D['mission']['others_expected']):.0f}; transmit "
@@ -203,6 +240,9 @@ class EagleRuntime(LifeNode):
                 self.report(d, now)
                 break
         self.flush(now)
+        self.check_courier(now)
+        self.check_compromised(now)
+        self.status_report(decisions, now)
         self.list_report(now)
         return decisions
 
@@ -236,7 +276,26 @@ class EagleRuntime(LifeNode):
         return None                                  # life_node's LIFE bursts are off: the gate decides
 
     # ---- sending ----------------------------------------------------------------------------------
+    def nest_los(self) -> bool | None:
+        """Line of sight to the Nest: forced by decide.paths.nest_los, else a BEACON heard recently."""
+        v = self.engine.c["paths"].get("nest_los", "auto")
+        if v is True or v is False:
+            return v
+        if self.radio is not None:
+            age = time.time() - (self.radio.s.nest_path_loss_t or 0.0)
+            if self.radio.s.nest_path_loss is not None and age <= self.radio.beacon_max_age:
+                return True
+        return None
+
     def report(self, d, now: float) -> None:
+        if self.silenced:
+            log(f"TX      silenced after COMPROMISED: {d.subject} not reported")
+            return
+        if self.fmt == "fennec15":
+            return self.report_fennec(d, now)
+        return self.report_fix48(d, now)
+
+    def report_fix48(self, d, now: float) -> None:
         body = self.fix_body(d)
         pos = (f" at E {d.xy[0]:.1f} N {d.xy[1]:.1f} ce {body.ce_m:.0f} m" if self.engine.log_positions else "")
         what = (f"FIX for {d.subject}: P {d.p:.3f}{pos}, class {P.class_name(body.cls)} "
@@ -259,10 +318,127 @@ class EagleRuntime(LifeNode):
         if self.engine.m.get("wipe_after_send") and rec.get("muted"):
             self.engine.wipe(d.subject)
 
+    def report_fennec(self, d, now: float) -> None:
+        """Compose the least-information report, choose the path home, seal once, send by that path."""
+        from eagle import fennec as F
+        e, paths = self.engine, self.engine.c["paths"]
+        test = self.sim is not None or e.mode == "training"
+        rep = e.compose(d, site_frame=self.frame, perch_enu=self.perch, test=test)
+        path, why, table = e.plan_path(nest_los=self.nest_los(), relay_overhead=_flag(paths.get("relay_flag")) is not None,
+                                       iridium=self.iridium is not None, courier=bool(paths.get("courier")),
+                                       relocated="relocated" in d.reason)
+        try:
+            pkt = self.codec.seal(rep)
+        except F.FennecError as err:                     # e.g. fennec.mission_start more than 45 days back
+            log(f"FENNEC  cannot seal {d.subject} ({err}): sending the 48-byte FIX instead")
+            return self.report_fix48(d, now)
+        info = F.unpack64(F.open_packet(self.codec.m.key, self.codec.m.mission_id, pkt)[2])
+        what = f"{rep.mtype} for {d.subject}: P {d.p:.3f}, " + (
+            f"az {info['az_deg']:.0f} deg from the perch" if rep.mtype == "BEARING" else
+            f"err95 {info['err95_m']} m, cue {F.CUES.get(info['cue'])}, conf level {info['conf']}, state 0x{info['state']:x}")
+        rec = {"event": "SEND", "subject": d.subject, "p": round(d.p, 4), "reason": d.reason, "resend": d.resend,
+               "message": rep.mtype, "bytes": len(pkt), "path": path, "path_why": why,
+               "paths": [[k, ok, note] for k, ok, note in table]}
+        bench = e.mode == "training" and self.cfg["radio"]["transport"] == "udp"
+        if self.radio is None or not (e.transmit_allowed or bench):
+            log(f"TX      (muted, {e.mode} mode{', no radio' if self.radio is None else ''}) {what}; path {path}: {why}")
+            rec["muted"] = True
+        elif path in ("nest", "whisper"):
+            power = int(paths.get("whisper_dbm", -9)) if path == "whisper" else int(self.planned_tx_dbm())
+            self.radio.drain()
+            toa = self.radio.t.send(pkt, power)
+            delay = e.repeat_delay_s()
+            self.pending.append({"due": now + delay, "frame": pkt, "tx": power, "subject": d.subject})
+            log(f"TX      burst 1/2 {what}: 15 B sealed @ {power:+d} dBm, {toa * 1e3:.1f} ms, path {path} ({why}); "
+                f"burst 2 in {delay:.0f} s")
+            rec.update({"tx_dbm": power, "airtime_ms": round(toa * 1e3, 1), "burst": 1})
+        elif path == "iridium":
+            try:
+                res = self.iridium.send(pkt)
+                log(f"TX      {what}: Iridium SBD, MO status {res['mo_status']} "
+                    f"({'delivered to the gateway' if res['ok'] else 'NOT delivered'})")
+                rec.update({"sbd": res})
+                if not res["ok"]:
+                    self.courier.append({"t": now, "frame": pkt, "subject": d.subject})
+            except Exception as err:
+                log(f"TX      Iridium failed ({type(err).__name__}: {err}): holding the sealed report")
+                self.courier.append({"t": now, "frame": pkt, "subject": d.subject})
+        else:
+            self.courier.append({"t": now, "frame": pkt, "subject": d.subject})
+            log(f"ACTION  REQUEST_COURIER for {d.subject}: {what} sealed and held (path {path}: {why}); "
+                f"touch {paths.get('courier_flag')} at the Nest to send it")
+            rec["held"] = True
+        e.mark_sent(d.subject, now)
+        self.last_tx = {"t": now, "subject": d.subject, "message": rep.mtype, "path": path}
+        self.dlog.write([], now, rec)
+        if e.m.get("wipe_after_send") and (rec.get("muted") or rec.get("sbd", {}).get("ok")):
+            e.wipe(d.subject)
+
+    def check_courier(self, now: float) -> None:
+        """Held reports go out as one burst once the courier signals it reached the Nest."""
+        if not self.courier or self.radio is None:
+            return
+        flag = _flag(self.engine.c["paths"].get("courier_flag"))
+        for item in [c for c in self.courier if flag is not None and flag >= c["t"]]:
+            self.courier.remove(item)
+            toa = self.radio.t.send(item["frame"], int(self.planned_tx_dbm()))
+            log(f"TX      courier delivery for {item['subject']}: 15 B, {toa * 1e3:.1f} ms, at the Nest")
+            self.dlog.write([], now, {"event": "SEND", "subject": item["subject"], "path": "courier", "burst": 1})
+
+    def check_compromised(self, now: float) -> None:
+        """Tamper or capture: one COMPROMISED report from where the Eagle is, then wipe the mission
+        key file and never transmit again in this run (the relay design's disposal step)."""
+        from eagle import fennec as F
+        if self.silenced or self.codec is None:
+            return
+        flag = (self.cfg.get("fennec") or {}).get("compromised_flag")
+        if _flag(flag) is None:
+            return
+        lat, lon, _ = self.frame.to_geodetic(float(self.perch[0]), float(self.perch[1]), 0.0)
+        try:
+            pkt = self.codec.seal(F.Report("COMPROMISED", now, own_lat=lat, own_lon=lon))
+            if self.radio is not None:
+                self.radio.t.send(pkt, int(self.planned_tx_dbm()))
+                log("TX      COMPROMISED: one 15 B burst")
+            elif self.iridium is not None:
+                self.iridium.send(pkt)
+        except Exception as err:
+            log(f"TX      COMPROMISED not sent ({type(err).__name__}: {err})")
+        kf = self.codec.m.key_file
+        wiped = F.wipe_key_file(kf) if kf else False
+        self.codec.m.key = bytes(16)
+        self.codec, self.pending, self.courier, self.silenced = None, [], [], True
+        log(f"ALERT   COMPROMISED: key {'file wiped' if wiped else 'dropped from memory (no key_file to wipe)'}; "
+            "transmitter silenced for this run")
+        self.dlog.write([], now, {"event": "COMPROMISED", "key_file_wiped": wiped})
+
+    def status_report(self, decisions: list, now: float) -> None:
+        """Training only: a STATUS every report.status_every_s so the bench can see the Eagle is alive."""
+        from eagle import fennec as F
+        every = float(self.engine.c["report"].get("status_every_s") or 0)
+        if self.engine.mode != "training" or self.codec is None or self.radio is None or not every or self.silenced:
+            return
+        if self.cfg["radio"]["transport"] != "udp" or now < self.next_status:
+            return
+        self.next_status = now + every
+        lat, lon, _ = self.frame.to_geodetic(float(self.perch[0]), float(self.perch[1]), 0.0)
+        best = max((d.p for d in decisions), default=0.0)
+        pkt = self.codec.seal(F.Report("STATUS", now, lat=lat, lon=lon, conf=F.conf_level(best),
+                                       state=min(len(self.life.tracks), 15)))
+        self.radio.t.send(pkt, int(self.planned_tx_dbm()))
+        log(f"TX      STATUS (training): {len(self.life.tracks)} track(s), best P {best:.2f}")
+
     def flush(self, now: float) -> None:
+        alt = self.engine.c["report"].get("second_burst_mhz")
         for item in [p for p in self.pending if now >= p["due"]]:
             self.pending.remove(item)
-            toa = self.radio.t.send(item["frame"], item["tx"])
+            t = self.radio.t
+            if alt:
+                t.configure(float(alt), t.sf, t.bw_khz, t.cr)
+            toa = t.send(item["frame"], item["tx"])
+            if alt:
+                r = self.cfg["radio"]
+                t.configure(float(r.get("freq_mhz", 915.0)), t.sf, t.bw_khz, t.cr)
             log(f"TX      burst 2/2 for {item['subject']}: the same sealed frame ({len(item['frame'])} B @ "
                 f"{item['tx']:+d} dBm, {toa * 1e3:.1f} ms); the Nest keeps one copy")
             self.dlog.write([], now, {"event": "SEND", "subject": item["subject"], "burst": 2})

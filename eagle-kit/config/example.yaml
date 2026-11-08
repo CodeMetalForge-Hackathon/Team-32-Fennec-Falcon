@@ -358,15 +358,16 @@ decide:
   mode: default                  # training: decide + log, RF muted | default: P >= 0.95 | strict: P >= 0.99,
                                  # never from the perch while EMCON is blocked, no re-sends, no positions on disk
   modes:
-    strict:   {p_send: 0.99, min_modalities: 2, on_hold_timeout: hold, resend: false, wipe_after_send: true,  log_positions: false, transmit: true}
-    default:  {p_send: 0.95, min_modalities: 2, on_hold_timeout: send, resend: true,  wipe_after_send: false, log_positions: true,  transmit: true}
-    training: {p_send: 0.95, min_modalities: 2, on_hold_timeout: send, resend: true,  wipe_after_send: false, log_positions: true,  transmit: false}
+    strict:   {p_send: 0.99, min_modalities: 2, on_hold_timeout: hold, resend: false, max_moved: 0,  wipe_after_send: true,  log_positions: false, transmit: true}
+    default:  {p_send: 0.95, min_modalities: 2, on_hold_timeout: send, resend: true,  max_moved: 1,  wipe_after_send: false, log_positions: true,  transmit: true}
+    training: {p_send: 0.95, min_modalities: 2, on_hold_timeout: send, resend: true,  max_moved: 99, wipe_after_send: false, log_positions: true,  transmit: false}
   mission:                       # the briefing
     others_expected: 6           # other people who may come into view (sim v2: patrol 4 + locals 2): prior = 1 / (1 + N)
     target_state: injured        # injured: a decided report waits at most emcon.max_hold_injured_s | mobile: max_hold_s
     target_mobile: false         # false: moving > 10 m in 60 s counts against a track
     search_area: null            # {lat: .., lon: .., radius_m: ..} or {center_enu_m: [E, N], radius_m: ..}: x2 inside
     threat_dist_m: null          # briefed distance to the nearest listener (patrol, outpost); null = unknown
+    contested: false             # true: never transmit from the perch it listened from (hop 2+ km first)
   lr:                            # P(clue | him) / P(clue | anyone else). ASSUMED.
     shape_clear: 3.0             # thermal person model score >= shape_clear_score
     shape_faint: 1.5             # warm and human-sized (blob), model weak or absent
@@ -407,10 +408,37 @@ decide:
     max_hold_injured_s: 900.0    # injured: 15 min, then default mode sends anyway; strict never does
     relocated_flag: ~/eagle/relocated   # touch it (or the autopilot does) after moving away: the held report goes
   report:
+    format: fennec15             # fennec15: the 15-byte Fennec Fix (fennec: below) | fix48: the kit's 48-byte FIX
     repeat_after_s: [30.0, 120.0]   # second burst of the same frame (the Nest's replay window keeps one)
-    resend_move_m: 25.0
+    second_burst_mhz: null       # e.g. 917.5: burst 2 on another channel
     min_resend_gap_s: 300.0
     max_per_hour: 4
-    own_position_ce_m: 10.0      # the Eagle's own position error without GPS (sim v2, VIO: assumed); 0 on a surveyed stand
+    moved_min_m: 100.0           # MOVED only past max(100 m, 2 x the last 95 % radius); once (default mode)
+    moved_err_factor: 2.0
+    own_position_ce_m: 10.0      # the Eagle's own position error, 1 sigma, without GPS (sim v2, VIO: assumed)
+    bearing_above_err95_m: 430.0 # a worse fix goes out as a BEARING from the perch
+    status_every_s: 900.0        # training only: a STATUS every 15 min
+  paths:                         # how a decided report gets home: the first that closes, in this mode's order
+    order:
+      strict: [nest, whisper, courier]            # no Iridium: strict keeps L-band quiet too
+      default: [nest, whisper, iridium, courier]
+      training: [nest, iridium]
+    nest_los: auto               # auto: a Nest BEACON heard recently = line of sight | true | false
+    whisper_dbm: -9              # radio power to a relay overhead (-29 dBm at the antenna after a 20 dB pad)
+    relay_flag: ~/eagle/relay_overhead     # exists = a relay eagle is on station overhead
+    courier: false               # true: the airframe can carry the sealed report out (no radio over land)
+    courier_flag: ~/eagle/at_nest          # touched at the Nest: held reports go out as one burst
+    iridium: null                # {port: /dev/ttyUSB1, baud: 19200}: RockBLOCK 9603N
   bearing_only: {enabled: true, range_m: 150.0, stable_span_s: 300.0, lr_stable: 2.0}
   log: {path: ~/eagle/decisions.jsonl, every_s: 10.0}
+
+# ---- Fennec Fix: the 15-byte report (eagle/fennec.py). The same block on every Eagle and on the Nest ----
+fennec:
+  key: 8d56e8730ea6caac60c79aaf7eb81373   # PUBLIC TEST KEY (AES-128). Field: key_file, a fresh key per mission
+  test_key: true                 # eagle_runtime refuses this key on a real radio (training / UDP bench are fine)
+  key_file: null                 # e.g. ~/eagle/mission.key (32 hex digits); overwritten and deleted on COMPROMISED
+  mission_id: "000a0001"         # 4 bytes in every nonce: a new id with every new key
+  mission_ref: null              # {lat, lon} briefed reference point for all Eagles and the Nest; null = site.origin
+  mission_start: "2026-11-07T00:00:00Z"   # reports carry minutes since this (16 bits: 45.5 days)
+  counter_file: null             # null = ~/.eagle/fennec-<mission_id>-<eagle id>.json (never delete it mid-mission)
+  compromised_flag: ~/eagle/compromised   # exists = send COMPROMISED once, wipe key_file, stop transmitting

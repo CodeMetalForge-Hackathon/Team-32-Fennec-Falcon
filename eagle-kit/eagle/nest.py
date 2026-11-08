@@ -25,6 +25,13 @@ class NestStation:
         self.senders = senders_from_config(self.cot_cfg) if senders is None else senders
         self.log = log
         self.sim = sim
+        self.fennec, self.bearings, self.markers = None, [], {}
+        if cfg.get("fennec"):
+            from .fennec import Mission, NestCodec
+            try:
+                self.fennec = NestCodec(Mission.from_config(cfg), window=int(n.get("replay_window", 64)))
+            except Exception as e:
+                log(f"WARNING Fennec reports disabled: {e}")
 
     def cot_for(self, rep: P.FixReport, rx: RxFrame | None = None) -> bytes:
         c = self.cot_cfg
@@ -53,6 +60,9 @@ class NestStation:
         LIFE frame, else None (logged)."""
         if not rx.payload:
             return None
+        from .fennec import is_fennec
+        if is_fennec(rx.payload) and self.fennec is not None:
+            return self.handle_fennec(rx, now)
         if rx.payload[0] == P.MSG_LIFE:
             return self.handle_life(rx, now)
         if rx.payload[0] != P.MSG_FIX:
@@ -75,6 +85,70 @@ class NestStation:
             except OSError as e:
                 self.log(f"COT     send failed ({type(s).__name__}): {e}")
         return rep, xml
+
+    # ---- Fennec Fix (15 B) ----------------------------------------------------------------------------
+    def _send(self, xml: bytes) -> None:
+        for s in self.senders:
+            try:
+                s.send(xml)
+            except OSError as e:
+                self.log(f"COT     send failed ({type(s).__name__}): {e}")
+
+    def handle_fennec(self, rx: RxFrame, now: float | None = None):
+        """-> (decoded dict, [cot_xml, ...]) for a valid 15-byte Fennec report, else None (logged).
+        FIX / MOVED / TEST: a marker with ce = the 95 % radius (MOVED moves its Eagle's nearest marker).
+        BEARING: a marker at the Eagle, and a crossing fix once another Eagle's BEARING crosses it."""
+        from . import fennec as F
+        now = time.time() if now is None else now
+        try:
+            d = self.fennec.open(rx.payload, now)
+        except F.FennecError as e:
+            self.log(f"RX      FENNEC REJECTED: {e}")
+            return None
+        self.log(f"RX      {F.describe(d)} (15 B, rssi {rx.rssi:.0f} dBm, snr {rx.snr:.1f} dB)")
+        c = self.cot_cfg
+        prefix = c.get("uid_prefix", "eagle")
+        stale = float(c.get("stale_s", 300))
+        xmls, node, kind = [], d["eagle_id"], d["type_name"]
+        if kind == "BEARING":
+            self.bearings = [b for b in self.bearings if now - b["rx_t"] <= 1800 and b["eagle_id"] != node] + [
+                {**d, "rx_t": now}]
+            xmls.append(build_cot(f"{prefix}-{node}-brg{d['counter']}", d["own_lat"], d["own_lon"], ce=50.0,
+                                  cot_type=c.get("unconfirmed_type", "a-u-G"), how=c.get("how", "m-f"), stale_s=stale,
+                                  callsign=f"SAR BEARING {d['az_deg']:.0f}", remarks=F.describe(d)))
+            for other in self.bearings[:-1]:
+                x = F.crossing(other, d, self.fennec.frame)
+                if x is not None and x[2] >= 15.0:
+                    lat, lon, ang = x
+                    self.log(f"FUSE    BEARINGs from Eagles {other['eagle_id']} and {node} cross at {lat:.6f}, "
+                             f"{lon:.6f} ({ang:.0f} deg apart)")
+                    xmls.append(build_cot(f"{prefix}-x{other['eagle_id']}-{node}", lat, lon, ce=100.0,
+                                          cot_type=c.get("unconfirmed_type", "a-u-G"), how="h-e", stale_s=stale,
+                                          callsign="SAR CROSS FIX", remarks=f"two bearings {ang:.0f} deg apart"))
+        elif kind == "STATUS":
+            pass
+        else:
+            lat, lon = d["lat"], d["lon"]
+            if kind == "COMPROMISED":
+                self.log(f"ALERT   *** EAGLE {node} COMPROMISED: its mission key is being wiped ***")
+                uid, cs = f"{prefix}-{node}-lost", f"EAGLE {node} COMPROMISED"
+            else:
+                mine = self.markers.setdefault(node, [])
+                uid = f"{prefix}-{node}-f{d['counter']}"
+                if kind == "MOVED" and mine:
+                    import math
+                    uid = min(mine, key=lambda m: math.hypot(m[1] - lat, (m[2] - lon) * math.cos(math.radians(lat))))[0]
+                    mine[:] = [m for m in mine if m[0] != uid]
+                mine.append((uid, lat, lon))
+                face = " FACE" if d["state"] & F.ST_FACE else ""
+                cs = f"SAR {kind}{face}"
+            how = "m-s" if kind == "TEST" else c.get("how", "m-f")
+            xmls.append(build_cot(uid, lat, lon, ce=max(float(d.get("err95_m", 50.0)), 1.0),
+                                  cot_type=c.get("unconfirmed_type", "a-u-G"), how=how, stale_s=stale, callsign=cs,
+                                  remarks=F.describe(d)))
+        for xml in xmls:
+            self._send(xml)
+        return d, xmls
 
     def beacon(self, transport, tx_dbm: int) -> float:
         frame = self.session.make_beacon(tx_dbm)

@@ -70,11 +70,11 @@ MODALITIES = ("thermal", "acoustic", "vision", "radar", "tag")
 DEFAULTS: dict = {
     "mode": "default",
     "modes": {
-        "strict": {"p_send": 0.99, "min_modalities": 2, "on_hold_timeout": "hold", "resend": False,
+        "strict": {"p_send": 0.99, "min_modalities": 2, "on_hold_timeout": "hold", "resend": False, "max_moved": 0,
                    "wipe_after_send": True, "log_positions": False, "transmit": True},
-        "default": {"p_send": 0.95, "min_modalities": 2, "on_hold_timeout": "send", "resend": True,
+        "default": {"p_send": 0.95, "min_modalities": 2, "on_hold_timeout": "send", "resend": True, "max_moved": 1,
                     "wipe_after_send": False, "log_positions": True, "transmit": True},
-        "training": {"p_send": 0.95, "min_modalities": 2, "on_hold_timeout": "send", "resend": True,
+        "training": {"p_send": 0.95, "min_modalities": 2, "on_hold_timeout": "send", "resend": True, "max_moved": 99,
                      "wipe_after_send": False, "log_positions": True, "transmit": False},
     },
     "mission": {
@@ -83,6 +83,7 @@ DEFAULTS: dict = {
         "target_mobile": False,        # False: sustained movement counts against a track
         "search_area": None,           # {center_enu_m: [E, N], radius_m} or {lat, lon, radius_m}
         "threat_dist_m": None,         # briefed distance to the nearest listener (patrol, outpost); None = unknown
+        "contested": False,            # True: never transmit from the perch it listened from (hop 2+ km first)
     },
     "lr": {                            # P(clue | him) / P(clue | someone else); assumed until calibrated
         "shape_clear": 3.0, "shape_faint": 1.5, "shape_clear_score": 0.6,
@@ -105,9 +106,22 @@ DEFAULTS: dict = {
                  "inherit_radius_m": 5.0, "inherit_s": 1800.0},
     "emcon": {"min_radius_m": 30.0, "eavesdropper_dbm": -115.0, "clear_s": 120.0,
               "max_hold_s": 7200.0, "max_hold_injured_s": 900.0, "relocated_flag": "~/eagle/relocated"},
-    "report": {"repeat_after_s": [30.0, 120.0], "resend_move_m": 25.0, "min_resend_gap_s": 300.0,
-               "max_per_hour": 4,
-               "own_position_ce_m": 10.0},     # the Eagle's own position error without GPS (sim v2, VIO: assumed)
+    "report": {"format": "fennec15",           # fennec15: the 15-byte Fennec Fix | fix48: the kit's 48-byte FIX
+               "repeat_after_s": [30.0, 120.0], "min_resend_gap_s": 300.0, "max_per_hour": 4,
+               "moved_min_m": 100.0, "moved_err_factor": 2.0,   # MOVED only past max(100 m, 2 x err95)
+               "own_position_ce_m": 10.0,      # the Eagle's own position error, 1 sigma, without GPS (sim v2: assumed)
+               "bearing_above_err95_m": 430.0,  # a worse fix goes out as a BEARING from the perch
+               "second_burst_mhz": None,       # burst 2 on another channel (None = same channel)
+               "status_every_s": 900.0},       # training only: STATUS every 15 min
+    "paths": {                                 # how a decided report gets home, first that closes
+        "order": {"strict": ["nest", "whisper", "courier"], "default": ["nest", "whisper", "iridium", "courier"],
+                  "training": ["nest", "iridium"]},
+        "nest_los": "auto",                    # auto: a Nest BEACON heard recently = line of sight; true / false
+        "whisper_dbm": -9,                     # radio power for a relay overhead (-29 dBm after a 20 dB pad)
+        "relay_flag": "~/eagle/relay_overhead",  # exists = a relay eagle is on station overhead
+        "courier": False,                      # True: the airframe can carry the sealed report out
+        "courier_flag": "~/eagle/at_nest",     # newer than the hold = the courier reached the Nest: burst now
+        "iridium": None},                      # {port: /dev/ttyUSB1, baud: 19200}: RockBLOCK 9603N
     "bearing_only": {"enabled": True, "range_m": 150.0, "stable_span_s": 300.0, "lr_stable": 2.0},
     "log": {"path": "~/eagle/decisions.jsonl", "every_s": 10.0},
 }
@@ -777,22 +791,24 @@ class DecisionEngine:
         blockers = [s for s, xy in self._unknowns(b) if float(np.hypot(*(xy - self.perch))) <= r]
         threat = self.c["mission"].get("threat_dist_m")
         threatened = threat is not None and float(threat) <= r
-        if blockers or threatened:
+        contested = bool(self.c["mission"].get("contested")) and self.mode != "training"
+        if blockers or threatened or contested:
             b.blocked_t = now
         if b.hold_t is not None and self._relocated_since(b.hold_t):
             d.action = SEND
             d.reason = (d.reason + "; " if d.reason else "") + "relocated away from him"
             return d
         recently_blocked = b.blocked_t is not None and now - b.blocked_t < float(e["clear_s"]) and b.hold_t is not None
-        if blockers or threatened or recently_blocked:
+        if blockers or threatened or contested or recently_blocked:
             if b.hold_t is None:
                 b.hold_t = now
             injured = (b.status_bits & P.ST_INJURED) or self.c["mission"].get("target_state") == "injured"
             max_hold = float(e["max_hold_injured_s"] if injured else e["max_hold_s"])
             what = (f"{len(blockers)} unknown person(s) within the {r:.0f} m intercept radius" if blockers else
                     f"briefed threat {float(threat):.0f} m away, inside the {r:.0f} m intercept radius" if threatened
+                    else "contested ground: never from the perch it listened from" if contested
                     else f"EMCON clear for {now - b.blocked_t:.0f} of {e['clear_s']:.0f} s")
-            if not b.relocate_requested and (blockers or threatened):
+            if not b.relocate_requested and (blockers or threatened or contested):
                 b.relocate_requested = True
                 self.log(f"ACTION  REQUEST_RELOCATE for {b.subject}: {what}; move >= 2 km away, then signal "
                          f"(touch {e.get('relocated_flag')})")
@@ -832,19 +848,93 @@ class DecisionEngine:
         return f"fix ce {b.ce_m if b.ce_m is not None else float('nan'):.0f} m > {gt['max_ce_m']:.0f} m"
 
     def _resend_reason(self, b: Belief, now: float) -> str:
+        """MOVED, the only follow-up: he is now farther than max(100 m, 2 x the last 95 % radius) from
+        the last report, at most ``max_moved`` times (default mode 1, strict 0). Nothing else re-sends:
+        a better identity or a new flag does not justify another emission once he has been located."""
         r = self.c["report"]
         rep = b.reported
         if not self.m.get("resend", True) or now - rep["t"] < float(r["min_resend_gap_s"]):
             return ""
+        if b.n_reports > int(self.m.get("max_moved", 1)):
+            return ""
         if rep.get("xy") is not None and b.xy is not None:
             moved = float(np.hypot(*(b.xy - rep["xy"])))
-            if moved > float(r["resend_move_m"]):
-                return f"moved {moved:.0f} m since the last report"
-        if b.id_level > rep.get("id_level", 0):
-            return f"identity rose to {P.ID_LEVEL_NAMES.get(b.id_level, b.id_level)}"
-        if (b.status_bits & ~rep.get("status_bits", 0)) & (P.ST_INJURED | P.ST_DURESS):
-            return "new status flags"
+            need = max(float(r["moved_min_m"]), float(r["moved_err_factor"]) * float(rep.get("err95", 0.0)))
+            if moved > need:
+                return f"moved {moved:.0f} m since the last report (> {need:.0f} m)"
         return ""
+
+    # ---- what to send ------------------------------------------------------------------------------
+    def err95(self, ce_m) -> float:
+        """95 % radius of a report: 2.45 x (the track's 1-sigma error (+) the Eagle's own position error)."""
+        own = float(self.c["report"].get("own_position_ce_m", 0.0))
+        return 2.45 * float(np.hypot(float(ce_m or 0.0), own))
+
+    def compose(self, d: Decision, *, site_frame, perch_enu, test: bool = False):
+        """The least that still lets the base act: one :class:`eagle.fennec.Report`.
+
+        Says what (type), where (2.5 m steps, a 95 % radius class), what found him (cue), how sure (one of
+        four gate levels), his state (moving, briefed pattern, injured, face verified) and when (minutes).
+        Leaves out: the evidence, scores, track numbers, the identity scores and the Eagle's own position
+        (except in a BEARING, which is useless without it)."""
+        from . import fennec as F
+        b = self.beliefs.get(d.subject)
+        t = b.last_seen if b is not None else d.t
+        mods = set(d.modalities)
+        code = b is not None and b.code_confirmed_t is not None
+        if len(mods) >= 2:
+            cue = F.CUE["several sensors"]
+        elif mods == {"acoustic"}:
+            cue = F.CUE["briefed pattern"] if (code or (b is not None and b.code_best_n)) else F.CUE["other sound"]
+        elif mods & {"tag"}:
+            cue = F.CUE["radio bearing"]
+        elif mods & {"vision"}:
+            cue = F.CUE["visual answer"]
+        else:
+            cue = F.CUE["thermal"]
+        state = ((F.ST_MOVING if b is not None and "moving" in b.geo else 0) | (F.ST_PATTERN if code else 0)
+                 | (F.ST_INJURED if d.status_bits & P.ST_INJURED else 0) | (F.ST_FACE if d.id_level >= P.ID_FACE else 0))
+        own_lat, own_lon, _ = site_frame.to_geodetic(float(perch_enu[0]), float(perch_enu[1]), 0.0)
+        err95 = self.err95(d.ce_m)
+        if d.track_id is None or err95 > float(self.c["report"]["bearing_above_err95_m"]):
+            if d.track_id is None:
+                math_az = float(b.az_deg) if b is not None and b.az_deg is not None else 0.0
+            else:
+                v = np.asarray(d.xy, float) - np.asarray(perch_enu, float)[:2]
+                math_az = math.degrees(math.atan2(v[1], v[0]))
+            az = (90.0 - math_az) % 360.0                      # math azimuth -> compass, clockwise from north
+            if not test:
+                return F.Report("BEARING", t, own_lat=own_lat, own_lon=own_lon, az_deg=az, el_deg=45.0)
+        lat, lon, _ = site_frame.to_geodetic(float(d.xy[0]), float(d.xy[1]), 0.0)
+        mtype = "TEST" if test else ("MOVED" if d.resend else "FIX")
+        return F.Report(mtype, t, lat=lat, lon=lon, err95_m=err95, cue=cue, conf=F.conf_level(d.p), state=state,
+                        own_lat=own_lat, own_lon=own_lon)
+
+    def plan_path(self, *, nest_los: bool | None, relay_overhead: bool, iridium: bool, courier: bool,
+                  relocated: bool) -> tuple:
+        """How a decided report gets home: the first path in this mode's order that closes.
+
+        nest: a burst to the Nest, power from the path loss (needs line of sight, or no knowledge either
+        way); whisper: minimum power straight up to a relay eagle on station; iridium: one SBD session,
+        which also confirms delivery; courier: hold the sealed report and fly it out (no radio over
+        land). Returns (path, why, [(path, available, note), ...])."""
+        order = list(self.c["paths"]["order"].get(self.mode, ["nest"]))
+        avail = {
+            "nest": (nest_los is not False, "line of sight to the Nest" if nest_los else
+                     "no Nest beacon heard: sent blind at the modelled power" if nest_los is None else
+                     "no line of sight to the Nest"),
+            "whisper": (bool(relay_overhead), "relay eagle overhead" if relay_overhead else "no relay on station"),
+            "iridium": (bool(iridium), "RockBLOCK ready" if iridium else "no Iridium modem"),
+            "courier": (bool(courier), "the airframe can carry it out" if courier else "no courier"),
+        }
+        table = [(k, avail[k][0], avail[k][1]) for k in order if k in avail]
+        for k, ok, note in table:
+            if ok and not (k == "nest" and nest_los is None and any(a for kk, a, _ in table if kk != "nest")):
+                return k, note + (" (after relocating)" if relocated else ""), table
+        for k, ok, note in table:                              # nothing known to close: blind Nest burst
+            if ok:
+                return k, note, table
+        return None, "no path closes: holding the sealed report", table
 
     # ---- after the runtime sent it ----------------------------------------------------------------
     def repeat_delay_s(self) -> float:
@@ -858,7 +948,7 @@ class DecisionEngine:
         self.sent_t.append(now)
         b.n_reports += 1
         b.reported = {"t": now, "xy": None if b.xy is None else np.array(b.xy), "id_level": b.id_level,
-                      "status_bits": b.status_bits}
+                      "status_bits": b.status_bits, "err95": self.err95(b.ce_m)}
         b.hold_t, b.blocked_t, b.relocate_requested = None, None, False
 
     def wipe(self, subject: str) -> None:

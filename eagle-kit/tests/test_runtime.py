@@ -4,6 +4,7 @@ import argparse
 import importlib.util
 import json
 import socket
+import time
 
 import numpy as np
 import pytest
@@ -48,7 +49,10 @@ def _cfg(cfg, tmp_path, transport="udp", **over):
                          "radio": {"transport": transport,
                                    "udp": {"bind": f"127.0.0.1:{pn}", "peer": f"127.0.0.1:{pq}"}},
                          "decide": {"log": {"path": str(tmp_path / "decisions.jsonl")},
-                                    "emcon": {"relocated_flag": None}}})
+                                    "emcon": {"relocated_flag": None}},
+                         "fennec": {"mission_start": time.time() - 3600.0,      # within the 45-day minute counter
+                                    "counter_file": str(tmp_path / "fennec-ctr.json"),
+                                    "compromised_flag": str(tmp_path / "compromised")}})
     return deep_merge(c, over), (pn, pq)
 
 
@@ -74,8 +78,32 @@ def _log(tmp_path):
     return [json.loads(x) for x in p.read_text().splitlines()] if p.exists() else []
 
 
-def test_night_scene_sends_one_fix_as_two_identical_bursts_and_the_nest_reads_it(rt_mod, cfg, tmp_path):
+def test_night_scene_sends_one_fennec_report_twice_and_the_nest_reads_it(rt_mod, cfg, tmp_path):
+    from eagle import fennec as F
+    from eagle.nest import NestStation
     c, (pn, pq) = _cfg(cfg, tmp_path)
+    nest_rx = UdpTransport(f"127.0.0.1:{pq}", f"127.0.0.1:{pn}")
+    try:
+        rt = _run(rt_mod, c, _args(tmp_path), "night")
+        frames = _frames(nest_rx)
+    finally:
+        nest_rx.close()
+    assert len(frames) == 2 and frames[0] == frames[1] and len(frames[0]) == 15   # one sealed report, twice
+    nest = NestStation(c, senders=[], log=lambda *_: None, sim=True)
+    d, xmls = nest.handle(type("Rx", (), {"payload": frames[0], "rssi": -90.0, "snr": 5.0})())
+    assert nest.handle(type("Rx", (), {"payload": frames[1], "rssi": -90.0, "snr": 5.0})()) is None   # replay
+    assert d["type_name"] == "TEST"                                   # --sim marks every report as a test
+    assert d["cue"] == F.CUE["several sensors"] and d["conf"] == 2   # thermal + briefed code; P >= 0.99
+    assert d["state"] == F.ST_PATTERN | F.ST_INJURED and d["err95_m"] == 25
+    e, n, _ = rt.frame.to_enu(d["lat"], d["lon"], None)
+    assert np.hypot(e - 12.0, n - 5.0) < 2.0                          # 2.5 m steps
+    assert b'ce="25' in xmls[0] and b"SAR TEST" in xmls[0]
+    sends = [r for r in _log(tmp_path) if r.get("event") == "SEND"]
+    assert [r.get("burst") for r in sends] == [1, 2] and sends[0]["path"] == "nest" and sends[0]["bytes"] == 15
+
+
+def test_night_scene_with_the_48_byte_fix(rt_mod, cfg, tmp_path):
+    c, (pn, pq) = _cfg(cfg, tmp_path, decide={"report": {"format": "fix48"}})
     nest_rx = UdpTransport(f"127.0.0.1:{pq}", f"127.0.0.1:{pn}")
     try:
         rt = _run(rt_mod, c, _args(tmp_path), "night")
@@ -92,10 +120,8 @@ def test_night_scene_sends_one_fix_as_two_identical_bursts_and_the_nest_reads_it
     assert b.confidence >= 0.98 and b.status & P.ST_INJURED
     assert P.class_name(b.cls) == "TAP+SIM"
     e, n, _ = rt.frame.to_enu(b.lat, b.lon, None)
-    assert np.hypot(e - 12.0, n - 5.0) < 0.5                          # he lies at E 12 N 5 from the perch
-    assert 9.5 <= b.ce_m <= 12.0                                        # own position error dominates
-    sends = [r for r in _log(tmp_path) if r.get("event") == "SEND"]
-    assert [r.get("burst") for r in sends] == [1, 2]
+    assert np.hypot(e - 12.0, n - 5.0) < 0.5
+    assert 9.5 <= b.ce_m <= 12.0
 
 
 def test_patrol_never_transmits(rt_mod, cfg, tmp_path):
@@ -127,8 +153,11 @@ def test_training_mode_over_udp_reaches_the_bench_nest(rt_mod, cfg, tmp_path):
         frames = _frames(nest_rx)
     finally:
         nest_rx.close()
-    rep = P.NestSession(load_keys(cfg)["fix_aes"], None, max_age_s=600).decrypt_fix(frames[0])
-    assert rep.body.cls & P.CLS_SIM
+    from eagle.nest import NestStation
+    nest = NestStation(c, senders=[], log=lambda *_: None, sim=True)
+    got = [nest.handle(type("Rx", (), {"payload": f, "rssi": -90.0, "snr": 5.0})()) for f in frames]
+    kinds = [g[0]["type_name"] for g in got if g]
+    assert "TEST" in kinds and "STATUS" in kinds                      # training: STATUS every 15 min on the bench
 
 
 def test_refuses_the_public_test_keys_on_a_real_radio(rt_mod, cfg, tmp_path):

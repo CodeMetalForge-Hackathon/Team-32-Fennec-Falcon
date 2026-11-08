@@ -284,30 +284,32 @@ def test_duplicate_track_of_him_is_not_a_stranger():
 
 
 # ---------------------------------------------------------------------------------- after sending
-def test_one_report_per_person_then_resend_only_when_he_moves():
+def test_one_report_per_person_then_moved_only_past_100_m_once():
+    """Relay design: MOVED only past max(100 m, 2 x err95) from the last report, at most once (default)."""
     eng = engine()
-    pos = {"xy": HIM.copy()}
-
-    def scene(t):
-        out = [heat(t, pos["xy"], 0.8)] if t % 20 == 0 else []
-        if t in (100.0, 130.0, 160.0):
-            out.append(code(t, pos["xy"]))
-        return out
-
-    life, send, _ = run(eng, scene, 400)
+    life, send, _ = run(eng, _decided_scene(), 400)
     eng.mark_sent(send.subject, send.t)
-    _, again, hist = run(eng, scene, 300, life=life)
-    assert again is None and hist[-1][1][0].action == REPORTED
-    pos["xy"] = HIM + [30.0, 0.0]                         # he crawled 30 m (after the resend gap)
-    for t in np.arange(500.0, 1500.0, 20.0):
-        life.update([heat(t, pos["xy"] - [30.0 * max(0.0, 1500 - t) / 1000, 0.0], 0.8)], now=t)
-        life.evaluate(t)
-        eng.ingest(life)
-        ds = eng.tick(t, life)
-        if any(d.action == SEND for d in ds):
-            break
-    d = next(d for d in ds if d.subject == send.subject)
-    assert d.action == SEND and d.resend and "moved" in d.reason
+    b = eng.beliefs[send.subject]
+    assert b.reported["err95"] == pytest.approx(eng.err95(send.ce_m)) and b.reported["err95"] < 50
+
+    def at(t, shift):
+        b.reported["t"] = t - 400.0                       # past the re-send gap
+        for tr in life.tracks:                            # move the track estimate itself
+            if tr.id == send.track_id:
+                tr.yv = tr.Y @ (HIM + [shift, 0.0])
+        b.last_seen = t
+        return next(d for d in eng.tick(t, life) if d.subject == send.subject)
+
+    for t in np.arange(420.0, 600.0, 20.0):               # keep the track alive at the old spot
+        life.update([heat(t, HIM, 0.8)], now=t)
+    eng.ingest(life)
+    d = at(600.0, 30.0)
+    assert d.action == REPORTED and "nothing new" in d.reason
+    d = at(610.0, 140.0)
+    assert d.action == SEND and d.resend and "moved 140 m" in d.reason
+    eng.mark_sent(send.subject, 610.0)
+    d = at(1200.0, 400.0)
+    assert d.action == REPORTED                            # one MOVED at most in default mode
 
 
 def test_strict_mode_reports_once_and_wipes():
