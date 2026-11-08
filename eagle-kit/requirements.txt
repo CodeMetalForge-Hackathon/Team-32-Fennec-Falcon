@@ -17,3 +17,7 @@ sounddevice>=0.4.6      # Linux also needs PortAudio: sudo apt install libportau
 # adafruit-circuitpython-mlx90640  # MLX90640 on the Pi's I2C
 # bleak                          # BLE allowlist scan
 # ai-edge-litert                 # YAMNet TFLite (or tflite-runtime / tensorflow)
+# search-and-rescue integration (README section 10) - all optional
+# onnxruntime                    # OSNet + InsightFace on the CPU
+# insightface                    # buffalo_l face detection/recognition (weights: non-commercial only)
+# hailo-apps                     # Hailo AI HAT+: install from https://github.com/hailo-ai/hailo-apps (not PyPI)

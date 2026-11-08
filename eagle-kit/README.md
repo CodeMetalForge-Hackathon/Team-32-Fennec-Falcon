@@ -10,10 +10,12 @@ every hardware choice is in `config/example.yaml`.
 
 ```
 apps/      eagle_node.py  nest_station.py  sim_demo.py  keygen.py  life_demo.py  life_node.py
+           hailo_vision.py  enroll_target.py  fetch_models.py   (section 10)
 eagle/     doa detect locate geo cot protocol airtime link sim pipeline node nest config audio_io
            camgeo thermal vitals sounds rfscan vision fusion lifesim   (signs of life, section 9)
+           identity                                                     (section 10)
 firmware/  eagle_radio/ (silent serial LoRa modem)   tag/ (the person's pellet tag)   radar_bridge/   mr60bha2_vitals/
-config/    example.yaml (all settings + array presets)      tests/ (pytest, 184 tests)
+config/    example.yaml (all settings + array presets)      tests/ (pytest, 249 tests)
 ```
 
 ## 1. Install (5 min)
@@ -304,6 +306,49 @@ why).
 * Class names: `eagle/data/yamnet_class_map.csv`, vendored unchanged from tensorflow/models
   (Apache-2.0, see `eagle/data/NOTICE.md`). The category mapping (`eagle.sounds.YAMNET_MAP`) uses
   its exact display names, and a test checks every one.
+
+## 10. Search-and-rescue drone: HT-203U, XVF3800, Hailo AI HAT+, missing-person identity
+
+Hardware: Raspberry Pi 5 + Hailo AI HAT+, HTI HT-203U thermal camera (USB), reSpeaker XVF3800
+(USB, 6-channel firmware), Camera Module 3 Wide NoIR. Everything runs offline after one setup pass.
+
+**Once, with internet** (Pi; the OSNet export can run on a laptop):
+```bash
+sudo bash ../pi/setup_pi.sh                       # uvcvideo quirks=0x2 for the HT-203U, ffmpeg, OpenCV
+# hailo-apps: https://github.com/hailo-ai/hailo-apps (its install.sh sets up HailoRT + the venv)
+pip install onnxruntime insightface               # identity: face (CPU) + OSNet runtime
+python apps/fetch_models.py --arch auto --list    # ~800 MB for hailo8l, ~610 MB for hailo8
+python apps/fetch_models.py --arch auto           # verified downloads -> ~/eagle-models + models.lock.json
+python apps/fetch_models.py --only osnet --export-osnet --arch hailo8l   # needs torch, onnx, pandas
+python apps/fetch_models.py --verify              # offline re-check, any time
+```
+
+**Config** (`config/local.yaml`): `audio.preset: respeaker_xvf3800`, `life.thermal.source: hti` with
+`life.thermal.camera` = 256 x 192, `hfov_deg: 50.0`; the vision camera defaults already describe the
+Camera Module 3 Wide (102 x 67 deg, 1280x720). Then the clap test (section 3): the XVF3800 channel
+order is **not verified** until it passes.
+
+**Enroll the missing person** (on the Pi, same models as runtime):
+```bash
+python apps/enroll_target.py --photos ~/target_photos --description "red rain jacket, blue jeans"     --out ~/eagle/target_profile.npz          # logs and skips photos without a usable face
+```
+
+**Run** (two processes):
+```bash
+source ~/hailo-apps/setup_env.sh
+python apps/hailo_vision.py --jsonl ~/eagle/vision.jsonl --profile ~/eagle/target_profile.npz
+python apps/life_node.py --config config/local.yaml      # life.vision.jsonl: ~/eagle/vision.jsonl
+```
+
+Identity levels: 0 none, 1 appearance candidate, 2 strong appearance, 3 face verified (ArcFace only
+on faces >= 40 px wide). Thresholds are under `identity:` in the config; calibrate them with a
+volunteer. They travel in the FIX class byte bits 5-6 (layout unchanged, see `eagle/protocol.py`)
+and show in the Nest's CoT remarks. In the life list identity is additive only: it raises a
+track's score and its rank within its status tier, and never creates, moves, re-classifies,
+suppresses or delays a track (`tests/test_fusion.py` checks this on random scenes).
+
+Licences of the fetched weights: `eagle/data/NOTICE.md`. **InsightFace buffalo_l weights are for
+non-commercial research only**; the OSNet weights are trained on MSMT17 (research terms).
 
 ## Sources
 
