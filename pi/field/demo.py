@@ -245,73 +245,77 @@ PAGE = """<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>Eagle: search view</title>
 <style>
 :root{--bg:#0b0d10;--card:#151a20;--fg:#eef1f4;--mut:#8d96a0;--green:#22c55e;--amber:#f5a524;--red:#ef4444;--blue:#3b82f6}
-*{box-sizing:border-box}html,body{height:100%}body{margin:0;background:var(--bg);color:var(--fg);
-font:16px/1.35 system-ui,-apple-system,sans-serif;display:flex;flex-direction:column;padding:12px;gap:12px}
-#banner{border-radius:14px;padding:16px 22px;background:#252b33;transition:background .25s}
+*{box-sizing:border-box}html,body{height:100%;margin:0}body{background:var(--bg);color:var(--fg);
+font:16px/1.35 system-ui,-apple-system,sans-serif;display:flex;flex-direction:column;padding:10px;gap:10px;overflow:hidden}
+#banner{border-radius:12px;padding:10px 20px;background:#252b33;transition:background .25s;display:flex;align-items:baseline;gap:18px;flex-wrap:wrap}
 #banner.target{background:var(--green);color:#04210f}#banner.possible{background:var(--amber);color:#2a1800}
 #banner.not_target{background:var(--red);color:#fff}#banner.human{background:var(--blue);color:#fff}
-#title{font-size:clamp(26px,3.6vw,52px);font-weight:800;letter-spacing:.01em}
-#sub{font-size:clamp(14px,1.5vw,20px);opacity:.9;margin-top:4px}
-#main{flex:1;display:grid;grid-template-columns:2fr 1fr;gap:12px;min-height:0}
-.card{background:var(--card);border-radius:14px;padding:10px;display:flex;flex-direction:column;min-height:0}
-.label{font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.08em;margin:0 0 6px}
-.cam{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;background:#000;border-radius:10px;overflow:hidden}
-.cam{position:relative}.cam img{max-width:100%;max-height:100%;object-fit:contain;width:100%;height:100%}
-.stale{position:absolute;inset:auto 8px 8px 8px;background:rgba(239,68,68,.92);color:#fff;font-weight:700;
-border-radius:8px;padding:6px 10px;font-size:14px;display:none}
-#meter{height:10px;border-radius:5px;background:#1f252d;overflow:hidden;margin-top:6px}
-#meterbar{height:100%;width:0;background:linear-gradient(90deg,#22c55e,#f5a524 70%,#ef4444);transition:width .2s}
-#side{display:flex;flex-direction:column;gap:12px;min-height:0}#side .card{flex:1}
-#chips{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.chip{border-radius:10px;padding:8px 10px;background:#1f252d;border:2px solid transparent}
-.chip.on{border-color:var(--green);background:#11281a}.chip b{display:block;font-size:13px;color:var(--mut)}
-.chip.on b{color:var(--green)}.chip span{font-size:15px}
-#log{font:13px/1.5 ui-monospace,monospace;color:var(--mut);overflow:hidden}
+#title{font-size:clamp(24px,3.2vw,46px);font-weight:800}#sub{font-size:clamp(13px,1.3vw,19px);opacity:.92}
+#views{flex:1;display:grid;grid-template-columns:1fr 1fr;gap:10px;min-height:0}
+.card{background:var(--card);border-radius:12px;padding:8px;display:flex;flex-direction:column;min-height:0;position:relative}
+.label{font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.08em;margin:0 0 6px;display:flex;justify-content:space-between}
+.view{flex:1;min-height:0;background:#000;border-radius:8px;overflow:hidden;position:relative}
+.view img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+#thermal{image-rendering:auto}#audio{object-fit:fill}
+.stale{position:absolute;left:8px;right:8px;bottom:8px;background:rgba(239,68,68,.92);color:#fff;font-weight:700;
+border-radius:8px;padding:6px 10px;font-size:14px;display:none;z-index:2}
+#soundrow{height:19vh;min-height:120px;display:grid;grid-template-columns:1fr auto;gap:10px}
+#sound .view{background:#0a0610}
+#meterwrap{display:flex;align-items:center;gap:10px;margin-top:6px}
+#meter{flex:1;height:14px;border-radius:7px;background:#1f252d;overflow:hidden}
+#meterbar{height:100%;width:0;background:linear-gradient(90deg,#22c55e,#f5a524 70%,#ef4444);transition:width .15s}
+#heard{font-size:15px;min-width:220px;text-align:right}#heard.on{color:var(--green);font-weight:700}
+#side{width:330px;display:flex;flex-direction:column;gap:8px}
+#chips{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.chip{border-radius:9px;padding:6px 9px;background:#1f252d;border:2px solid transparent}
+.chip.on{border-color:var(--green);background:#11281a}.chip b{display:block;font-size:12px;color:var(--mut)}
+.chip.on b{color:var(--green)}.chip span{font-size:14px}
+#log{font:12px/1.45 ui-monospace,monospace;color:var(--mut);overflow:hidden;flex:1}
 #log .target{color:var(--green)}#log .possible{color:var(--amber)}#log .not_target{color:#ff8080}#log .human{color:#8ab4ff}
-#foot{display:flex;gap:18px;font-size:13px;color:var(--mut);flex-wrap:wrap}.ok{color:var(--green)}.warn{color:var(--amber)}
-@media(max-width:800px){#main{grid-template-columns:1fr}}
+#foot{display:flex;gap:16px;font-size:12px;color:var(--mut);flex-wrap:wrap}.ok{color:var(--green)}.warn{color:var(--amber)}
 </style></head><body>
 <div id="banner"><div id="title">Starting...</div><div id="sub"></div></div>
-<div id="main">
-  <div class="card"><div class="label">Camera: <span id="camname">standard</span></div>
-    <div class="cam"><img id="cam" alt="camera"><div class="stale" id="cstale"></div></div></div>
-  <div id="side">
-    <div class="card"><div class="label">Thermal <span id="trange"></span></div>
-      <div class="cam"><img id="thermal" alt="thermal"><div class="stale" id="tstale"></div></div></div>
-    <div class="card"><div class="label">Sound <span id="alevel"></span></div>
-      <div class="cam"><img id="audio" alt="sound spectrogram"><div class="stale" id="astale"></div></div>
-      <div id="meter"><div id="meterbar"></div></div></div>
-    <div class="card" style="flex:0 0 auto"><div class="label">Sensors</div><div id="chips"></div></div>
-    <div class="card" style="flex:0 0 auto;max-height:22vh"><div class="label">Verdict log</div><div id="log"></div></div>
-  </div>
+<div id="views">
+  <div class="card"><div class="label"><span>Camera: <span id="camname">standard</span></span><span id="camage"></span></div>
+    <div class="view"><img id="cam" alt="camera"><div class="stale" id="cstale"></div></div></div>
+  <div class="card"><div class="label"><span>Thermal</span><span id="trange"></span></div>
+    <div class="view"><img id="thermal" alt="thermal"><div class="stale" id="tstale"></div></div></div>
+</div>
+<div id="soundrow">
+  <div class="card" id="sound"><div class="label"><span>Sound (last 4 s, 0 to 8 kHz)</span><span id="alevel"></span></div>
+    <div class="view"><img id="audio" alt="sound"><div class="stale" id="astale"></div></div>
+    <div id="meterwrap"><div id="meter"><div id="meterbar"></div></div><div id="heard">no human sounds</div></div></div>
+  <div class="card" id="side"><div id="chips"></div><div id="log"></div></div>
 </div>
 <div id="foot"><span id="clock"></span><span id="net"></span><span id="enrolled"></span>
-<span>Processing: on-device (Raspberry Pi 5 + Hailo-8), no cloud</span><span id="nest"></span></div>
+<span>All processing on-device (Raspberry Pi 5 + Hailo-8), no cloud</span><span id="nest"></span></div>
 <script>
 const $=id=>document.getElementById(id);const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 let cam='standard';
-async function poll(){let s;try{s=await (await fetch('/state')).json()}catch(e){$('clock').textContent='(no connection)';return}
+const stale=(id,age,lim,msg)=>{const e=$(id);if(age==null||age>lim){e.style.display='block';e.textContent=msg+(age!=null?' (last update '+Math.round(age)+' s ago)':'')}else e.style.display='none'};
+async function poll(){let s;try{s=await (await fetch('/state')).json()}catch(e){$('clock').textContent='(no connection to the Pi)';return}
   const v=s.verdict;$('banner').className=v.key;$('title').textContent=v.title;$('sub').textContent=v.sub;
   const names={heat:'Heat',sound:'Sound',vision:'Vision',face:'Face ID'};
   $('chips').innerHTML=Object.entries(s.chips).map(([k,c])=>`<div class="chip ${c.on?'on':''}"><b>${names[k]}</b><span>${esc(c.text)}</span></div>`).join('');
-  $('log').innerHTML=v.log.map(l=>`<div class="${l.key}">${l.time}  ${esc(l.title)}</div>`).join('')||'waiting for the first detection';
-  $('clock').textContent=s.time;
-  $('net').innerHTML=s.network==='offline'?'<span class="ok">● Network: OFFLINE (no internet)</span>':'<span class="warn">● Network: '+s.network+'</span>';
-  $('enrolled').innerHTML=s.target_enrolled?'<span class="ok">Target enrolled</span>':'<span class="warn">No target enrolled</span>';
-  $('nest').textContent=s.nest.length?'Rescuer link: '+s.nest[s.nest.length-1].slice(0,90):'';
-  const f=s.feeds;
-  const stale=(id,age,lim,msg)=>{const e=$(id);if(age==null||age>lim){e.style.display='block';e.textContent=msg+(age!=null?' (last update '+Math.round(age)+' s ago)':'')}else e.style.display='none'};
+  $('log').innerHTML=v.log.slice(0,6).map(l=>`<div class="${l.key}">${l.time}  ${esc(l.title)}</div>`).join('')||'waiting for the first detection';
+  const f=s.feeds,a=s.ages;
   stale('tstale',f.thermal.age_s,5,'THERMAL PAUSED: life_node stopped or recording off');
   stale('astale',f.audio.age_s,5,'SOUND PAUSED: life_node stopped or recording off');
   $('trange').textContent=f.thermal.min_c!=null?`${f.thermal.min_c} to ${f.thermal.max_c} °C`:'';
   const lv=f.audio.level_db;$('alevel').textContent=lv!=null?lv.toFixed(0)+' dBFS':'';
   $('meterbar').style.width=lv==null?'0%':Math.max(0,Math.min(100,(lv+70)/60*100))+'%';
-  const a=s.ages;cam=(a.cam_standard_s!=null&&a.cam_standard_s<5)||a.cam_noir_s==null||a.cam_noir_s>5?'standard':'noir';$('camname').textContent=cam==='standard'?'standard':'NoIR wide';
-  const ca=cam==='standard'?a.cam_standard_s:a.cam_noir_s;stale('cstale',ca,4,'CAMERA PAUSED: run  sudo systemctl restart eagle-vision');
+  const h=$('heard');h.textContent=s.chips.sound.on?'Heard: '+s.chips.sound.text:'no human sounds';h.className=s.chips.sound.on?'on':'';
+  cam=(a.cam_standard_s!=null&&a.cam_standard_s<5)||a.cam_noir_s==null||a.cam_noir_s>5?'standard':'noir';
+  $('camname').textContent=cam==='standard'?'standard':'NoIR wide';
+  stale('cstale',cam==='standard'?a.cam_standard_s:a.cam_noir_s,4,'CAMERA PAUSED: vision service not running (Hailo or camera)');
+  $('clock').textContent=s.time;
+  $('net').innerHTML=s.network==='offline'?'<span class="ok">● OFFLINE: no internet</span>':'<span class="warn">● Network: '+s.network+'</span>';
+  $('enrolled').innerHTML=s.target_enrolled?'<span class="ok">Target enrolled</span>':'<span class="warn">No target enrolled</span>';
+  $('nest').textContent=s.nest.length?'Rescuer link: '+s.nest[s.nest.length-1].slice(0,80):'';
 }
 function loadImg(id,url,ms){const el=$(id);let busy=false;setInterval(()=>{if(busy)return;busy=true;const im=new Image();
   im.onload=()=>{el.src=im.src;busy=false};im.onerror=()=>{busy=false};im.src=(typeof url==='function'?url():url)+'?'+Date.now()},ms)}
-loadImg('cam',()=>'/cam/'+cam+'.jpg',333);loadImg('thermal','/thermal.png',400);loadImg('audio','/audio.png',300);
+loadImg('cam',()=>'/cam/'+cam+'.jpg',333);loadImg('thermal','/thermal.png',400);loadImg('audio','/audio.png',250);
 poll();setInterval(poll,500);
 </script></body></html>"""
 
