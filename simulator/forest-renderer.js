@@ -3,22 +3,22 @@
 (function(root){
  'use strict';
  const C={sky:0x82958a,earth:0x333627,bark:0x443a2b,moss:0x59623b,leaf:0x304b29,leafLight:0x50683b,fern:0x42652f,route:0x62e1ee,trail:0xfff2cf,gold:0xffbe54,drone:0xdbdbcb,wire:0xe17b59,skyLight:0xd7e7e4,groundLight:0x343721,sun:0xffeac4,frame:0x303b37,barkBase:0x514632,barkGroove:0x393c29,barkLichen:0x70704b};
- function create(canvas){
+ function create(canvas,setup={}){
   const T=root.THREE;if(!T)throw Error('Three.js unavailable');
-  const renderer=new T.WebGLRenderer({canvas,antialias:true,preserveDrawingBuffer:true});renderer.setSize(1000,620,false);renderer.setPixelRatio(1);renderer.outputEncoding=T.sRGBEncoding;renderer.toneMapping=T.ACESFilmicToneMapping;renderer.toneMappingExposure=.85;
+  const renderer=setup.renderer||new T.WebGLRenderer({canvas,antialias:true,preserveDrawingBuffer:true});if(!setup.renderer){renderer.setSize(1000,620,false);renderer.setPixelRatio(1);renderer.outputEncoding=T.sRGBEncoding;renderer.toneMapping=T.ACESFilmicToneMapping;renderer.toneMappingExposure=.85;}
   const scene=new T.Scene();scene.background=new T.Color(C.sky);scene.fog=new T.Fog(C.sky,55,150);
   const camera=new T.PerspectiveCamera(48,1000/620,.08,400);camera.up.set(0,0,1);
   const hemi=new T.HemisphereLight(C.skyLight,C.groundLight,.8);hemi.position.set(0,0,70);scene.add(hemi);
   const sun=new T.DirectionalLight(C.sun,1);sun.position.set(25,-20,55);scene.add(sun);
   let terrainGroup=new T.Group(),canopy=new T.Group(),colliders=new T.Group();scene.add(terrainGroup,canopy,colliders);
-  const dynamic=new T.Group();scene.add(dynamic);
+  const dynamic=new T.Group();dynamic.userData.noPip=true;colliders.userData.noPip=true;scene.add(dynamic);
   const drone=new T.Group(),body=new T.Mesh(new T.SphereGeometry(.35,12,8),new T.MeshStandardMaterial({color:C.drone,roughness:.6}));body.scale.set(1.25,.7,.5);drone.add(body);
   const motorMat=new T.MeshBasicMaterial({color:C.route}),frameMat=new T.MeshStandardMaterial({color:C.frame});
   for(const x of [-.55,.55])for(const y of [-.55,.55]){
    const arm=new T.Mesh(new T.CylinderGeometry(.035,.035,.79,6),frameMat);arm.position.set(x/2,y/2,0);arm.quaternion.setFromUnitVectors(new T.Vector3(0,1,0),new T.Vector3(x,y,0).normalize());drone.add(arm);
    const ring=new T.Mesh(new T.TorusGeometry(.25,.028,4,20),motorMat);ring.position.set(x,y,0);drone.add(ring);
   }scene.add(drone);
-  const marker=new T.Mesh(new T.TorusGeometry(.85,.07,5,32),new T.MeshBasicMaterial({color:C.gold,depthTest:false}));marker.renderOrder=9;scene.add(marker);
+  const marker=new T.Mesh(new T.TorusGeometry(.85,.07,5,32),new T.MeshBasicMaterial({color:C.gold,depthTest:false}));marker.userData.noPip=true;marker.renderOrder=9;scene.add(marker);
   let world=null,route=null,trail=null,lastTrailLength=-1,lastPath=null;
   const v=p=>new T.Vector3(...p);
   function barkTexture(){
@@ -73,6 +73,8 @@
     if(!w.trees&&o.kind!=='boundary'){const mesh=new T.Mesh(new T.BoxGeometry(...size),new T.MeshStandardMaterial({color:o.kind==='foliage'?C.leaf:C.bark,transparent:true,opacity:.65}));mesh.position.copy(line.position);terrainGroup.add(mesh);}
    }
    lastPath=null;lastTrailLength=-1;
+   terrainGroup.traverse(o=>{if(o.isMesh){const color=o.material?.color?.getHex();o.userData.tcat=o.material?.map===bark?'trunk':[C.fern,C.leafLight,C.leaf].includes(color)?'leaf':'ground';}else if(o.isLine)o.userData.noPip=true;});
+   canopy.traverse(o=>{if(o.isMesh)o.userData.tcat='leaf';});
   }
   function setLine(old,points,color,dashed){
    if(old){dynamic.remove(old);old.geometry.dispose();old.material.dispose();}
@@ -95,12 +97,12 @@
     camera.position.copy(v(s.p)).add(new T.Vector3(0,0,.3));
     const next=s.phase==='TRANSIT'?s.path[s.next]:s.target?.p;target.copy(v(next||[s.p[0]+4,s.p[1],s.p[2]]));if(camera.position.distanceTo(target)<1)target.copy(camera.position).add(new T.Vector3(1,0,0));
    }
-   camera.lookAt(target);drone.position.set(...s.p);drone.visible=!options.pov;
+   camera.lookAt(target);drone.position.set(...s.p);drone.visible=!options.pov&&!options.hideDrone;
    motorMat.color.setHex(s.motors?C.route:C.gold);
    marker.visible=!!s.target;if(s.target)marker.position.set(...s.target.p.map((x,i)=>x+(i===2?-.9:0)));
-   renderer.render(scene,camera);
+   if(!options.syncOnly)renderer.render(scene,camera);
   }
-  return {render,get info(){return renderer.info.render;}};
+  return {render,scene,get info(){return renderer.info.render;}};
  }
  root.EagleForestRenderer={create};
 })(globalThis);

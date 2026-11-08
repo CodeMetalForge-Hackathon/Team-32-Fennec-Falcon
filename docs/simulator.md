@@ -53,6 +53,8 @@ Selecting an optional mouth whistle can add acoustic evidence. It is not require
 
 ## Display and verification
 
+The current browser uses the [unified mission controller](unified-mission.md): one forest scene, aircraft pose and clock connect route planning, supported observation, modeled transport and departure. The thermal/visible camera renders the same forest. The sensor cards show the last supported observation; their default equations remain available in the standalone headless evaluator. The former forest URL redirects to this mission.
+
 The navigation area also contains the [forest navigation and perching lab](forest-navigation.md): synthetic 3D A* planning, support-candidate rejection, attachment verification and injected failure recovery. It has its own state and canvas and does not drive the main scene or the separate ArduPilot SITL service.
 
 Cards separate sensing from bird-to-relay communication. People remain identity-unverified. The GPS-denied panel and multicopter SITL viewer are independent; see navigation-demo.md.

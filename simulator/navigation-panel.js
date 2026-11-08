@@ -1,3 +1,4 @@
+/* Legacy explanatory player; not mounted by the unified mission entry point. */
 (function () {
   'use strict';
   const N = window.EagleNavigation, host = document.getElementById('navigation-demo');

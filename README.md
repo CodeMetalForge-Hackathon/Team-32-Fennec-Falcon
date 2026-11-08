@@ -6,11 +6,11 @@ Eagle is a bird-inspired search-and-rescue concept for finding an isolated perso
 
 ## How it works
 
-1. Search using the bird's thermal/visible cameras and microphones.
-2. Perch with propulsion off to observe and listen. Detection requires no cooperative response.
+1. Navigate the forest and verify a reachable structural support.
+2. Perch with propulsion off to observe using the bird's thermal/visible cameras and microphones. Detection requires no cooperative response.
 3. Combine sensor evidence and geometry to estimate the observed person's location.
 4. Send observations from bird to relay and onward to the coordinator. A failed modeled link retains the observation on the bird.
-5. Continue observing. Distinguish human detection from individual identity verification.
+5. Depart along the checked corridor after the observation/transport stage. Distinguish human detection from individual identity verification.
 
 The simulations currently report **identity UNVERIFIED**. Thermal imagery and natural sound alone do not establish who a person is. Visual recognition must be implemented and validated before identity claims are made. Optional voice, shouting or mouth whistles are natural sounds, not required signals. The default person is silent.
 
@@ -18,16 +18,16 @@ The reference scenario is Taiwan mountain forest; the same sensing questions app
 
 ## Run the browser simulator
 
-**[Taiwan forest navigation lab](simulator/forest.html).** Explore a Fushan-informed 3D reconstruction with sloping terrain, broadleaf crowns, understory and fallen wood. Compare valley/ridge structure, orbit or use the drone viewpoint, inspect collision envelopes and step through landing/perching failures. Site evidence is distinguished from procedural geometry. [Site analysis](docs/taiwan-forest-analysis.md) · [Implementation and limits](docs/forest-navigation.md).
+**[Unified Eagle mission](simulator/index.html).** One aircraft, scene and mission clock connect dense Fushan forest navigation, support verification, observation/listening, modeled relay/storage and departure. Twelve viewpoints include nose, gimbal, chase, shoulders, overhead and perch approach. The former forest-lab URL redirects here. [Integration and limits](docs/unified-mission.md) · [Site analysis](docs/taiwan-forest-analysis.md).
 
-Open [simulator/index.html](simulator/index.html) in Chrome, Edge, Safari or Firefox. First load needs internet for external assets. Headless model:
+Serve the repository with `python -m http.server 8770 --bind 127.0.0.1` and open `http://127.0.0.1:8770/simulator/` in Chrome, Edge, Safari or Firefox. Browser scripts are bundled locally; external fonts are optional. Headless sensor model:
 
 ```
 node simulator/run-model.mjs
 node simulator/run-model.mjs night opDist_m=80 --json
 ```
 
-Default silent-person model estimates:
+Original headless silent-person estimates are below. The unified mission additionally gates observations on verified support and modeled geometric line of sight; its results can therefore be **NOT FOUND** even when this statistical baseline predicts thermal evidence.
 
 | Scenario | Evidence | Result | Identity | Marker |
 |---|---|---|---|---|
@@ -54,6 +54,7 @@ The [Unreal demo](unreal-sim/README.md) searches real Taiwan terrain through can
 | [docs/unreal-sim.md](docs/unreal-sim.md) | Unreal geometry, scene and CoT reference |
 | [docs/navigation-demo.md](docs/navigation-demo.md) | GPS-denied navigation and separate multicopter SITL viewer |
 | [docs/forest-navigation.md](docs/forest-navigation.md) | 3D forest planning, landing/perching states and hardware integration gaps |
+| [docs/unified-mission.md](docs/unified-mission.md) | Shared flight/observation/transport clock, scene and twelve viewpoints |
 | [docs/coastal-relay-sizing.md](docs/coastal-relay-sizing.md) | Assumption-based inland-to-boat relay count and deployment energy |
 | [docs/build-log.md](docs/build-log.md) | Change record and limitations |
 | [docs/how-we-document.md](docs/how-we-document.md) | Documentation workflow |
@@ -64,6 +65,7 @@ The [Unreal demo](unreal-sim/README.md) searches real Taiwan terrain through can
 node simulator/test-sensors.cjs
 node simulator/test-navigation.cjs
 node simulator/test-forest.cjs
+node simulator/test-mission.cjs
 python -m pytest unreal-sim/tests
 ```
 

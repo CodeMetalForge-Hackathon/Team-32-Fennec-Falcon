@@ -1,5 +1,7 @@
 # Forest navigation and perching lab
 
+**Current entry point:** forest navigation is now part of the [unified Eagle mission](unified-mission.md). `forest.html` redirects to `index.html`; there is one main scene, Eagle, clock and mission playback. Use the main View selector for twelve viewpoints. The separate modal and independent navigation player described in older sections below are historical implementation context, not the current interface. The forest model remains independently unit-testable as a component.
+
 ## Current default: Fushan-informed forest
 
 The lab now opens a perspective WebGL scene informed by [Fushan site evidence](taiwan-forest-analysis.md), with modeled sloping ground, branching trees, irregular broadleaf crowns, understory and fallen wood. Choose taller valley forest, shorter exposed-ridge forest or the original block baseline. Site measurements and reconstruction assumptions are separated in the interface. No tree census coordinates or surveyed ground model have been loaded.

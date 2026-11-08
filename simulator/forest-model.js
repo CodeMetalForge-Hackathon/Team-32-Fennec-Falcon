@@ -105,7 +105,7 @@
       if(s.scenario==='grip-failure'&&!s.failed.length){s.failed.push(s.target.id);event(s,'Injected grip failure: motors remain on; retreat before reselection.');change('RECOVER');}
       else{s.attached=true;s.motors=false;change(s.target.kind==='ground'?'LANDED':'PERCHED');}
     }else if(s.phase==='RECOVER'&&move(s,s.target.approach,dt,0.7))select(s);
-    else if(['PERCHED','LANDED'].includes(s.phase)&&s.age>=4){s.motors=true;s.attached=false;change('RELEASE');}
+    else if(['PERCHED','LANDED'].includes(s.phase)&&s.age>=4&&!s.holdPerch){s.motors=true;s.attached=false;change('RELEASE');}
     else if(s.phase==='RELEASE'&&s.age>=1)change('DEPART');
     else if(s.phase==='DEPART'&&move(s,s.target.approach,dt,0.7)){change('COMPLETE');s.done=true;}
     return s;

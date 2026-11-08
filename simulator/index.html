@@ -155,6 +155,7 @@ section+section{margin-top:14px}
 </style>
 <link rel="stylesheet" href="navigation-panel.css">
 <link rel="stylesheet" href="forest-panel.css">
+<link rel="stylesheet" href="mission-panel.css">
 </head>
 <body>
 
@@ -213,10 +214,10 @@ section+section{margin-top:14px}
   </div>
 </section>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/objects/Sky.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/utils/BufferGeometryUtils.js"></script>
+<script src="vendor/three-r128/three.min.js"></script>
+<script src="vendor/three-r128/OrbitControls.js"></script>
+<script src="vendor/three-r128/Sky.js"></script>
+<script src="vendor/three-r128/BufferGeometryUtils.js"></script>
 <script id="eagle-model">
 /* EagleModel: physics for the Eagle Jungle Simulator (downed operator, Taiwan mountain jungle).
  * Pure functions, no DOM. Browser: window.EagleModel. Node: module.exports.
@@ -318,7 +319,7 @@ section+section{margin-top:14px}
     };
   }
 
-  function merge(s) { var d = defaults(), k; for (k in (s || {})) if (Object.prototype.hasOwnProperty.call(d, k) && s[k] !== undefined && s[k] !== null) d[k] = s[k]; return d; }
+  function merge(s) { var d = defaults(), k; for (k in (s || {})) if (Object.prototype.hasOwnProperty.call(d, k) && s[k] !== undefined && s[k] !== null) d[k] = s[k]; if(s && Number.isFinite(s.perchHeight_m)) d.perchHeight_m=s.perchHeight_m; if(s && typeof s.geometryLOS==='boolean') d.geometryLOS=s.geometryLOS; return d; }
   function clamp(x, a, b) { return Math.max(a, Math.min(b, x)); }
   function pow10(x) { return Math.pow(10, x / 10); }
   function sumDb() { var t = 0; for (var i = 0; i < arguments.length; i++) if (arguments[i] > 0) t += pow10(arguments[i]); return 10 * log10(t); }
@@ -362,7 +363,7 @@ section+section{margin-top:14px}
   }
 
   /* ---------------- acoustic ---------------- */
-  function perchH(s) { return (PARAMS.perches[s.perch] || PARAMS.perches.subcanopy).h; }
+  function perchH(s) { return Number.isFinite(s.perchHeight_m) ? Math.max(0.1,s.perchHeight_m) : (PARAMS.perches[s.perch] || PARAMS.perches.subcanopy).h; }
   function acousticSNR(sig, r, s, e) {
     var A = PARAMS.acoustic, h = perchH(s);
     var d = sqrt(r * r + h * h);
@@ -514,7 +515,9 @@ section+section{margin-top:14px}
   /* ---------------- evaluate ---------------- */
   function evaluate(input) {
     var s = merge(input), e = env(s);
-    var ac = acoustic(s, e), th = thermal(s, e), ra = radar(s), rfo = rf(s, e), fx = fix(s, ac, th);
+    var ac = acoustic(s, e), th = thermal(s, e), ra = radar(s), rfo = rf(s, e);
+    if(s.geometryLOS===false){th.detected=false;th.note=(th.note||'')+' Same-scene vegetation blocks the modeled thermal line.';}
+    var fx = fix(s, ac, th);
     var radio = PARAMS.rf.radios[s.radio] || PARAMS.rf.radios.sf7bw250, Z = PARAMS.sizes;
     var link = PARAMS.link[s.longHaul] || PARAMS.link.iridium;
     function at(b) { return airtime(b, radio.sf, radio.bw, 5); }
@@ -636,7 +639,7 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 0.6;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-const scene = new THREE.Scene();
+let scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(48, 1, 0.3, 14000);
 camera.position.set(-160, 120, 120);
 const controls = new THREE.OrbitControls(camera, canvas);
@@ -1209,11 +1212,11 @@ function ensurePipTargets() {
 }
 const offT = document.createElement('canvas'), offCtx = offT.getContext('2d');
 function aimPip() {
-  const head = new THREE.Vector3(0, 0.6 * eagle.scale.y, 0.12).add(W.eagle); pipCam.position.copy(head);
+  const head = new THREE.Vector3(0, window.__eagleMission ? .35 : 0.6*eagle.scale.y, window.__eagleMission ? 0 : .12).add(W.eagle); pipCam.position.copy(head);
   const tgt = W.op.clone(); tgt.y += operator.userData.posture === 'standing' ? 1.1 : operator.userData.posture === 'sitting' ? 0.7 : 0.25;
   const d = tgt.sub(head), yaw = Math.atan2(d.x, -d.z) + pipYaw, pitch = Math.atan2(d.y, Math.hypot(d.x, d.z)) + pipPitch;
   pipCam.rotation.set(0, 0, 0, 'YXZ'); pipCam.rotation.order = 'YXZ'; pipCam.rotation.y = -yaw; pipCam.rotation.x = pitch; pipCam.updateMatrixWorld();
-  eagle.rotation.y = -yaw + Math.PI;
+  if(!window.__eagleMission||window.__eagleMission.state.forest.attached)eagle.rotation.y = -yaw + Math.PI;
 }
 function withPass(kind, fn) {
   const au = renderer.shadowMap.autoUpdate; renderer.shadowMap.autoUpdate = false;
@@ -1278,7 +1281,7 @@ function pipHud(x, mode) {
   if (pipStats.bbox && mode !== 'visible') {
     const [a, b, c, d] = pipStats.bbox, pad = 2; x.strokeStyle = det ? '#80e0ff' : 'rgba(255,255,128,.85)'; x.lineWidth = Math.max(2, cw / 220); x.setLineDash(det ? [] : [6, 5]);
     x.strokeRect((a - pad) * sx, (b - pad) * sy, (c - a + 1 + pad * 2) * sx, (d - b + 1 + pad * 2) * sy); x.setLineDash([]);
-    x.fillStyle = det ? '#80e0ff' : '#ffff80'; x.fillText(det ? 'OPERATOR · warm body' : 'operator in view · not separable', Math.min((a - pad) * sx, cw * 0.45), Math.max(4, (b - pad) * sy - cw / 30));
+    x.fillStyle = det ? '#80e0ff' : '#ffff80'; x.fillText(window.__eagleMission?'PERSON · simulated pixels':det ? 'OPERATOR · warm body' : 'operator in view · not separable', Math.min((a - pad) * sx, cw * 0.45), Math.max(4, (b - pad) * sy - cw / 30));
   }
   x.strokeStyle = 'rgba(255,255,255,.55)'; x.lineWidth = 1; const mx = cw / 2, my = ch / 2; x.beginPath(); x.moveTo(mx - 14, my); x.lineTo(mx - 5, my); x.moveTo(mx + 5, my); x.lineTo(mx + 14, my); x.moveTo(mx, my - 14); x.lineTo(mx, my - 5); x.moveTo(mx, my + 5); x.lineTo(mx, my + 14); x.stroke();
   x.fillStyle = 'rgba(0,0,0,.55)'; x.fillRect(6, 6, cw * 0.46, cw / 15);
@@ -1311,6 +1314,7 @@ function buildMapBase() {
   x.putImageData(im, 0, 0);
 }
 function drawMap() {
+  if(window.__eagleMission){window.__eagleMission.drawMap();return;}
   const x = mapCtx, Wc = mapCv.width, s = Wc / WORLD, m = (wx, wz) => [(wx + HALF) * s, (wz + HALF) * s];
   x.clearRect(0, 0, Wc, Wc); x.imageSmoothingEnabled = true; x.drawImage(mapBase, 0, 0, Wc, Wc);
   x.strokeStyle = 'rgba(255,255,255,.12)'; x.lineWidth = 1; x.font = `500 ${Math.round(Wc / 30)}px "IBM Plex Mono", monospace`; x.fillStyle = 'rgba(255,255,255,.55)';
@@ -1338,6 +1342,7 @@ function drawMap() {
 // ---------- life list ----------
 let lifeTracks = [];
 function computeLife() {
+  if(window.__eagleMission){const ev=R.find?.by||[];lifeTracks=[{kind:'operator',name:'Observed person',short:'PERSON',pos:W.op,ev,det:ev.length>0,status:'UNVERIFIED'}];return;}
   const ac = R.acoustic || {}, th = R.thermal || {}, ph = PERCH_H[S.perch] || 28, vis = S.understoryVis_m || 20;
   const pLOS = d => ph >= (S.canopyH_m || 22) ? Math.exp(-0.35 * S.LAI / Math.max(0.05, Math.cos(Math.atan2(d, ph)))) : Math.exp(-d / vis);
   const thermalOK = (th.contrastAppC || 0) >= (th.clutterC || 0) * 1.5;
@@ -1448,9 +1453,10 @@ function renderCards() {
 }
 function renderTop() {
   const e = R.env || {}, f = R.find || {};
-  $('#envline').textContent = `Central Mountain Range, Taiwan · ${hhmm(S.hour)} · ${num(e.tAmbC, 1)} °C · ${e.rh}% RH · noise ${e.noiseDbA} dBA`;
+  $('#envline').textContent = `${window.__eagleMission?'Fushan-informed mission, Taiwan':'Central Mountain Range, Taiwan'} · ${hhmm(S.hour)} · ${num(e.tAmbC, 1)} °C · ${e.rh}% RH · noise ${e.noiseDbA} dBA`;
   const cls = f.status === 'FOUND' ? 'ok' : f.status === 'PARTIAL' ? 'warn' : 'bad';
   $('#findPill').innerHTML = `<span class="chip ${cls}">${f.status || '—'}</span><span class="chip ${'unknown'}">${f.identity || ''}</span><span class="by">${(f.by || []).join(' + ') || 'no sensor'} · ATAK marker ${R.timeToMarker_s != null ? 'in ~' + Math.round(R.timeToMarker_s) + ' s' : 'none'}</span>`;
+  if(window.__eagleMission){const m=window.__eagleMission.state;$('#findPill .by').textContent=m.delivered?'Observation delivered · identity UNVERIFIED':m.stored?'Observation retained on Eagle':m.done?'Mission ended · no delivered observation':m.observed?'Observation/transport in progress':'Waiting for a verified perch';$('#camnote').textContent=`Live camera: same forest and moving Eagle. Sensor cards: ${m.observed?'last supported observation':'awaiting support verification'}. ${m.result?.geometry?.clearThermalLine===false?'The observation thermal line was blocked.':''} Identity remains unverified.`;return;}
   const th = R.thermal || {}, posture = operator.userData.posture;
   $('#camnote').innerHTML = pipStats.opPx ? `This frame: clear line, <b>${pipStats.opPx} px</b> land on him. Model: ${num(th.pxAtOp, 1)} px across his torso (needs 3) and a ${Math.round((th.pLOS || 0) * 100)}% chance of a clear line at ${S.opDist_m} m. Drag to pan, double-click to re-aim.`
     : `This frame: <b>no clear line</b> to him (vegetation in the way). Model: ${Math.round((th.pLOS || 0) * 100)}% chance of a clear line at ${S.opDist_m} m. Drag to pan, double-click to re-aim.`;
@@ -1471,6 +1477,7 @@ function update() {
   renderTop(); renderCards(); renderLife(); renderSteps(running.on ? running.step : -1); if (!running.on) { resetLog(); }
   drawMap(); pipDirty = true;
   window.__sim.R = R; window.__sim.S = S;
+  if(window.__eagleMission)window.__eagleMission.settingsChanged();
 }
 let lastCanopy = -1, lastBoost = -1; function layoutIfNeeded() { crownBoost = 1 / Math.sqrt(QL[quality.level].veg); if (S.canopyH_m !== lastCanopy || crownBoost !== lastBoost) { lastCanopy = S.canopyH_m; lastBoost = crownBoost; layoutVegetation(S.canopyH_m); } }
 function setVegCounts() {
@@ -1484,6 +1491,7 @@ let pipDirty = true;
 function stopMission(keepLog) { running.on = false; running.step = -1; running.showFix = true; $('#run').disabled = false; $('#run').textContent = 'Run mission'; dot.visible = false; beam.visible = false; downBeam.visible = false; }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 async function runMission() {
+  if(window.__eagleMission){window.__eagleMission.toggle();return;}
   if (running.on) return; running.on = true; running.token = (running.token || 0) + 1; const tok = running.token; running.showFix = false; updateOverlays(); drawMap();
   $('#run').disabled = true; $('#run').textContent = 'Running…'; resetLog(); $('#log').innerHTML = '';
   const tl = R.timeline || [], msgs = (R.messages || []).slice(), used = new Set();
@@ -1513,7 +1521,7 @@ function flyDot(pts, dur, hex = 0x80e0ff) { flight.pts = pts; flight.t0 = perfor
 
 // ---------- camera modes ----------
 let camMode = 'orbit', camAnim = null; const camTmp = { p: new THREE.Vector3(), t: new THREE.Vector3() };
-function setCamMode(m) { camMode = m; $$('.viewbtns button').forEach(b => b.classList.toggle('on', b.dataset.cam === m)); controls.enabled = m === 'orbit' || m === 'top'; updateOverlays(); if (m === 'orbit') { camGoal('orbit'); } if (m === 'top') { const c = W.eagleBase.clone().lerp(W.op, 0.5); flyCam(new THREE.Vector3(c.x, 620, c.z + 1), new THREE.Vector3(c.x, 0, c.z)); } }
+function setCamMode(m) { if(window.__eagleMission){window.__eagleMission.setView(m);return;} camMode = m; $$('.viewbtns button').forEach(b => b.classList.toggle('on', b.dataset.cam === m)); controls.enabled = m === 'orbit' || m === 'top'; updateOverlays(); if (m === 'orbit') { camGoal('orbit'); } if (m === 'top') { const c = W.eagleBase.clone().lerp(W.op, 0.5); flyCam(new THREE.Vector3(c.x, 620, c.z + 1), new THREE.Vector3(c.x, 0, c.z)); } }
 function flyCam(p, t, dur = RM ? 1 : 1600) { camAnim = { p0: camera.position.clone(), t0: controls.target.clone(), p1: p, t1: t, s: performance.now(), d: dur }; }
 function camGoal(kind) {
   if (camMode !== 'orbit') return; const ex = W.eagle, op = W.op.clone(), mid = ex.clone().lerp(op, 0.5);
@@ -1552,7 +1560,7 @@ function resize() { const w = canvas.clientWidth, h = canvas.clientHeight; if (!
 addEventListener('resize', () => { resize(); drawMap(); });
 $$('.viewbtns button').forEach(b => b.addEventListener('click', () => setCamMode(b.dataset.cam)));
 $$('#pipMode button').forEach(b => b.addEventListener('click', () => { pipMode = b.dataset.pip; $$('#pipMode button').forEach(x => x.classList.toggle('on', x === b)); pipDirty = true; }));
-$('#run').addEventListener('click', () => { if (camMode !== 'orbit') setCamMode('orbit'); runMission(); });
+$('#run').addEventListener('click', () => { if (!window.__eagleMission && camMode !== 'orbit') setCamMode('orbit'); runMission(); });
 $('#hidePanels').addEventListener('click', () => { document.body.classList.toggle('nopanels'); $('#hidePanels').textContent = document.body.classList.contains('nopanels') ? 'Show panels' : 'Hide panels'; });
 addEventListener('keydown', e => { if (e.key === 'h' || e.key === 'H') { if (!/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) $('#hidePanels').click(); } });
 $$('#overlays input').forEach(c => c.addEventListener('change', () => { updateOverlays(); }));
@@ -1573,15 +1581,18 @@ function animate(now) {
   macaques.forEach((q, i) => { q.position.y += Math.sin(time * 3 + i) * 0.003; q.rotation.y += Math.sin(time * 0.7 + i) * 0.004; });
   boar.rotation.y = 0.8 + Math.sin(time * 0.4) * 0.5; muntjacs.forEach((q, i) => { q.rotation.y = -0.6 + i * 1.7 + Math.sin(time * 0.3 + i) * 0.4; }); sambar.rotation.y = 1.9 + Math.sin(time * 0.2) * 0.3;
   // fx
+  if(window.__eagleMission)window.__eagleMission.frame(dt);
   fxPool.forEach(f => { if (!f.on) return; f.t += dt; if (f.t < 0) return; const k = f.t / f.dur; if (k >= 1) { f.on = false; f.ring.show(false); return; } const r = lerp(f.r0, f.r1, 1 - Math.pow(1 - k, 2)); f.ring.set(f.cx, f.cz, r, clamp(r * 0.02, 0.6, 5), 2); f.ring.mat.opacity = 0.95 * (1 - k); f.ring.show(true); });
   if (flight.pts && dot.visible) { const k = clamp((now - flight.t0) / flight.dur, 0, 1), segs = flight.pts.length - 1, f = k * segs, i = Math.min(segs - 1, Math.floor(f)); dot.position.copy(flight.pts[i]).lerp(flight.pts[i + 1], f - i); if (k >= 1) dot.visible = false; }
   rain.material.uniforms.uCenter.value.copy(camera.position);
   mist.forEach((m, i) => { m.material.map.offset.set(time * 0.0025 * (i + 1), time * 0.0015); });
   // camera
+  if(!window.__eagleMission){
   if (camAnim) { const k = clamp((now - camAnim.s) / camAnim.d, 0, 1), e = k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2; camera.position.lerpVectors(camAnim.p0, camAnim.p1, e); controls.target.lerpVectors(camAnim.t0, camAnim.t1, e); if (k >= 1) camAnim = null; }
   if (camMode === 'eagle') { camera.position.copy(pipCam.position); camera.quaternion.copy(pipCam.quaternion); camera.fov = 55; camera.updateProjectionMatrix(); }
   else if (camMode === 'operator') { const eye = W.op.clone(); eye.y += posture === 'standing' ? 1.65 : posture === 'sitting' ? 1.05 : 0.35; camera.position.copy(eye); camera.lookAt(W.eagle); camera.fov = 70; camera.updateProjectionMatrix(); }
   else { if (camera.fov !== 48) { camera.fov = 48; camera.updateProjectionMatrix(); } controls.autoRotate = camMode === 'orbit' && idleT > 12 && !camAnim && !running.on && !RM; controls.autoRotateSpeed = 0.35; controls.update(); }
+  }else window.__eagleMission.updateCamera();
   renderer.render(scene, camera);
   // Eagle cam at ~8 Hz
   pipT += dt; const pipVisible = $('#right').offsetParent !== null || getComputedStyle($('#right')).position === 'fixed';
@@ -1605,6 +1616,43 @@ label('DF post', 'hostile', v => v.copy(post.position).setY(post.position.y + 8)
 label('macaques', 'neutral', v => v.copy(macaques[0].position).setY(macaques[0].position.y + 2));
 
 // ---------- test hooks ----------
+window.__eagleHost={
+ get settings(){return {...S};},get camera(){return camera;},get controls(){return controls;},get renderer(){return renderer;},get canvas(){return canvas;},
+ settingsForPatch(){S.opDist_m=clamp(+S.opDist_m||20,5,25);const input=$('#c-opDist_m');if(input){input.min=5;input.max=25;}syncControls();return {...S};},
+ attach(layer){
+  scene=new THREE.Scene();scene.background=layer.scene.background.clone();scene.fog=layer.scene.fog.clone();
+  layer.scene.rotation.x=-Math.PI/2;scene.add(layer.scene,eagle,operator,relay);
+  const parts=eagle.children.slice(),flying=eagleModel(true);flying.scale.setScalar(.2);eagle.add(flying);this.flightParts={parts,flying};
+  renderer.shadowMap.enabled=false;renderer.toneMappingExposure=.85;camera.far=14000;camera.updateProjectionMatrix();camAnim=null;camMode='mission';
+  LBL.forEach(l=>{if(l.el.textContent==='OPERATOR')l.el.textContent='SIMULATED PERSON';else if(!/EAGLE|RELAY/.test(l.el.textContent))l.visFn=()=>false;});
+ },
+ sync(m,layer,options={}){
+  const f=m.forest,p=f.p,to=p=>new THREE.Vector3(p[0],p[2],-p[1]);
+  renderer.toneMappingExposure=.85;scene.background=layer.scene.background;scene.fog.color.copy(layer.scene.background);
+  layer.render(f,{yaw:.55,pitch:.55,zoom:1,panX:0,panY:0},{syncOnly:true,hideDrone:true,...options});
+  if(this.lastWorld!==f.world){this.lastWorld=f.world;collectPip();}
+  W.eagle.copy(to(p));W.eagleBase.set(p[0],f.world.ground?.(p[0],p[1])||0,-p[1]);eagle.position.copy(W.eagle);
+  this.flightParts.parts.forEach(o=>o.visible=f.attached);this.flightParts.flying.visible=!f.attached;
+  const next=f.phase==='TRANSIT'?f.path[f.next]:f.target?.approach;if(next&&!f.attached){const dir=to(next).sub(W.eagle);if(dir.length()>.05){eagle.rotation.y=Math.atan2(dir.x,dir.z);eagle.rotation.x=-Math.atan2(dir.y,Math.hypot(dir.x,dir.z));}}else eagle.rotation.x=0;
+  W.op.copy(to(m.operator));operator.position.copy(W.op);operator.userData.posture=S.opPosture;
+  W.opEst.copy(m.reportedPosition?to(m.reportedPosition):W.op);W.relayC.set(p[0]-(+S.relayDist_m||200)*.7,(f.world.ground?.(p[0],p[1])||0)+(+S.relayAlt_m||100),-p[1]-(+S.relayDist_m||200)*.714);W.relayR=10;relay.position.copy(W.relayC);
+  W.relayOff=true;eagle.visible=!['nose','gimbal'].includes(window.__eagleMission?.view);pipDirty=true;
+ },
+ publish(m){
+  const base=m.result||M.evaluate(S);
+  R=m.result||{...base,find:{status:m.done?'ABORTED':'IN TRANSIT',by:[],identity:'UNVERIFIED'},acoustic:{...base.acoustic,detected:false},thermal:{...base.thermal,detected:false},radar:{...base.radar,detected:false},fix:{ce_m:null,method:'Observation waits for verified support'},messages:[],timeline:[],timeToMarker_s:null};
+  running.showFix=m.delivered;window.__sim.R=R;computeLife();renderCards();renderTop();renderLife();setThermalTemps();
+  const linkChip=$('#cards .card .chip');if(linkChip)linkChip.textContent=R.rf.linkOK?'Modeled link available':'Modeled link unavailable';
+  $('#camnote').textContent=`Live camera: same forest and moving Eagle. Sensor cards: ${m.observed?'last supported observation':'awaiting support verification'}. ${m.result?.geometry?.clearThermalLine===false?'The observation thermal line was blocked.':''} Identity remains unverified.`;
+ },
+ render(){renderer.render(scene,camera);},pip(){pipRender();},
+ cameraMode(mode){camMode='mission';controls.enabled=mode==='orbit';camAnim=null;controls.autoRotate=false;eagle.visible=!['nose','gimbal'].includes(mode);},
+ get aircraftVisible(){return eagle.visible;},
+ look(position,target,fov=55){camera.position.copy(position);camera.lookAt(target);camera.fov=fov;camera.updateProjectionMatrix();},
+ orbitTarget(p,reset){controls.target.copy(p);if(reset)camera.position.copy(p).add(new THREE.Vector3(40,29,35));controls.update();},
+ get pose(){return W.eagle.clone();},get person(){return W.op.clone();},get relay(){return W.relayC.clone();},
+ get scene(){return scene;}
+};
 window.__sim = { S, R, apply(p) { Object.assign(S, p); activePreset = ''; syncControls(); update(); }, preset: applyPreset, run: runMission, cam: setCamMode, pip(m) { pipMode = m; $$('#pipMode button').forEach(x => x.classList.toggle('on', x.dataset.pip === m)); pipDirty = true; }, get pipStats() { return pipStats; }, quality(q) { quality.mode = q; applyQuality(q === 'auto' ? 'high' : q); }, ready: false, get life() { return lifeTracks; } };
 
 // ---------- boot ----------
@@ -1617,11 +1665,10 @@ requestAnimationFrame(t => { last = t; animate(t); });
 window.__sim.ready = true;
 })();
 </script>
-<script src="navigation-model.js"></script>
-<script src="navigation-panel.js"></script>
 <script src="forest-site.js"></script>
 <script src="forest-renderer.js"></script>
 <script src="forest-model.js"></script>
-<script src="forest-panel.js"></script>
+<script src="mission-model.js"></script>
+<script src="mission-panel.js"></script>
 </body>
 </html>

@@ -1,5 +1,13 @@
 # Build log
 
+## 2026-11-07 · Unified Eagle mission and twelve viewpoints
+
+Connected the forest state machine to the existing Eagle observation, fix and relay/storage model through one mission clock. Reused the original Eagle/person actors and thermal/visible/ID rendering in the same dense Fushan forest, with an explicit z-up to Three.js y-up transform. Supported observation now uses actual modeled separation/height and a same-scene thermal center-ray gate. Eagle holds its perch through the observation/transport timeline, then departs. Blocked routes and pose loss cannot generate observations. Failed modeled links retain observations; coordinator markers require delivery. The default person remains silent and identity unverified.
+
+Added twelve shared-state viewpoints, pause/step/reset/speed/export, canopy/collider inspection and a local mission map with modeled fix uncertainty. The former forest route redirects to the main mission. The independent explanatory survey and forest modal are not mounted; their motion components remain unit-testable. Locally vendored the existing r128 OrbitControls/Sky/BufferGeometryUtils so browser scripts do not depend on CDNs.
+
+Validation: forest-component and original sensor/navigation regressions; new mission tests for support/evidence/delivery gates, recovery, aborts, long courier holds and export; unified browser checks for shared pose/clock, twelve viewpoints, thermal rendering, redirects and mobile widths. Updated screenshots in unified-mission.md. Live VIO/depth/contact/radio, the separate ArduPilot SITL controller and Unreal runtime integration remain outside this browser change.
+
 ## 2026-11-07 · Dense understory and overlapping canopy
 
 Expanded Fushan crown envelopes and layered meshes from isolated crowns into overlapping cover. A 1 m sample grid reports about 78% modeled crown-footprint coverage; the interface explicitly distinguishes this from measured canopy closure. Added 911 retained low-cover, fern and sapling placements, removing the broad ground-level vegetation exclusions while retaining immediate launch/landing/contact footprints. Taller represented understory affects collision checks. One hundred context trees and extended rendered ground outside the active flight bounds remove the bare diorama edge. Added denser litter and wider, more detailed fern fronds, with instanced leafy shrubs.

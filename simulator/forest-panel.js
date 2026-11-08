@@ -1,3 +1,4 @@
+/* Legacy independent panel; not loaded by the unified mission or forest.html redirect. */
 (function(){
   'use strict';
   const F=window.EagleForest, host=document.createElement('section');host.id='forest-demo';
