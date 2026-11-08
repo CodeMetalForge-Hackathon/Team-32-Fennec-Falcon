@@ -252,6 +252,13 @@ life:
       sigma_mount_height_m: 0.05
       sigma_target_height_m: 0.1
       sigma_body_m: 0.25
+    model:                       # thermal person model (eagle/infer.py), scored against each warm blob
+      enabled: true
+      onnx: ../fusion/models/thermal_person.onnx   # YOLOv8n, 320 px, trained on HIT-UAV aerial thermal (AGPL-3.0)
+      hef: ~/eagle-models/thermal_person.hef       # compiled for the Hailo (pi/compile_thermal_hef.sh); absent = CPU
+      prefer: [hailo, onnxruntime, opencv]         # first that loads wins
+      conf: 0.30                 # box score floor (fusion/app.py uses 0.30)
+      every_n: 1                 # run on every Nth thermal frame (life.thermal.every_s apart)
   vitals:
     port: null                   # serial port of firmware/radar_bridge or a vendor module, e.g. /dev/ttyACM0
     baud: 115200
@@ -342,3 +349,68 @@ identity:
     clip_tokenizer: null
     clip_token_embeddings: null
     clip_text_projection: null
+
+# ---- On-board decision (eagle/decide.py; apps/eagle_runtime.py runs it) ----
+# Nothing is transmitted until one track passes every gate; then ONE FIX goes out as two bursts of the
+# same sealed frame. Likelihood ratios are ASSUMED (simulator v2 values) until calibrated: record with
+# apps/eagle_runtime.py --record, replay with apps/replay_decisions.py --set decide.lr.<clue>=<value>.
+decide:
+  mode: default                  # training: decide + log, RF muted | default: P >= 0.95 | strict: P >= 0.99,
+                                 # never from the perch while EMCON is blocked, no re-sends, no positions on disk
+  modes:
+    strict:   {p_send: 0.99, min_modalities: 2, on_hold_timeout: hold, resend: false, wipe_after_send: true,  log_positions: false, transmit: true}
+    default:  {p_send: 0.95, min_modalities: 2, on_hold_timeout: send, resend: true,  wipe_after_send: false, log_positions: true,  transmit: true}
+    training: {p_send: 0.95, min_modalities: 2, on_hold_timeout: send, resend: true,  wipe_after_send: false, log_positions: true,  transmit: false}
+  mission:                       # the briefing
+    others_expected: 6           # other people who may come into view (sim v2: patrol 4 + locals 2): prior = 1 / (1 + N)
+    target_state: injured        # injured: a decided report waits at most emcon.max_hold_injured_s | mobile: max_hold_s
+    target_mobile: false         # false: moving > 10 m in 60 s counts against a track
+    search_area: null            # {lat: .., lon: .., radius_m: ..} or {center_enu_m: [E, N], radius_m: ..}: x2 inside
+    threat_dist_m: null          # briefed distance to the nearest listener (patrol, outpost); null = unknown
+  lr:                            # P(clue | him) / P(clue | anyone else). ASSUMED.
+    shape_clear: 3.0             # thermal person model score >= shape_clear_score
+    shape_faint: 1.5             # warm and human-sized (blob), model weak or absent
+    shape_clear_score: 0.6
+    vision_lying: 2.0            # camera person box, lying
+    vision_upright: 1.0
+    identity: {1: 2.0, 2: 5.0, 3: 30.0}   # appearance candidate, strong appearance, face verified (eagle/identity.py)
+    alone: 2.0                   # no other person within 30 m
+    location: 2.0                # inside mission.search_area
+    still30: 4.0                 # still for 30 min ...
+    still120: 3.0                # ... and for 2 h
+    group: 0.3                   # another person within 5 m: patrols move together
+    moving: 0.5                  # > 10 m in 60 s (target_mobile: false)
+    code_event: 3.0              # each briefed-code event before the code rule holds (at most 2)
+    code: 100.0                  # the code rule holds: >= 3 events in 180 s, bearings +-10 deg
+    signal: 1.5                  # whistle / knock that is not the briefed pattern (at most signal_max)
+    signal_max: 2
+    cough: 2.0                   # cough or groan, per event (at most cough_max)
+    cough_max: 4
+    distress: 2.0
+    distress_max: 2
+    breath_sound: 1.5
+    breath_sound_max: 2
+    voice: 1.0                   # talking: human, not him in particular
+    voice_max: 0
+    breathing: 2.0               # radar pellet: breathing
+    no_vitals: 0.5               # radar pellet: no vital signs (warm decoy, or he has died)
+    tag: 1000.0                  # authenticated tag reply
+  code: {window_s: 180.0, min_events: 3, bearing_tol_deg: 10.0, min_conf: 0.9}
+  gate: {min_dwell_s: 20.0, fresh_s: 120.0, max_ce_m: 200.0}
+  geometry: {merge_radius_m: 1.5, alone_radius_m: 30.0, group_radius_m: 5.0, still_radius_m: 3.0, still_sample_s: 10.0,
+             moving_window_s: 60.0, moving_m: 10.0, inherit_radius_m: 5.0, inherit_s: 1800.0}   # merge: closer = one person
+  emcon:
+    min_radius_m: 30.0           # intercept radius floor; otherwise from the planned burst power and radio.path_loss
+    eavesdropper_dbm: -115.0     # energy detector (sim v2); a LoRa receiver hears to ~-124
+    clear_s: 120.0               # after a hold, nobody in the radius for this long before sending
+    max_hold_s: 7200.0           # mobile: longest a decided report waits (default mode)
+    max_hold_injured_s: 900.0    # injured: 15 min, then default mode sends anyway; strict never does
+    relocated_flag: ~/eagle/relocated   # touch it (or the autopilot does) after moving away: the held report goes
+  report:
+    repeat_after_s: [30.0, 120.0]   # second burst of the same frame (the Nest's replay window keeps one)
+    resend_move_m: 25.0
+    min_resend_gap_s: 300.0
+    max_per_hour: 4
+    own_position_ce_m: 10.0      # the Eagle's own position error without GPS (sim v2, VIO: assumed); 0 on a surveyed stand
+  bearing_only: {enabled: true, range_m: 150.0, stable_span_s: 300.0, lr_stable: 2.0}
+  log: {path: ~/eagle/decisions.jsonl, every_s: 10.0}
