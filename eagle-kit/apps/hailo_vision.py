@@ -232,7 +232,9 @@ class Snapshotter:
         import cv2
         self.last = self.clock()
         img, _ = self.draw(rgb, boxes, ids, identity)
-        ok, jpg = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 80])
+        if img.shape[1] > 960:                          # smaller, faster snapshots for the live view
+            img = cv2.resize(img, (960, int(round(img.shape[0] * 960 / img.shape[1]))), interpolation=cv2.INTER_AREA)
+        ok, jpg = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 75])
         if not ok:
             return False
         tmp = self.path.with_name(self.path.name + ".tmp")
