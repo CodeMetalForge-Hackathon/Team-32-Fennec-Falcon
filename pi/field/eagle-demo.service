@@ -1,0 +1,12 @@
+[Unit]
+Description=Eagle field: full-screen demo view on port 8081 (verdict banner, camera, thermal, sound)
+After=local-fs.target
+
+[Service]
+User=@USER@
+ExecStart=/usr/bin/python3 @REPO@/pi/field/demo.py --logs @HOME@/field_logs --eagle @HOME@/eagle --port 8081
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
