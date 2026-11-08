@@ -121,8 +121,19 @@ class Recorder:
             self._th_start = t
         self._th_t.append(float(t))
         self._th_f.append(np.clip(np.round(np.asarray(frame, float) * 100.0), -32768, 32767).astype(np.int16))
+        self._write_live(self._th_f[-1])
         if t - self._th_start >= self.chunk_s:
             self._flush_thermal()
+
+    def _write_live(self, centi_c) -> None:
+        """Latest thermal frame (centi-deg C, int16) at <root>/live_thermal.npy for the field page.
+        Written to a temp file then renamed, so a reader never sees half a frame."""
+        try:
+            tmp = self.dir.parent / "live_thermal.tmp.npy"
+            np.save(tmp, centi_c)
+            os.replace(tmp, self.dir.parent / "live_thermal.npy")
+        except OSError:
+            pass
 
     def _flush_thermal(self) -> None:
         if not self._th_t:

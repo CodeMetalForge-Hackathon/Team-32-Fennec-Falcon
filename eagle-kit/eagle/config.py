@@ -29,10 +29,20 @@ def deep_merge(base: dict, over: dict) -> dict:
 
 
 def load_config(path=None) -> dict:
-    """The shipped example.yaml provides every default; ``path`` overrides any subset."""
+    """The shipped example.yaml provides every default; ``path`` overrides any subset.
+
+    ``path`` may list ``include: [file, ...]``: each file that exists is merged over it in order
+    (missing files are skipped). The field page writes the site setup to such a file
+    (``~/eagle/site.yaml``) so it never has to rewrite the hand-edited config."""
     cfg = _read_yaml(EXAMPLE_CONFIG)
     if path and Path(os.path.expanduser(str(path))).resolve() != EXAMPLE_CONFIG.resolve():
-        cfg = deep_merge(cfg, _read_yaml(path))
+        user = _read_yaml(path)
+        includes = user.pop("include", None) or []
+        cfg = deep_merge(cfg, user)
+        for inc in ([includes] if isinstance(includes, str) else includes):
+            p = Path(os.path.expanduser(str(inc)))
+            if p.is_file():
+                cfg = deep_merge(cfg, _read_yaml(p))
     return cfg
 
 

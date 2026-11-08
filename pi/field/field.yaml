@@ -3,6 +3,10 @@
 # Camera Module 3 Wide NoIR. life_node and nest_station run on the same Pi and talk over loopback UDP,
 # so nothing here needs a network. Keys are still the TEST KEYS from example.yaml.
 
+# Site setup from the field page (mount height, heading, tilt, lat/lon, clap-test offset) lives in
+# ~/eagle/site.yaml and is merged over this file when it exists. Edit it from the page, not here.
+include: [~/eagle/site.yaml]
+
 audio:
   preset: respeaker_xvf3800
   device: XVF3800                # name substring, so a changed ALSA card number does not matter

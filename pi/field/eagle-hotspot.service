@@ -1,0 +1,14 @@
+[Unit]
+Description=Eagle field: start the THERMAL-PI hotspot at boot when no known Wi-Fi is found
+After=NetworkManager.service
+Wants=NetworkManager.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=@REPO@/pi/field/hotspot_auto.sh
+StandardOutput=append:@HOME@/field_logs/hotspot.log
+StandardError=append:@HOME@/field_logs/hotspot.log
+
+[Install]
+WantedBy=multi-user.target
