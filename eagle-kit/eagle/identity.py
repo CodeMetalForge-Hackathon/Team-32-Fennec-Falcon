@@ -297,17 +297,29 @@ class Embedders:
         return out
 
 
+def _hef(d: Path, name: str) -> Path:
+    """clip/<name>, else clip/hailo8l/<name>, else clip/hailo8/<name> (apps/fetch_models.py layout)."""
+    for sub in ("", "hailo8l", "hailo8"):
+        p = d / "clip" / sub / name if sub else d / "clip" / name
+        if p.is_file():
+            return p
+    return d / "clip" / name
+
+
 def model_paths(cfg: dict | None) -> dict:
     c = merged_config(cfg)
     d = Path(os.path.expanduser(c["models_dir"]))
     m = c.get("models", {})
-    return {"insightface_root": Path(os.path.expanduser(m.get("insightface_root") or d / "insightface")),
-            "osnet": Path(os.path.expanduser(m.get("osnet") or d / "osnet" / "osnet_x1_0_msmt17.onnx")),
-            "clip_image_hef": Path(os.path.expanduser(m.get("clip_image_hef") or d / "clip" / "clip_vit_b_32_image_encoder.hef")),
-            "clip_text_hef": Path(os.path.expanduser(m.get("clip_text_hef") or d / "clip" / "clip_vit_b_32_text_encoder.hef")),
-            "clip_tokenizer": Path(os.path.expanduser(m.get("clip_tokenizer") or d / "clip" / "clip_tokenizer.json")),
-            "clip_token_embeddings": Path(os.path.expanduser(m.get("clip_token_embeddings") or d / "clip" / "token_embedding_lut.npy")),
-            "clip_text_projection": Path(os.path.expanduser(m.get("clip_text_projection") or d / "clip" / "text_projection.npy"))}
+
+    def pick(key, default):
+        return Path(os.path.expanduser(str(m.get(key) or default)))
+    return {"insightface_root": pick("insightface_root", d / "insightface"),
+            "osnet": pick("osnet", d / "osnet" / "osnet_x1_0_msmt17.onnx"),
+            "clip_image_hef": pick("clip_image_hef", _hef(d, "clip_vit_b_32_image_encoder.hef")),
+            "clip_text_hef": pick("clip_text_hef", _hef(d, "clip_vit_b_32_text_encoder.hef")),
+            "clip_tokenizer": pick("clip_tokenizer", d / "clip" / "clip_tokenizer.json"),
+            "clip_token_embeddings": pick("clip_token_embeddings", d / "clip" / "token_embedding_lut.npy"),
+            "clip_text_projection": pick("clip_text_projection", d / "clip" / "text_projection.npy")}
 
 
 def make_runtime_embedders(cfg: dict | None, *, text: bool = False, log=print) -> Embedders:

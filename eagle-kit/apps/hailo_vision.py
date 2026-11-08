@@ -110,10 +110,22 @@ def split_args(argv):
     ap.add_argument("--tuning-file", default=DEFAULT_TUNING, help="libcamera tuning file name/path, or none")
     ap.add_argument("--profile", default=None, help="target_profile.npz from apps/enroll_target.py (identity)")
     ap.add_argument("--config", default=None, help="eagle config (identity thresholds); default example.yaml")
+    ap.add_argument("--models-dir", default="~/eagle-models", help="apps/fetch_models.py output (detection HEF)")
     ours, rest = ap.parse_known_args(argv)
     if not any(a in ("-i", "--input") or a.startswith("--input=") for a in rest):
         rest = ["--input", "rpi"] + rest
+    if not any(a == "--hef-path" or a.startswith("--hef-path=") for a in rest):
+        hef = local_detection_hef(ours.models_dir)
+        if hef:                                   # use the fetched HEF so hailo-apps never downloads one
+            rest += ["--hef-path", hef]
     return ours, rest
+
+
+def local_detection_hef(models_dir: str) -> str | None:
+    """The detection HEF from apps/fetch_models.py, if exactly one architecture was fetched."""
+    d = Path(os.path.expanduser(models_dir)) / "hailo"
+    found = sorted(d.glob("*/yolov5m_wo_spp.hef")) if d.is_dir() else []
+    return str(found[0]) if len(found) == 1 else None
 
 
 def main(argv=None) -> None:
