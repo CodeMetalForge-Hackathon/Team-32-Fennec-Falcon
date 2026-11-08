@@ -142,7 +142,9 @@ Same place and perch. He is injured, carries nothing and taps the briefed code; 
 | Hardware (Eagle, tag, relay) | Not in this repo yet |
 | Field validation | Not started |
 
-Next: terrain masking in the RF model, the Eagle's own poll in the silence decision, detection probability and false alarms, fully offline build, frame rates measured on the team's laptops, and a relay server so remote GPU works across networks. See [build-log.md](docs/build-log.md).
+Next: terrain masking in the RF model, the Eagle's own poll in the silence decision, detection probability and false alarms, fully offline build. See [build-log.md](docs/build-log.md).
+
+Next for simulator v2: frame rates measured on the team's laptops, and a relay (TURN) server so remote GPU works across networks.
 
 ## Team
 
