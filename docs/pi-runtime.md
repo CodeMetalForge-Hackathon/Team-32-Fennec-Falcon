@@ -87,7 +87,7 @@ SEND only when all of these hold:
 4. **Fix:** circular error <= 200 m.
 5. **EMCON:** no unknown person inside the burst's intercept radius of the perch, and no briefed threat inside it (`mission.threat_dist_m`). The radius comes from the power the radio would use and the kit's log-distance path loss: ~1,100 m at the planned 8 dBm for the default 800 m Nest link, ~300 m at the radio's minimum -9 dBm (**modelled**, listener at -115 dBm). So anyone the Eagle can see can hear it. If blocked: HOLD and log `REQUEST_RELOCATE`; the report goes once the Eagle has moved away (`touch ~/eagle/relocated`, later the autopilot), or, in default mode only, after 15 min for an injured person.
 
-Then: one FIX, two bursts of the same frame 30-120 s apart (the Nest's replay window keeps one, so ATAK shows one marker), and the subject is REPORTED. It is re-sent only if he moved > 25 m, the identity level rose or the flags changed, at most 4 reports per hour. The FIX's circular error adds the Eagle's own position error (10 m without GPS, **assumed** from simulator v2).
+Then: one report, two bursts of the same frame 30-120 s apart (the Nest's replay window keeps one, so ATAK shows one marker), and the subject is REPORTED. The only follow-up is one MOVED if he moves past max(100 m, 2 x the 95 % radius), in default mode only, at most 4 reports per hour; a better identity or a new flag does not justify another emission. The report's 95 % radius adds the Eagle's own position error (10 m without GPS, **assumed** from simulator v2).
 
 Every decision carries a false-alarm label from what carried it: LOW (briefed code, face verified or tag), MEDIUM (stillness and sounds), HIGH (warm, still and alone only).
 
@@ -118,9 +118,9 @@ Afternoon heat can hide him from the thermal camera, and a linear mic bar gives 
 | crowded: night + a stranger 10 m from the perch | HOLD, REQUEST_RELOCATE; default sends at 15 min | 0.980 | LOW |
 | bearing: code heard, never seen | SEND at 5 min, ce 75 m | 0.971 | LOW |
 
-End to end over UDP (`tests/test_runtime.py`): the Nest decrypts the 48-byte FIX, drops the second burst as a replay, and the position decodes to within 0.5 m of the scene's.
+End to end over UDP (`tests/test_runtime.py`): the Nest opens the 15-byte report, drops the second burst as a replay, and the position decodes to within 2 m of the scene's (2.5 m steps); with `decide.report.format: fix48` the same holds for the 48-byte FIX, within 0.5 m.
 
-**False reports from the code rule (modelled).** If the code detector false-alarms lam times an hour, independently and on random bearings, the rule fires falsely about lam^3 T^2 / 2 x (20/360)^2 times an hour (T = 3 min): one per 1,350 days at lam = 2/h, 50 days at 6/h, 32 h at 20/h (`decide.false_report_rate_per_h`). Halving the detector's false alarms cuts false reports eight-fold. Real false alarms cluster (a bird repeating a call), so measure lam on night forest recordings.
+**False reports from the code rule (modelled).** If the code detector false-alarms lam times an hour, independently and on random bearings, the rule fires falsely about lam^3 T^2 / 2 x 2.25 (20/360)^2 times an hour (T = 3 min; 2.25 (20/360)^2 is the chance that three random bearings all lie within +-10 deg of their mean): one per 600 days at lam = 2/h, 22 days at 6/h, 14 h at 20/h (`decide.false_report_rate_per_h`; a Monte Carlo of `code_rule` in `test_decide.py` agrees within 10 %). Halving the detector's false alarms cuts false reports eight-fold. Real false alarms cluster (a bird repeating a call), so measure lam on night forest recordings.
 
 ## What it sends, and how it gets home
 

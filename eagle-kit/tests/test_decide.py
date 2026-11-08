@@ -7,7 +7,8 @@ import pytest
 
 from eagle import protocol as P
 from eagle.decide import (HOLD, REPORTED, SEND, WATCH, DecisionEngine, DecisionLog, LedgerLifeList,
-                          code_rule, false_report_rate_per_h, intercept_radius_m, prior_log_odds)
+                          code_rule, false_report_rate_per_h, intercept_radius_m, mean_window_prob,
+                          prior_log_odds)
 from eagle.fusion import LifeDetection, iso_cov
 
 PERCH = np.zeros(2)
@@ -85,10 +86,28 @@ def test_code_rule_bearing_count_and_confidence():
     assert code_rule([(0, 359.0, 0.95), (30, 3.0, 0.92), (60, 1.0, None)])[0]          # wraps through north
 
 
+def test_code_rule_holds_each_event_to_the_groups_own_mean():
+    assert code_rule([(0, 31.0, None), (30, 45.0, None), (60, 45.0, None)])[0]   # mean 40.3: 9.3, 4.7, 4.7 off
+    assert not code_rule([(0, 30.0, None), (30, 50.0, None), (60, 50.0, None)])[0]  # mean 43.3: 13.3 deg off
+    ok, n = code_rule([(0, 10.0, None), (10, 12.0, None), (20, 200.0, None), (30, 14.0, None)])
+    assert ok and n == 3                                                          # the stray bearing is left out
+
+
 def test_false_reports_scale_with_the_cube_of_false_alarms():
     r1, r2 = false_report_rate_per_h(2.0), false_report_rate_per_h(4.0)
     assert r2 / r1 == pytest.approx(8.0)
     assert false_report_rate_per_h(6.0, bearing_tol_deg=None) > false_report_rate_per_h(6.0)
+    # 2/h, 6/h, 20/h of false code matches on random bearings: one false report per ~600 d, 22 d, 14 h
+    assert [round(1 / false_report_rate_per_h(lam)) for lam in (2, 6, 20)] == [14400, 533, 14]
+
+
+def test_false_report_model_matches_the_code_rule_on_random_bearings():
+    rng = np.random.default_rng(3)
+    n, tol = 20000, 20.0
+    hits = sum(code_rule([(0.0, float(a), None) for a in rng.uniform(0.0, 360.0, 3)], 3, tol)[0]
+               for _ in range(n))
+    p = mean_window_prob(3, tol)                                                  # 2.25 (40/360)^2 = 0.0278
+    assert hits / n == pytest.approx(p, rel=0.1)
 
 
 def test_intercept_radius_matches_log_distance_model():

@@ -156,17 +156,21 @@ def circ_mean_deg(angles) -> float:
 def code_rule(events, min_events: int = 3, tol_deg: float = 10.0, min_conf: float = 0.9) -> tuple:
     """Briefed-code corroboration on (t, az_deg, conf) events already inside the time window.
 
-    Returns (holds, n_best): the largest set of events whose bearings lie within +-tol_deg of
-    their circular mean, and whether it has >= min_events with mean confidence >= min_conf
-    (events without a confidence are not held to it)."""
-    ev = [e for e in events if e[1] is not None]
+    Returns (holds, n_best): the largest run of events, neighbours in bearing, whose bearings all
+    lie within +-tol_deg of the run's own circular mean, and whether it has >= min_events with mean
+    confidence >= min_conf (events without a confidence are not held to it). For three events this
+    finds every qualifying set (checked against all subsets); :func:`false_report_rate_per_h`
+    models the same test."""
+    ev = sorted((e for e in events if e[1] is not None), key=lambda e: float(e[1]) % 360.0)
+    n = len(ev)
     best: list = []
-    for _, az0, _ in ev:                          # each event's bearing as a seed, then refine once
-        sub = [e for e in ev if abs(ang_diff_deg(e[1], az0)) <= tol_deg]
-        m = circ_mean_deg(e[1] for e in sub)
-        sub = [e for e in ev if abs(ang_diff_deg(e[1], m)) <= tol_deg]
-        if len(sub) > len(best):
-            best = sub
+    for i in range(n):                            # runs round the circle from each event, longest first
+        for size in range(n, len(best), -1):
+            sub = [ev[(i + j) % n] for j in range(size)]
+            m = circ_mean_deg(e[1] for e in sub)
+            if all(abs(ang_diff_deg(e[1], m)) <= tol_deg for e in sub):
+                best = sub
+                break
     confs = [e[2] for e in best if e[2] is not None]
     conf_ok = not confs or float(np.mean(confs)) >= min_conf
     return len(best) >= min_events and conf_ok, len(best)
@@ -199,19 +203,32 @@ def planned_tx_from_config(radio: dict) -> float:
     return float(tx)
 
 
+def mean_window_prob(k: int, tol_deg: float) -> float:
+    """Chance that k bearings drawn uniformly round the circle all lie within +-tol_deg of their
+    mean: k f_k(k/2) w^(k-1), with w = 2 tol / 360 and f_k the Irwin-Hall density (the volume of
+    the cube's central slice; small tol, where the circular mean is the plain mean).
+    k = 2: 2 w; k = 3: 2.25 w^2."""
+    k = int(k)
+    if k <= 1:
+        return 1.0
+    s = k / 2.0
+    f = sum((-1) ** j * math.comb(k, j) * (s - j) ** (k - 1) for j in range(int(s) + 1)) / math.factorial(k - 1)
+    return k * f * (2.0 * float(tol_deg) / 360.0) ** (k - 1)
+
+
 def false_report_rate_per_h(false_events_per_h: float, k: int = 3, window_s: float = 180.0,
                             bearing_tol_deg: float | None = 10.0) -> float:
     """Expected false briefed-code confirmations per hour per Eagle (Poisson model).
 
-    k coincident false events inside a sliding window T occur at about
-    lam^k T^(k-1) / (k-1)! per unit time (lam T << 1). Requiring the other k-1 events on the
-    first one's bearing +-tol multiplies by (2 tol / 360)^(k-1) for bearings spread uniformly.
+    A false event completes k inside a sliding window T at lam x (lam T)^(k-1) / (k-1)! per unit
+    time (lam T << 1). Requiring all k within +-tol of their mean bearing multiplies by
+    :func:`mean_window_prob` (2.25 (2 tol / 360)^2 at k = 3) for bearings spread uniformly.
     Because it scales with lam^k, halving the detector's false-alarm rate cuts false reports
     8-fold at k = 3. Modelled; real false alarms cluster (a bird repeating a call)."""
     lam, T = float(false_events_per_h), float(window_s) / 3600.0
     rate = lam ** k * T ** (k - 1) / math.factorial(k - 1)
     if bearing_tol_deg is not None:
-        rate *= (2.0 * float(bearing_tol_deg) / 360.0) ** (k - 1)
+        rate *= mean_window_prob(k, bearing_tol_deg)
     return rate
 
 
