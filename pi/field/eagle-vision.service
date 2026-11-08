@@ -1,0 +1,19 @@
+[Unit]
+StartLimitIntervalSec=0
+Description=Eagle field: Pi camera (camera.sensor) -> Hailo person detection (+ identity) -> ~/eagle/vision.jsonl
+After=hailort.service local-fs.target
+Wants=hailort.service
+Conflicts=fusion.service
+
+[Service]
+User=@USER@
+Environment=PYTHONUNBUFFERED=1
+ExecStartPre=/bin/mkdir -p @HOME@/field_logs
+ExecStart=@REPO@/pi/field/run_vision.sh
+StandardOutput=append:@HOME@/field_logs/vision.log
+StandardError=append:@HOME@/field_logs/vision.log
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

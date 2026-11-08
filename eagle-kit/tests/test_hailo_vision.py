@@ -1,0 +1,185 @@
+"""apps/hailo_vision.py helpers (no Hailo needed: the hailo imports live inside main())."""
+import importlib.util
+import json
+
+import numpy as np
+import pytest
+
+from eagle.camgeo import Camera
+from eagle.vision import VisionJsonReader, boxes_to_detections, parse_boxes_line
+
+
+@pytest.fixture(scope="module")
+def hv(root):
+    spec = importlib.util.spec_from_file_location("hailo_vision", root / "apps/hailo_vision.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_bbox_to_pixels_clips_normalized_boxes(hv):
+    assert hv.bbox_to_pixels(0.25, 0.5, 0.25, 0.25, 1280, 720) == [320.0, 360.0, 640.0, 540.0]
+    assert hv.bbox_to_pixels(-0.05, 0.9, 0.2, 0.3, 1280, 720) == [0.0, 648.0, 192.0, 720.0]
+
+
+def test_vision_line_is_read_by_eagle(hv, tmp_path, cfg):
+    line = hv.vision_line(12.5, [[600.0, 200.0, 680.0, 500.0, 0.91]], 1280, 720, ids=[4],
+                          identity=[(2, 0.71, None)])
+    d = json.loads(line)
+    assert d["ids"] == [4] and d["identity"] == [[2, 0.71, None]]
+    t, boxes, size = parse_boxes_line(line)
+    assert t == 12.5 and size == (1280, 720) and boxes == [[600.0, 200.0, 680.0, 500.0, 0.91, 2, 0.71, None]]
+    w = hv.RateLimitedWriter(str(tmp_path / "v.jsonl"), rate_hz=0)
+    w.write(line, has_boxes=True)
+    w.close()
+    got = VisionJsonReader(str(tmp_path / "v.jsonl"), from_start=True).read()
+    cam = Camera.from_config(dict(cfg["life"]["vision"]["camera"], mount={"enu_m": [0, 0, 3], "tilt_down_deg": 30}))
+    dets = boxes_to_detections(got[0][1], cam, 1.0, size=got[0][2])
+    assert [d.kind for d in dets] == ["PERSON", "IDENTITY"] and dets[0].xy[1] > 0 and dets[1].match_level == 2
+
+
+def test_rate_limit_and_heartbeat(hv, tmp_path):
+    now = [0.0]
+    w = hv.RateLimitedWriter(str(tmp_path / "v.jsonl"), rate_hz=2.0, heartbeat_s=5.0, clock=lambda: now[0])
+    wrote = []
+    for k in range(40):                                     # 10 s at 4 frames/s: boxes in the first half
+        now[0] = k * 0.25
+        wrote.append(w.write("x", has_boxes=k < 20))
+    w.close()
+    assert sum(wrote[:20]) == 10                             # 2 per second while people are in view
+    assert sum(wrote[20:]) == 1                              # then an empty heartbeat every 5 s
+
+
+def test_split_args_defaults_to_pi_camera(hv, tmp_path):
+    md = ["--models-dir", str(tmp_path)]                     # empty: independent of ~/eagle-models on this machine
+    ours, rest = hv.split_args(["--jsonl", "/tmp/v.jsonl", "--arch", "hailo8l"] + md)
+    assert ours.jsonl == "/tmp/v.jsonl" and rest == ["--input", "rpi", "--arch", "hailo8l"]
+    ours, rest = hv.split_args(["--input", "clip.mp4", "--rate", "5"] + md)
+    assert ours.rate == 5.0 and rest == ["--input", "clip.mp4"] and ours.tuning_file == "auto"
+
+
+def test_split_args_uses_fetched_hef_for_the_requested_arch(hv, tmp_path):
+    (tmp_path / "hailo" / "hailo8").mkdir(parents=True)
+    hef8 = tmp_path / "hailo" / "hailo8" / "yolov5m_wo_spp.hef"
+    hef8.write_bytes(b"x")
+    md = ["--models-dir", str(tmp_path)]
+    assert hv.split_args(md)[1] == ["--input", "rpi", "--hef-path", str(hef8)]          # the only one fetched
+    assert hv.split_args(md + ["--arch", "hailo8"])[1][-2:] == ["--hef-path", str(hef8)]
+    assert "--hef-path" not in hv.split_args(md + ["--arch=hailo8l"])[1]               # never a wrong-arch HEF
+    assert hv.split_args(md + ["--hef-path", "x.hef"])[1] == ["--input", "rpi", "--hef-path", "x.hef"]
+
+
+def test_find_tuning_file(hv, tmp_path):
+    pisp = tmp_path / "pisp"
+    pisp.mkdir()
+    (pisp / "imx708_wide_noir.json").write_text("{}")
+    assert hv.find_tuning_file("imx708_wide_noir.json", dirs=(str(tmp_path / "vc4"), str(pisp))) == \
+        str(pisp / "imx708_wide_noir.json")
+    assert hv.find_tuning_file("imx708_wide_noir.json", dirs=(str(tmp_path / "vc4"),)) is None
+    assert hv.find_tuning_file("none") is None
+
+
+def test_vision_camera_is_camera_module_3_wide(cfg):
+    c = cfg["life"]["vision"]["camera"]
+    assert (c["hfov_deg"], c["vfov_deg"], c["width"], c["height"]) == (102.0, 67.0, 1280, 720)
+    cam = Camera.from_config(dict(c, mount=dict(c["mount"], enu_m=[0, 0, 3])))
+    assert cam.hfov_deg == pytest.approx(102.0, abs=0.1) and cam.vfov_deg == pytest.approx(67.0, abs=0.1)
+
+
+def test_headless_auto_follows_display_env(hv):
+    assert hv.is_headless("auto", env={}) and not hv.is_headless("auto", env={"DISPLAY": ":0"})
+    assert not hv.is_headless("auto", env={"WAYLAND_DISPLAY": "wayland-0"})
+    assert hv.is_headless("yes", env={"DISPLAY": ":0"}) and not hv.is_headless("no", env={})
+    assert hv.split_args(["--headless", "yes"])[0].headless == "yes"
+
+
+def test_frame_watchdog(hv):
+    now, fired = [0.0], []
+    w = hv.FrameWatchdog(10.0, fired.append, clock=lambda: now[0])
+    now[0] = 9.0
+    assert not w.check()
+    w.kick()
+    now[0] = 18.0
+    assert not w.check()
+    now[0] = 19.5
+    assert w.check() and fired == [pytest.approx(10.5)]
+    now[0] = 40.0
+    w.check()
+    assert len(fired) == 1                                   # fires once
+    assert not hv.FrameWatchdog(0, fired.append, clock=lambda: 1e9).check()   # 0 = off
+
+
+def test_snapshotter_rate_and_atomic_write(hv, tmp_path):
+    pytest.importorskip("cv2")
+    now = [0.0]
+    snap = hv.Snapshotter(tmp_path / "eagle" / "cam_standard.jpg", clock=lambda: now[0])
+    assert snap.dt == pytest.approx(1 / 3)                              # 3 per second by default
+    assert snap.due() and snap.save(np.zeros((72, 128, 3), np.uint8), [[10, 10, 50, 60, 0.9]])
+    assert snap.path.stat().st_size > 0 and not list(snap.path.parent.glob("*.tmp"))
+    now[0] = 0.2
+    assert not snap.due()
+    now[0] = 0.34
+    assert snap.due()
+    a = hv.split_args(["--snapshot", "x.jpg"])[0]
+    assert a.snapshot == "x.jpg" and a.snapshot_hz == 3.0 and a.hold_s == 2.0
+
+
+def test_snapshot_styles_by_match_level(hv, tmp_path):
+    pytest.importorskip("cv2")
+    snap = hv.Snapshotter(tmp_path / "c.jpg", name="Mitch", clock=lambda: 0.0)
+    rgb = np.full((300, 600, 3), 128, np.uint8)
+    boxes = [[20, 60, 180, 280, 0.9], [220, 60, 380, 280, 0.8], [420, 60, 580, 280, 0.7]]
+    ident = [(3, 0.61, 0.52), (2, 0.47, None), (0, 0.12, None)]
+    img, kinds = snap.draw(rgb, boxes, ids=[1, 2, 3], identity=ident)
+    assert kinds == ["target", "possible", "person"]
+    assert hv.TargetHold().style(1, ident[0], "MITCH")[1] == "TARGET: MITCH 0.52"
+    assert hv.TargetHold().style(2, ident[1], "MITCH")[1] == "POSSIBLE MITCH 0.47"
+    assert hv.TargetHold().style(3, ident[2], "MITCH")[1] == "PERSON"
+    assert hv.TargetHold().style(4, None, "MITCH")[1] == "PERSON"     # no profile loaded
+    # box edges in BGR (OpenCV centres the line on the edge): green 6 px wide, yellow, red 1 px wide
+    assert tuple(img[200, 17]) == hv.GREEN and tuple(img[200, 22]) == hv.GREEN
+    assert tuple(img[200, 25]) == (128, 128, 128)
+    assert tuple(img[200, 220]) == hv.YELLOW
+    assert tuple(img[200, 420]) == hv.RED and tuple(img[200, 423]) == (128, 128, 128)
+
+
+def test_target_stays_green_for_hold_after_last_face_match(hv):
+    now = [0.0]
+    hold = hv.TargetHold(2.0, clock=lambda: now[0])
+    hold.observe([7, 8], [(3, 0.6, 0.55), (0, 0.1, None)])
+    now[0] = 1.5                                                        # face turned away: appearance only
+    hold.observe([7], [(1, 0.45, None)])
+    assert hold.style(7, (1, 0.45, None), "MITCH") == ("target", "TARGET: MITCH 0.55")
+    assert hold.style(8, (0, 0.1, None), "MITCH")[0] == "person"       # held per track, not for everyone
+    now[0] = 2.1
+    assert hold.style(7, (1, 0.45, None), "MITCH") == ("possible", "POSSIBLE MITCH 0.45")
+    assert hold.style(-1, (0, 0.1, None), "MITCH")[0] == "person"      # untracked boxes are never held
+
+
+def test_no_clip_flag(hv):
+    assert hv.split_args(["--no-clip"])[0].no_clip and not hv.split_args([])[0].no_clip
+
+
+def test_async_identity_never_blocks_and_keeps_latest(hv):
+    import threading
+    import time as _t
+    gate = threading.Event()
+
+    class SlowMatcher:
+        def update(self, tid, frame, box):
+            gate.wait(2)                                   # a slow face model
+            return (3 if tid == 7 else 0, 0.5, 0.6 if tid == 7 else 0.1)
+
+    ai = hv.AsyncIdentity(SlowMatcher(), log=lambda *_: None)
+    frame = np.zeros((10, 10, 3), np.uint8)
+    t0 = _t.time()
+    assert ai.submit(frame, [7, 8], [[0, 0, 5, 5, 0.9], [1, 1, 6, 6, 0.8]])
+    assert _t.time() - t0 < 0.1                            # returned immediately
+    assert ai.busy() and not ai.submit(frame, [7], [[0, 0, 5, 5]])   # busy: newer frame skipped
+    assert ai.results([7, 8]) == [(0, 0.0, None), (0, 0.0, None)]   # nothing yet, no waiting
+    gate.set()
+    for _ in range(100):
+        if not ai.busy():
+            break
+        _t.sleep(0.01)
+    assert ai.results([7, 8, 9]) == [(3, 0.5, 0.6), (0, 0.5, 0.1), (0, 0.0, None)]
