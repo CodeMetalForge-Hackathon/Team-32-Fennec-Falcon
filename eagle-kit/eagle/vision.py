@@ -13,6 +13,10 @@ becomes a ``PERSON`` detection for :mod:`eagle.fusion` (treated like HEAT):
 The covariance comes from :meth:`eagle.camgeo.Camera.ground_covariance` with a pixel error
 of a fraction of the box size, plus ``sigma_body_m``. Boxes clipped by the image edge, or
 whose ray does not reach the floor, are skipped.
+
+Optional ``"identity": [[level, appearance, face], ...]`` (one per box, from apps/hailo_vision.py
+``--profile``) is appended to each box row as elements 5-7; a box with level >= 1 also yields an
+``IDENTITY`` detection at the same floor point (associate-only, see :mod:`eagle.fusion`).
 """
 from __future__ import annotations
 
@@ -32,7 +36,17 @@ def parse_boxes_line(line: str):
         return None
     if not isinstance(d, dict) or "boxes" not in d:
         return None
-    boxes = [list(map(float, b[:5])) + ([1.0] if len(b) == 4 else []) for b in d["boxes"] if len(b) >= 4]
+    ident = d.get("identity") if isinstance(d.get("identity"), list) else None
+    boxes = []
+    for k, b in enumerate(d["boxes"]):
+        if len(b) < 4:
+            continue
+        row = list(map(float, b[:5])) + ([1.0] if len(b) == 4 else [])
+        if ident is not None and k < len(ident) and ident[k] and len(ident[k]) >= 2:
+            lv, app = int(ident[k][0]), float(ident[k][1])
+            face = ident[k][2] if len(ident[k]) > 2 and ident[k][2] is not None else None
+            row += [lv, app, None if face is None else float(face)]
+        boxes.append(row)
     size = (int(d["w"]), int(d["h"])) if "w" in d and "h" in d else None
     return float(d.get("t", 0.0)), boxes, size
 
@@ -58,7 +72,8 @@ def box_to_ground(box, camera: Camera, *, posture: str = "auto", floor_z: float 
 
 def boxes_to_detections(boxes, camera: Camera, t: float = 0.0, *, size=None, min_score: float = 0.4,
                         posture: str = "auto", floor_z: float = 0.0, edge_px: float = 2.0, **kw) -> list:
-    """Boxes (in an image of ``size`` = (w, h), default the camera's) -> [LifeDetection PERSON]."""
+    """Boxes (in an image of ``size`` = (w, h), default the camera's) -> [LifeDetection PERSON, and
+    IDENTITY for boxes whose row carries a match level >= 1]."""
     from .fusion import LifeDetection
     cam = camera if size is None or tuple(size) == (camera.width, camera.height) else camera.scaled(*size)
     out = []
@@ -72,6 +87,10 @@ def boxes_to_detections(boxes, camera: Camera, t: float = 0.0, *, size=None, min
             continue
         xy, cov, used = r
         out.append(LifeDetection("PERSON", t, xy=xy, cov=cov, source=f"vision:{used}"))
+        if len(b) >= 7 and int(b[5]) > 0:
+            out.append(LifeDetection("IDENTITY", t, xy=xy, cov=cov, match_level=int(b[5]),
+                                     match_appearance=float(b[6]), match_face=b[7] if len(b) > 7 else None,
+                                     update_position=False, source="vision:identity"))
     return out
 
 

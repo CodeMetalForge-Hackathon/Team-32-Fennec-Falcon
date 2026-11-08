@@ -12,6 +12,10 @@ Detection kinds (:class:`LifeDetection`)
 * ``TAG``    authenticated tag REPLY (tag id, covert-masked status) at the point that was polled.
 * ``MOTION`` PIR pellet at a known position fired.
 * ``RF``     allowlisted radio device: range-only ring around ``origin`` (the perch).
+* ``IDENTITY`` match of a person box with the missing person's profile (:mod:`eagle.identity`):
+  point + covariance of that box and ``match_level`` (P.ID_* 1..3). ADDITIVE ONLY: it is
+  associated after this batch's births, never starts or moves a track, never changes a status,
+  and only ever raises a track's score and its rank within its own status tier.
 
 Association
 -----------
@@ -42,10 +46,15 @@ Flags: INJURED (tag status or a briefed code with status injured), DURESS (tag, 
 Life score (0..1): 1 - prod_k (1 - w_k * exp(-age_k / tau)) over the evidence seen, with
 weights voice/signal 0.95, radar breathing 0.9, tag button 0.9, distress 0.8, breath/cough
 sound 0.7, motion 0.6, heat 0.35, tag reply 0.3, rf 0.15 and tau = ``score_tau_s`` (300 s);
-halved when a radar reported no vital signs and nothing else shows life.
+halved when a radar reported no vital signs and nothing else shows life. An identity match
+adds one more term (appearance candidate 0.3, strong appearance 0.5, face verified 0.8), so
+it can only raise the score.
 
 Triage priority (``summary`` order): BREATHING (alive but cannot help themselves) >
 RESPONSIVE with INJURED/DURESS > MOVING > RESPONSIVE > WARM_ONLY > UNKNOWN > RF_ONLY.
+Within a tier, a higher identity match level ranks first, then the score. Identity never
+moves a track into a higher tier: an unresponsive stranger still outranks a matched person
+who is responding.
 """
 from __future__ import annotations
 
@@ -62,6 +71,7 @@ CHI2_2DOF_99 = 9.21
 
 W = {"VOICE": 0.95, "SIGNAL": 0.95, "BREATH_RADAR": 0.9, "BUTTON": 0.9, "DISTRESS": 0.8, "BREATH": 0.7,
      "COUGH": 0.7, "MOTION": 0.6, "MOVE": 0.6, "HEAT": 0.35, "TAG": 0.3, "RF": 0.15}
+W_IDENTITY = {P.ID_APPEARANCE: 0.3, P.ID_STRONG: 0.5, P.ID_FACE: 0.8}
 PRIORITY = {P.LS_BREATHING: 0, P.LS_MOVING: 2, P.LS_RESPONSIVE: 3, P.LS_WARM_ONLY: 4,
             P.LS_UNKNOWN: 5, P.LS_RF_ONLY: 6}
 
@@ -87,6 +97,9 @@ class LifeDetection:
     tag_chal16: int | None = None
     status_bits: int = 0                   # plaintext status known here (briefed code / tag at the Nest)
     rf_id: str | None = None               # allowlisted device label (never a stranger's id)
+    match_level: int = 0                   # IDENTITY: P.ID_* (1 appearance, 2 strong, 3 face)
+    match_appearance: float | None = None  # IDENTITY: appearance score 0..1
+    match_face: float | None = None        # IDENTITY: ArcFace cosine (None = no usable face)
     source: str = ""
     update_position: bool = True           # False: gate/associate only (radar pellet, PIR, tag poll point)
 
@@ -120,10 +133,12 @@ class LifeTrack:
     rf_ids: set = field(default_factory=set)
     rf_only: bool = False
     rf_range: float | None = None
+    identity_t: dict = field(default_factory=dict)  # match level -> last time (IDENTITY; never in `last`)
     t_pred: float = 0.0
     status: int = P.LS_UNKNOWN
     flags: int = 0
     score: float = 0.0
+    id_level: int = 0                               # best identity level within life_window_s (evaluate)
 
     @property
     def x(self) -> np.ndarray:
@@ -273,8 +288,12 @@ class LifeList:
 
     def update(self, detections, now: float | None = None) -> None:
         """Fuse a batch of detections (any kinds, any order)."""
-        dets = list(detections)
-        if not dets:
+        everything = list(detections)
+        idents = [d for d in everything if d.kind == "IDENTITY"]
+        dets = [d for d in everything if d.kind != "IDENTITY"]
+        if not dets:                         # identity alone never predicts or prunes (no side effects)
+            for det in idents:
+                self._identity(det)
             return
         now = max(d.t for d in dets) if now is None else now
         for tr in self.tracks:
@@ -315,7 +334,23 @@ class LifeList:
                 self._bearing(det)
             elif det.kind == "RF" and det.range_m is not None:
                 self._rf(det)
+        for det in idents:                   # after births, so a person first seen in this batch gets it
+            self._identity(det)
         self._prune(now)
+
+    def _identity(self, det: LifeDetection) -> None:
+        """Attach a match level to the nearest person track in the gate. Never births, never moves
+        a track, never touches ``last`` (status and track death ignore identity)."""
+        lvl = int(det.match_level or 0)
+        cand = [(self._d2(tr, det), tr) for tr in self._person_tracks()] if det.is_point and lvl > 0 else []
+        cand = [c for c in cand if c[0] <= self.gate]
+        if not cand:
+            if lvl > 0:
+                self.unassociated["IDENTITY"] = self.unassociated.get("IDENTITY", 0) + 1
+            return
+        tr = min(cand, key=lambda c: c[0])[1]
+        tr.identity_t[lvl] = max(tr.identity_t.get(lvl, det.t), det.t)
+        tr.counts["IDENTITY"] = tr.counts.get("IDENTITY", 0) + 1
 
     def _bearing(self, det: LifeDetection, count_miss: bool = True) -> bool:
         o = np.asarray(det.origin if det.origin is not None else self.perch, float)[:2]
@@ -407,6 +442,7 @@ class LifeList:
             tr.status = st
             tr.flags = (P.LF_INJURED if tr.status_bits & P.ST_INJURED else 0) | \
                        (P.LF_DURESS if tr.status_bits & P.ST_DURESS else 0)
+            tr.id_level = max((lv for lv, t in tr.identity_t.items() if now - t <= self.life_win), default=0)
             tr.score = self._score(tr, now, radar_none and not (resp or breathing or moving))
         return self.tracks
 
@@ -425,6 +461,8 @@ class LifeList:
             terms.append((W["BUTTON"] if tr.status_bits & P.ST_BUTTON else W["TAG"], now - tr.last["TAG"]))
         if "RF" in tr.last:
             terms.append((W["RF"], now - tr.last["RF"]))
+        for lv, t in tr.identity_t.items():         # one more factor < 1: can only raise the score
+            terms.append((W_IDENTITY.get(lv, 0.0), now - t))
         miss = 1.0
         for w, age in terms:
             miss *= 1.0 - w * np.exp(-max(age, 0.0) / self.tau)
@@ -439,7 +477,7 @@ class LifeList:
             pr = PRIORITY[tr.status]
             if tr.status == P.LS_RESPONSIVE and tr.flags:
                 pr = 1
-            return (pr, -tr.score, tr.id)
+            return (pr, -tr.id_level, -tr.score, tr.id)      # identity: tie-break inside a tier only
         return sorted(self.tracks, key=key)
 
     def summary(self, now: float) -> str:
@@ -456,6 +494,8 @@ class LifeList:
                 ev += f" tag{tr.tag_id}"
             if tr.rf_only:
                 ev += f" (ring {tr.rf_range:.0f} m around the perch)"
+            if tr.id_level:
+                ev += f" ID-{P.ID_LEVEL_NAMES[tr.id_level]}"
             rows.append(f"{tr.id:>3} {tr.status_name:<10} {fl or '-':<14} {x[0]:6.1f} {x[1]:6.1f} {tr.ce_m:5.1f} "
                         f"{br:>6} {hr:>5} {tr.score:5.2f}  {ev}")
         extra = []

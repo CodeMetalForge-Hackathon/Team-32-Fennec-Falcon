@@ -220,8 +220,14 @@ class LifeNode:
             dets = boxes_to_detections(boxes, cam, now, size=size, min_score=float(v.get("min_score", 0.4)),
                                        posture=v.get("posture", "auto"), floor_z=self.floor_z)
             out += dets
-        if out:
-            log(f"VISION  {len(out)} person box(es) -> " + ", ".join(f"E {d.xy[0]:.1f} N {d.xy[1]:.1f}" for d in out))
+        people = [d for d in out if d.kind == "PERSON"]
+        if people:
+            log(f"VISION  {len(people)} person box(es) -> " + ", ".join(f"E {d.xy[0]:.1f} N {d.xy[1]:.1f}" for d in people))
+        for d in out:
+            if d.kind == "IDENTITY":
+                face = f", face {d.match_face:.2f}" if d.match_face is not None else ""
+                log(f"IDENT   match level {d.match_level} ({P.ID_LEVEL_NAMES[d.match_level]}) at "
+                    f"E {d.xy[0]:.1f} N {d.xy[1]:.1f}: appearance {d.match_appearance:.2f}{face}")
         return out
 
     def step(self, now: float | None = None) -> list:

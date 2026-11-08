@@ -32,3 +32,19 @@ def test_json_lines_tail(tmp_path):
     got = rd.read()
     assert len(got) == 1 and got[0][2] == (320, 240)
     assert parse_boxes_line('{"t": 5, "boxes": [[0, 0, 10, 20]]}')[1] == [[0.0, 0.0, 10.0, 20.0, 1.0]]
+
+
+def test_identity_rows_become_identity_detections():
+    cam = Camera.from_fov(102, 1280, 720, position=(0, 0, 3), heading_deg=0, tilt_down_deg=30, vfov_deg=67)
+    line = ('{"t": 4, "w": 1280, "h": 720, "boxes": [[600, 250, 660, 450, 0.9], [100, 250, 150, 420, 0.8], [5, 5, 6]],'
+            ' "identity": [[3, 0.82, 0.51], [0, 0.1, null]]}')
+    t, boxes, size = parse_boxes_line(line)
+    assert boxes[0][5:] == [3, 0.82, 0.51] and boxes[1][5:] == [0, 0.1, None] and len(boxes) == 2
+    dets = boxes_to_detections(boxes, cam, t, size=size)
+    kinds = [d.kind for d in dets]
+    assert kinds == ["PERSON", "IDENTITY", "PERSON"]                  # level 0 adds nothing
+    pers, idd = dets[0], dets[1]
+    assert idd.match_level == 3 and idd.match_face == 0.51 and idd.update_position is False
+    assert np.allclose(idd.xy, pers.xy) and np.allclose(idd.cov, pers.cov)
+    plain = parse_boxes_line('{"t": 1, "boxes": [[1, 2, 3, 4, 0.9]], "identity": "bad"}')
+    assert plain[1] == [[1.0, 2.0, 3.0, 4.0, 0.9]]

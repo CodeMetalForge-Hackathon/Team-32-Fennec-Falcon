@@ -27,14 +27,14 @@ def test_vision_line_is_read_by_eagle(hv, tmp_path, cfg):
     d = json.loads(line)
     assert d["ids"] == [4] and d["identity"] == [[2, 0.71, None]]
     t, boxes, size = parse_boxes_line(line)
-    assert t == 12.5 and size == (1280, 720) and boxes == [[600.0, 200.0, 680.0, 500.0, 0.91]]
+    assert t == 12.5 and size == (1280, 720) and boxes == [[600.0, 200.0, 680.0, 500.0, 0.91, 2, 0.71, None]]
     w = hv.RateLimitedWriter(str(tmp_path / "v.jsonl"), rate_hz=0)
     w.write(line, has_boxes=True)
     w.close()
     got = VisionJsonReader(str(tmp_path / "v.jsonl"), from_start=True).read()
     cam = Camera.from_config(dict(cfg["life"]["vision"]["camera"], mount={"enu_m": [0, 0, 3], "tilt_down_deg": 30}))
     dets = boxes_to_detections(got[0][1], cam, 1.0, size=got[0][2])
-    assert len(dets) == 1 and dets[0].kind == "PERSON" and dets[0].xy[1] > 0
+    assert [d.kind for d in dets] == ["PERSON", "IDENTITY"] and dets[0].xy[1] > 0 and dets[1].match_level == 2
 
 
 def test_rate_limit_and_heartbeat(hv, tmp_path):

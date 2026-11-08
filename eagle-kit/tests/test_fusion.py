@@ -2,7 +2,7 @@
 import numpy as np
 
 from eagle import protocol as P
-from eagle.fusion import LifeDetection, LifeList, iso_cov
+from eagle.fusion import PRIORITY, LifeDetection, LifeList, iso_cov
 
 P1, P2, P3 = np.array([2.0, 6.0]), np.array([-2.5, 4.5]), np.array([1.5, 9.0])
 
@@ -93,3 +93,73 @@ def test_life_persons_records():
     assert [r.status for r in recs][0] == P.LS_BREATHING
     r2 = next(r for r in recs if r.status == P.LS_BREATHING)
     assert r2.breath_bpm == 10 and r2.heart_bpm == 62 and abs(r2.east_m - P2[0]) < 0.3
+
+
+# ---- IDENTITY: additive only ----------------------------------------------------------------------
+import copy  # noqa: E402
+
+import pytest  # noqa: E402
+
+
+def ident(xy, t, level, s=0.3):
+    return LifeDetection("IDENTITY", t, xy=np.asarray(xy, float), cov=iso_cov(s), match_level=level,
+                         match_appearance=0.9, update_position=False)
+
+
+def test_identity_never_births_and_attaches_to_newborn_track():
+    life = LifeList(perch_xy=(0, 0))
+    life.update([ident(P1, 0.0, P.ID_FACE)], now=0.0)
+    assert life.tracks == [] and life.unassociated == {"IDENTITY": 1}
+    life.update([LifeDetection("PERSON", 1.0, xy=P2, cov=iso_cov(0.3)), ident(P2 + 0.1, 1.0, P.ID_STRONG)], now=1.0)
+    assert len(life.tracks) == 1 and life.tracks[0].identity_t == {P.ID_STRONG: 1.0}
+
+
+def test_identity_raises_score_and_rank_within_tier_only():
+    rng = np.random.default_rng(1)
+    base = LifeList(perch_xy=(0, 0))
+    for t in (0.0, 10.0, 20.0, 40.0):
+        base.update([heat(p, t, rng) for p in (P1, P2, P3)], now=t)
+    base.update([LifeDetection("SOUND", 41.0, xy=P3, cov=iso_cov(0.4), category="BREATH")], now=41.0)  # P3 BREATHING
+    with_id = copy.deepcopy(base)
+    with_id.update([ident(P1, 45.0, P.ID_FACE)], now=45.0)            # P1 and P2 are WARM_ONLY
+    a, b = base.ranked(50.0), with_id.ranked(50.0)
+    t1 = track_at(with_id, P1)
+    assert t1.id_level == P.ID_FACE and t1.score > track_at(base, P1).score
+    assert b[0].status == P.LS_BREATHING                              # the breathing stranger stays first
+    assert [t.id for t in b][1] == t1.id                              # P1 now leads its WARM_ONLY tier
+    assert sorted(t.status for t in a) == sorted(t.status for t in b)
+    assert "ID-FACE" in with_id.summary(50.0)
+
+
+@pytest.mark.parametrize("seed", range(25))
+def test_identity_never_lowers_suppresses_or_delays(seed):
+    """Random scenes: adding IDENTITY evidence (right or wrong) changes nothing but raising scores."""
+    rng = np.random.default_rng(seed)
+    people = [rng.uniform([-8, 2], [8, 14]) for _ in range(rng.integers(1, 6))]
+    kinds = ["HEAT", "PERSON"]
+    plain, ided = LifeList(perch_xy=(0, 0)), LifeList(perch_xy=(0, 0))
+    for step in range(12):
+        t = step * 5.0
+        dets = [LifeDetection(str(rng.choice(kinds)), t, xy=p + rng.normal(0, 0.1, 2), cov=iso_cov(0.3))
+                for p in people if rng.random() < 0.8]
+        if rng.random() < 0.3 and people:
+            p = people[rng.integers(len(people))]
+            dets.append(LifeDetection("SOUND", t, xy=p, cov=iso_cov(0.5), category=str(rng.choice(
+                ["VOICE", "BREATH", "MOVE", "COUGH"]))))
+        extra = [ident(people[rng.integers(len(people))] + rng.normal(0, 0.2, 2), t, int(rng.integers(1, 4)))
+                 for _ in range(rng.integers(0, 3))]
+        extra.append(ident(rng.uniform([-30, -30], [30, 30]), t, 3))     # a match far from anyone
+        plain.update(dets, now=t)
+        ided.update(dets + extra, now=t)
+        now = t + 1.0
+        ra, rb = plain.ranked(now), ided.ranked(now)
+        assert [t_.id for t_ in plain.tracks] == [t_.id for t_ in ided.tracks]     # same people, same births
+        by_id = {t_.id: t_ for t_ in rb}
+        for ta in ra:
+            tb = by_id[ta.id]
+            assert tb.status == ta.status and tb.flags == ta.flags                 # no status change
+            assert np.allclose(tb.x, ta.x) and np.allclose(tb.P, ta.P)             # no position change
+            assert tb.score >= ta.score - 1e-12                                    # never lower
+        tier = lambda tr: 1 if tr.status == P.LS_RESPONSIVE and tr.flags else PRIORITY[tr.status]  # noqa: E731
+        assert [tier(t_) for t_ in rb] == sorted(tier(t_) for t_ in rb)           # tiers keep their order
+        assert len(plain.life_persons(now)) == len(ided.life_persons(now))        # every human still reported
