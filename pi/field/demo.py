@@ -20,6 +20,9 @@ import argparse
 import importlib.util
 import json
 import os
+import shutil
+import signal
+import subprocess
 import threading
 import time
 from collections import deque
@@ -275,7 +278,11 @@ border-radius:8px;padding:6px 10px;font-size:14px;display:none;z-index:2}
 .zoomable{cursor:zoom-in}
 .card.big{position:fixed;inset:10px;z-index:20;cursor:zoom-out;box-shadow:0 0 0 9999px rgba(0,0,0,.85)}
 #hint{font-size:12px;color:var(--mut)}
-#foot{display:flex;gap:16px;font-size:12px;color:var(--mut);flex-wrap:wrap}.ok{color:var(--green)}.warn{color:var(--amber)}
+#rec{border:0;border-radius:8px;padding:4px 12px;font:600 13px system-ui;background:#2b3036;color:var(--fg);cursor:pointer}
+#rec.on{background:var(--red);color:#fff;animation:blink 1.2s infinite}@keyframes blink{50%{opacity:.6}}
+#toast{position:fixed;left:50%;bottom:44px;transform:translateX(-50%);background:#222a33;color:#fff;padding:8px 14px;
+border-radius:8px;font-size:14px;display:none;z-index:30;max-width:80vw}
+#foot{display:flex;align-items:center;gap:16px;font-size:12px;color:var(--mut);flex-wrap:wrap}.ok{color:var(--green)}.warn{color:var(--amber)}
 </style></head><body>
 <div id="banner"><div id="title">Starting...</div><div id="sub"></div></div>
 <div id="views">
@@ -290,8 +297,9 @@ border-radius:8px;padding:6px 10px;font-size:14px;display:none;z-index:2}
     <div id="meterwrap"><div id="meter"><div id="meterbar"></div></div><div id="heard">no human sounds</div></div></div>
   <div class="card" id="side"><div id="chips"></div><div id="log"></div></div>
 </div>
-<div id="foot"><span id="clock"></span><span id="net"></span><span id="enrolled"></span>
-<span>All processing on-device (Raspberry Pi 5 + Hailo-8), no cloud</span><span id="hint">Click a panel (or press 1 camera, 2 thermal, 3 sound) to enlarge, Esc to return</span><span id="nest"></span></div>
+<div id="toast"></div>
+<div id="foot"><button id="rec" title="Record the screen (R)">● REC</button><span id="clock"></span><span id="net"></span><span id="enrolled"></span>
+<span>All processing on-device (Raspberry Pi 5 + Hailo-8), no cloud</span><span id="hint">Click a panel (or press 1 camera, 2 thermal, 3 sound) to enlarge, Esc to return, R to record</span><span id="nest"></span></div>
 <script>
 const $=id=>document.getElementById(id);const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 let cam='standard';
@@ -314,20 +322,99 @@ async function poll(){let s;try{s=await (await fetch('/state')).json()}catch(e){
   $('clock').textContent=s.time;
   $('net').innerHTML=s.network==='offline'?'<span class="ok">● OFFLINE: no internet</span>':'<span class="warn">● Network: '+s.network+'</span>';
   $('enrolled').innerHTML=s.target_enrolled?'<span class="ok">Target enrolled</span>':'<span class="warn">No target enrolled</span>';
+  const r=s.screenrec||{};const rb=$('rec');rb.className=r.on?'on':'';
+  rb.textContent=r.on?`■ STOP ${Math.floor(r.elapsed_s/60)}:${String(r.elapsed_s%60).padStart(2,'0')}`:'● REC';
   $('nest').textContent=s.nest.length?'Rescuer link: '+s.nest[s.nest.length-1].slice(0,80):'';
 }
 function loadImg(id,url,ms){const el=$(id);let busy=false;setInterval(()=>{if(busy)return;busy=true;const im=new Image();
   im.onload=()=>{el.src=im.src;busy=false};im.onerror=()=>{busy=false};im.src=(typeof url==='function'?url():url)+'?'+Date.now()},ms)}
 loadImg('cam',()=>'/cam/'+cam+'.jpg',120);loadImg('thermal','/thermal.png',400);loadImg('audio','/audio.png',250);
+function toast(t){const e=$('toast');e.textContent=t;e.style.display='block';clearTimeout(e._t);e._t=setTimeout(()=>e.style.display='none',6000)}
+async function toggleRec(){const on=$('rec').classList.contains('on');$('rec').disabled=true;
+  try{const j=await (await fetch(on?'/rec/stop':'/rec/start',{method:'POST'})).json();toast(j.message)}catch(e){toast('no answer from the Pi')}
+  $('rec').disabled=false;poll()}
+$('rec').addEventListener('click',e=>{e.stopPropagation();toggleRec()});
 const zoomCards=[...document.querySelectorAll('#views .card, #sound')];
 zoomCards.forEach(c=>{c.classList.add('zoomable');c.addEventListener('click',()=>toggleZoom(c))});
 function toggleZoom(c){const was=!!c&&c.classList.contains('big');zoomCards.forEach(x=>x.classList.remove('big'));if(!was&&c)c.classList.add('big')}
-document.addEventListener('keydown',e=>{if(e.key==='Escape')toggleZoom(null);const i={'1':0,'2':1,'3':2}[e.key];if(i!==undefined)toggleZoom(zoomCards[i])});
+document.addEventListener('keydown',e=>{if(e.key==='r'||e.key==='R'){toggleRec();return}if(e.key==='Escape')toggleZoom(null);const i={'1':0,'2':1,'3':2}[e.key];if(i!==undefined)toggleZoom(zoomCards[i])});
 poll();setInterval(poll,500);
 </script></body></html>"""
 
 
-def make_handler(logs: Path, eagle_dir: Path, verdict: Verdict):
+class ScreenRecorder:
+    """Records the Pi's own screen to ~/Videos/eagle_demo_<time>.mp4, started and stopped from the page.
+    Wayland desktop (Raspberry Pi OS default): wf-recorder. X11 desktop: ffmpeg x11grab. Both stop
+    cleanly on SIGINT so the MP4 is finalized. The service runs as the desktop user, so it can reach the
+    session's display socket. libx264 ultrafast at 15 fps keeps the CPU cost modest on a Pi 5."""
+
+    def __init__(self, out_dir: Path, fps: int = 15):
+        self.out_dir, self.fps = out_dir, fps
+        self.lock = threading.Lock()
+        self.proc, self.path, self.t0, self.error = None, None, None, None
+
+    def _command(self, out: Path):
+        rt = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
+        env = dict(os.environ, XDG_RUNTIME_DIR=rt)
+        socks = sorted(Path(rt).glob("wayland-[0-9]"))
+        if socks:
+            if not shutil.which("wf-recorder"):
+                return None, None, "wf-recorder is not installed: run  sudo apt install -y wf-recorder  once with internet"
+            env["WAYLAND_DISPLAY"] = socks[0].name
+            return (["wf-recorder", "-c", "libx264", "-p", "preset=ultrafast", "-p", "crf=26",
+                     "-r", str(self.fps), "-f", str(out)], env, None)
+        if Path("/tmp/.X11-unix/X0").exists() and shutil.which("ffmpeg"):
+            env["DISPLAY"] = ":0"
+            return (["ffmpeg", "-y", "-loglevel", "error", "-f", "x11grab", "-framerate", str(self.fps), "-i", ":0",
+                     "-c:v", "libx264", "-preset", "ultrafast", "-crf", "26", "-pix_fmt", "yuv420p", str(out)],
+                    env, None)
+        return None, None, "no desktop display found (is the Pi logged in to its desktop?)"
+
+    def running(self) -> bool:
+        return self.proc is not None and self.proc.poll() is None
+
+    def start(self):
+        with self.lock:
+            if self.running():
+                return True, f"already recording to {self.path.name}"
+            self.out_dir.mkdir(parents=True, exist_ok=True)
+            out = self.out_dir / time.strftime("eagle_demo_%Y%m%d_%H%M%S.mp4")
+            cmd, env, err = self._command(out)
+            if err:
+                self.error = err
+                return False, err
+            log = open(self.out_dir / "eagle_demo_recorder.log", "a")
+            self.proc = subprocess.Popen(cmd, env=env, stdin=subprocess.DEVNULL, stdout=log, stderr=log,
+                                         start_new_session=True)
+            time.sleep(0.8)
+            if self.proc.poll() is not None:
+                self.error = f"recorder exited at once (see {log.name} in {self.out_dir})"
+                self.proc = None
+                return False, self.error
+            self.path, self.t0, self.error = out, time.time(), None
+            return True, f"recording to {out}"
+
+    def stop(self):
+        with self.lock:
+            if not self.running():
+                return False, "not recording"
+            self.proc.send_signal(signal.SIGINT)
+            try:
+                self.proc.wait(timeout=15)
+            except subprocess.TimeoutExpired:
+                self.proc.terminate()
+            path, dur = self.path, time.time() - (self.t0 or time.time())
+            self.proc = None
+            size = path.stat().st_size / 1e6 if path and path.exists() else 0
+            return True, f"saved {path} ({dur:.0f} s, {size:.1f} MB)"
+
+    def status(self) -> dict:
+        on = self.running()
+        return {"on": on, "file": self.path.name if on and self.path else None,
+                "elapsed_s": round(time.time() - self.t0) if on and self.t0 else 0, "error": self.error}
+
+
+def make_handler(logs: Path, eagle_dir: Path, verdict: Verdict, rec: "ScreenRecorder"):
     class H(BaseHTTPRequestHandler):
         def _send(self, code, body: bytes, ctype: str):
             self.send_response(code)
@@ -342,7 +429,9 @@ def make_handler(logs: Path, eagle_dir: Path, verdict: Verdict):
             if path in ("/", "/index.html"):
                 self._send(200, PAGE.encode(), "text/html; charset=utf-8")
             elif path == "/state":
-                self._send(200, json.dumps(state(logs, eagle_dir, verdict), default=str).encode(), "application/json")
+                st = state(logs, eagle_dir, verdict)
+                st["screenrec"] = rec.status()
+                self._send(200, json.dumps(st, default=str).encode(), "application/json")
             elif path == "/thermal.png":
                 r = thermal_view(logs / "live_thermal.npy")
                 self._send(200, r[0], "image/png") if r else self.send_error(404)
@@ -357,6 +446,17 @@ def make_handler(logs: Path, eagle_dir: Path, verdict: Verdict):
             else:
                 self.send_error(404)
 
+        def do_POST(self):
+            path = self.path.split("?", 1)[0]
+            if path == "/rec/start":
+                ok, msg = rec.start()
+            elif path == "/rec/stop":
+                ok, msg = rec.stop()
+            else:
+                self.send_error(404)
+                return
+            self._send(200, json.dumps({"ok": ok, "message": msg}).encode(), "application/json")
+
         def log_message(self, *a):
             pass
     return H
@@ -368,9 +468,14 @@ def main(argv=None) -> int:
     ap.add_argument("--eagle", default="~/eagle")
     ap.add_argument("--host", default="0.0.0.0")
     ap.add_argument("--port", type=int, default=8081)
+    ap.add_argument("--videos", default="~/Videos", help="where screen recordings are saved")
     a = ap.parse_args(argv)
     logs, eagle_dir = Path(os.path.expanduser(a.logs)), Path(os.path.expanduser(a.eagle))
-    ThreadingHTTPServer((a.host, a.port), make_handler(logs, eagle_dir, Verdict())).serve_forever()
+    rec = ScreenRecorder(Path(os.path.expanduser(a.videos)))
+    try:
+        ThreadingHTTPServer((a.host, a.port), make_handler(logs, eagle_dir, Verdict(), rec)).serve_forever()
+    finally:
+        rec.stop()
     return 0
 
 
