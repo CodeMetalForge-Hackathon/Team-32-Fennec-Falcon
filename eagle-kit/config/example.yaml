@@ -324,6 +324,16 @@ identity:
     min_width_px: 40             # ArcFace is only scored on faces at least this wide
     verify: 0.40                 # ArcFace cosine -> level 3 (face verified)
     det_size: 640                # SCRFD input size
+    gray_threshold: 2.0          # chroma spread (0..100) below this = IR at night -> grayscale x3
+                                 # before SCRFD/ArcFace, at enrollment and at runtime alike
+  live:                          # apps/enroll_target.py --live: ~10 s head-turn scan on the Pi camera
+    seconds: 10.0
+    min_face_px: 80              # stricter than runtime (40 px): enrollment wants clean faces
+    min_sharpness: 60.0          # variance of the Laplacian on the face crop scaled to 112 px wide
+    max_embeddings: 20           # spread across head angles (yaw/pitch from the 5 landmarks)
+    min_kept: 8                  # fewer kept frames -> warning to scan again
+    det_score: 0.5               # SCRFD score for a face to count (and for "at most one face")
+    edge_margin_px: 2            # all 5 landmarks at least this far inside the frame
   models:                        # null = default file under models_dir (see apps/fetch_models.py)
     insightface_root: null
     osnet: null

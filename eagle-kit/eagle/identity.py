@@ -37,6 +37,7 @@ from pathlib import Path
 import numpy as np
 
 from . import protocol as P
+from .facescan import LIVE_DEFAULTS
 
 MODALITIES = ("clip_image", "clip_text", "osnet")
 DEFAULTS = {
@@ -50,7 +51,9 @@ DEFAULTS = {
         "strong": 0.8,                    # appearance score >= this -> level 2
         "min_crop_px": [32, 64],          # skip person crops smaller than w x h pixels
     },
-    "face": {"min_width_px": 40, "verify": 0.40, "det_size": 640},
+    "face": {"min_width_px": 40, "verify": 0.40, "det_size": 640,
+             "gray_threshold": 2.0},      # chroma spread (0..100) below this = IR / low-colour -> gray x3
+    "live": dict(LIVE_DEFAULTS),          # apps/enroll_target.py --live (eagle/facescan.py)
 }
 
 
@@ -226,9 +229,18 @@ class OsnetEmbedder:
 
 class FaceEmbedder:
     """InsightFace buffalo_l (SCRFD-10G + ArcFace R50) on the CPU through the insightface package.
-    ``root`` must already contain models/buffalo_l (FaceAnalysis would otherwise download it)."""
+    ``root`` must already contain models/buffalo_l (FaceAnalysis would otherwise download it).
 
-    def __init__(self, root, det_size: int = 640):
+    Low-colour frames (NoIR camera under IR light) are converted to grayscale replicated to 3
+    channels before SCRFD and ArcFace (``gray_threshold``, eagle.facescan.prepare_for_face), for
+    enrollment and runtime alike. SCRFD and ArcFace run as separate steps (``detect`` / ``embed``)
+    so the live scan only pays for ArcFace on frames it keeps."""
+
+    def __init__(self, root, det_size: int = 640, gray_threshold: float = 2.0, _app=None):
+        self.gray_threshold = float(gray_threshold)
+        if _app is not None:                                 # tests inject a fake FaceAnalysis
+            self.app = _app
+            return
         root = Path(os.path.expanduser(str(root)))
         if not any((root / "models" / "buffalo_l").glob("*.onnx")):
             raise FileNotFoundError(f"buffalo_l not found under {root}/models/buffalo_l: run apps/fetch_models.py")
@@ -237,11 +249,38 @@ class FaceEmbedder:
                                 providers=["CPUExecutionProvider"])
         self.app.prepare(ctx_id=-1, det_size=(det_size, det_size))
 
+    def prepare(self, rgb) -> tuple:
+        """-> (RGB image to give SCRFD/ArcFace, converted to gray?)."""
+        from .facescan import prepare_for_face
+        return prepare_for_face(rgb, self.gray_threshold)
+
+    def detect(self, rgb, prepared: bool = False) -> list:
+        """SCRFD only -> [FaceObs] (no embeddings)."""
+        from .facescan import FaceObs
+        img = rgb if prepared else self.prepare(rgb)[0]
+        bboxes, kpss = self.app.det_model.detect(np.ascontiguousarray(img[..., ::-1]), max_num=0, metric="default")
+        if bboxes is None or len(bboxes) == 0:
+            return []
+        return [FaceObs(np.asarray(b[:4], float), np.asarray(k, float).reshape(5, 2), float(b[4]))
+                for b, k in zip(bboxes, kpss if kpss is not None else [np.zeros((5, 2))] * len(bboxes))]
+
+    def embed(self, rgb, obs, prepared: bool = False) -> np.ndarray:
+        """ArcFace on one detected face (aligned by insightface from its 5 landmarks) -> normed 512-d."""
+        try:
+            from insightface.app.common import Face
+        except ImportError:                                  # recognition only reads .kps, sets .embedding
+            from types import SimpleNamespace as Face
+        img = rgb if prepared else self.prepare(rgb)[0]
+        f = Face(bbox=np.asarray(obs.bbox, np.float32), kps=np.asarray(obs.kps, np.float32), det_score=obs.det_score)
+        self.app.models["recognition"].get(np.ascontiguousarray(img[..., ::-1]), f)
+        obs.embedding = l2n(f.embedding)[0]
+        return obs.embedding
+
     def faces(self, rgb) -> list:
         """-> [(normed 512-d embedding, face width px, det score)], largest face first."""
-        bgr = np.ascontiguousarray(rgb[..., ::-1])
-        out = [(f.normed_embedding, float(f.bbox[2] - f.bbox[0]), float(f.det_score)) for f in self.app.get(bgr)]
-        return sorted(out, key=lambda f: -f[1])
+        img = self.prepare(rgb)[0]
+        obs = sorted(self.detect(img, prepared=True), key=lambda o: -o.width)
+        return [(self.embed(img, o, prepared=True), o.width, o.det_score) for o in obs]
 
 
 class ClipHailo:
@@ -340,7 +379,7 @@ def make_runtime_embedders(cfg: dict | None, *, text: bool = False, log=print) -
     except Exception as ex:                                   # noqa: BLE001
         log(f"identity: OSNet off ({ex!r})")
     try:
-        e.face = FaceEmbedder(p["insightface_root"], int(c["face"]["det_size"]))
+        e.face = FaceEmbedder(p["insightface_root"], int(c["face"]["det_size"]), float(c["face"]["gray_threshold"]))
     except Exception as ex:                                   # noqa: BLE001
         log(f"identity: face off ({ex!r})")
     return e

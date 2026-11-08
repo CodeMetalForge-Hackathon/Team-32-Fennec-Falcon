@@ -331,7 +331,16 @@ order is **not verified** until it passes.
 **Enroll the missing person** (on the Pi, same models as runtime):
 ```bash
 python apps/enroll_target.py --photos ~/target_photos --description "red rain jacket, blue jeans"     --out ~/eagle/target_profile.npz          # logs and skips photos without a usable face
+python apps/enroll_target.py --live --photos ~/target_photos --out ~/eagle/target_profile.npz
+python apps/enroll_target.py --verify --profile ~/eagle/target_profile.npz   # live face score check
 ```
+`--live` is a ~10 s scan on the Pi camera (stop hailo_vision.py first): the person turns their head
+slowly left, right, up and down. Frames are kept only with one face >= 80 px, sharp, landmarks in
+frame; up to 20 ArcFace embeddings spread over yaw/pitch (from the 5 landmarks) go into the same
+profile as the photos. Fewer than 8 kept prints a warning: scan again. At night under IR light, low
+colour frames are turned into grayscale (3 channels) before SCRFD and ArcFace, at enrollment and at
+runtime (`identity.face.gray_threshold`); a daylight colour profile still matches IR faces, but
+less strongly, so scan at night too if that is when the search runs.
 
 **Run** (two processes):
 ```bash

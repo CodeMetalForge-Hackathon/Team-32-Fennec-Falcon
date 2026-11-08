@@ -9,11 +9,24 @@ live embeddings are comparable:
 * person crops: the largest person found by fusion/models/coco_yolov8n_320.onnx (OpenCV DNN, the
   detector fusion/app.py already uses) -> CLIP ViT-B/32 on the Hailo (hailo-apps clip HEF) + OSNet.
   A photo with no person (e.g. the jacket they wore) is embedded whole, CLIP only;
-* description: CLIP ViT-B/32 text embeddings of the full text and of each comma/semicolon part.
+* description: CLIP ViT-B/32 text embeddings of the full text and of each comma/semicolon part;
+* ``--live``: ~10 s face scan on the Pi camera (Picamera2, imx708_wide_noir tuning) while the person
+  turns their head slowly left, right, up and down. Only good frames are kept (face >= 80 px, sharp,
+  landmarks inside the frame, one face in view), up to 20 ArcFace embeddings spread across head
+  angles (eagle/facescan.py). They go into the same ``face`` array of the same target_profile.npz,
+  so photo and live enrollment feed the same matcher; ``--live`` and ``--photos`` combine;
+* ``--verify``: run the face matcher live on the camera and print the score, right after a scan.
+Under IR light at night, low-colour frames are converted to grayscale (3 channels) before SCRFD and
+ArcFace, at enrollment and at runtime.
 
     python apps/enroll_target.py --photos ~/target_photos --description "red rain jacket, blue jeans, \
         grey beanie, about 1.75 m" --out ~/eagle/target_profile.npz
+    python apps/enroll_target.py --live --out ~/eagle/target_profile.npz            # face scan only
+    python apps/enroll_target.py --live --photos ~/target_photos --out ~/eagle/target_profile.npz
+    python apps/enroll_target.py --verify --profile ~/eagle/target_profile.npz      # live score check
     python apps/hailo_vision.py --profile ~/eagle/target_profile.npz --jsonl ~/eagle/vision.jsonl
+
+The camera can only be used by one program: stop hailo_vision.py before --live / --verify.
 
 Models must be fetched beforehand (apps/fetch_models.py); nothing is downloaded here.
 """
@@ -125,28 +138,71 @@ def read_images(folder: Path):
             print(f"SKIP   {p.name}: not an image type this tool reads ({', '.join(sorted(IMAGE_EXT))})")
 
 
+def add_live_faces(profile, kept: list, summary: list) -> TargetProfile:
+    """Append live-scan ArcFace embeddings to ``profile`` (or a new one): same file format, same matcher."""
+    prof = profile if profile is not None else TargetProfile(meta={"created_unix": int(time.time())})
+    n_photo = len(prof.face)
+    if kept:
+        live = np.stack([c.embedding for c in kept]).astype(np.float32)
+        prof = TargetProfile(np.concatenate([prof.face, live]) if n_photo else live, prof.clip_image,
+                             prof.clip_text, prof.osnet, prof.description, dict(prof.meta))
+    meta = dict(prof.meta)
+    meta["face_sources"] = {"photos": n_photo, "live": len(kept)}
+    meta["live_scan"] = {"kept": len(kept), "yaw_deg": [round(c.yaw, 1) for c in kept],
+                         "pitch_deg": [round(c.pitch, 1) for c in kept],
+                         "ir_gray": int(sum(bool(c.gray) for c in kept)), "summary": list(summary)}
+    meta["models"] = dict(meta.get("models") or {}, face="insightface buffalo_l (SCRFD-10G + ArcFace R50)")
+    prof.meta = meta
+    return prof
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--photos", required=True, help="folder of photos: face shots, full body, clothing worn")
+    ap.add_argument("--photos", default=None, help="folder of photos: face shots, full body, clothing worn")
+    ap.add_argument("--live", action="store_true", help="add a ~10 s live face scan from the Pi camera")
+    ap.add_argument("--verify", action="store_true", help="live: print the face score vs --profile (default --out)")
+    ap.add_argument("--profile", default=None, help="profile for --verify (default: --out)")
+    ap.add_argument("--seconds", type=float, default=None, help="live scan / verify duration")
+    ap.add_argument("--tuning-file", default="imx708_wide_noir.json", help="libcamera tuning file, or none")
     ap.add_argument("--description", default="", help="free text, e.g. 'red rain jacket, blue jeans, grey beanie'")
     ap.add_argument("--description-file", default=None, help="read the description from a text file")
     ap.add_argument("--out", default="target_profile.npz")
     ap.add_argument("--config", default=None, help="eagle config (identity: models_dir, face.min_width_px)")
     ap.add_argument("--person-model", default=str(PERSON_MODEL))
     a = ap.parse_args(argv)
+    if not (a.photos or a.live or a.verify):
+        ap.error("give --photos, --live (or both), or --verify")
     from eagle.config import load_config
     cfg = load_config(a.config).get("identity", {})
-    desc = Path(a.description_file).read_text(encoding="utf-8") if a.description_file else a.description
-    emb = make_runtime_embedders(cfg, text=True)
-    if emb.face is None and emb.clip is None and emb.osnet is None:
-        print("No identity model could be loaded: run apps/fetch_models.py (and install hailo-apps for CLIP).")
-        return 2
-    folder = Path(a.photos).expanduser()
-    if not folder.is_dir():
-        print(f"{folder} is not a folder")
-        return 2
-    prof = enroll(read_images(folder), desc, emb, load_person_detector(a.person_model),
-                  min_face_px=float(merged_config(cfg)["face"]["min_width_px"]))
+    c = merged_config(cfg)
+    tuning = None if str(a.tuning_file).lower() == "none" else a.tuning_file
+    if a.verify:
+        return verify(a, cfg, c, tuning)
+    prof, emb = None, None
+    if a.photos:
+        desc = Path(a.description_file).read_text(encoding="utf-8") if a.description_file else a.description
+        emb = make_runtime_embedders(cfg, text=True)
+        if emb.face is None and emb.clip is None and emb.osnet is None:
+            print("No identity model could be loaded: run apps/fetch_models.py (and install hailo-apps for CLIP).")
+            return 2
+        folder = Path(a.photos).expanduser()
+        if not folder.is_dir():
+            print(f"{folder} is not a folder")
+            return 2
+        prof = enroll(read_images(folder), desc, emb, load_person_detector(a.person_model),
+                      min_face_px=float(c["face"]["min_width_px"]))
+    if a.live:
+        face = emb.face if emb is not None and emb.face is not None else face_embedder(cfg, c)
+        if face is None:
+            return 2
+        live_cfg = dict(c["live"], **({"seconds": a.seconds} if a.seconds else {}))
+        from eagle.facescan import LiveFaceScan, PiCamera
+        cam = PiCamera(tuning)
+        try:
+            kept, summary = LiveFaceScan(cam, face, live_cfg).scan()
+        finally:
+            cam.close()
+        prof = add_live_faces(prof, kept, summary)
     n = prof.counts()
     if not (n["face"] or n["clip_image"] or n["osnet"]):
         print("Nothing usable was enrolled (see the log above); profile not written.")
@@ -156,6 +212,44 @@ def main(argv=None) -> int:
     prof.save(out)
     print(f"wrote {out}: {n['face']} face, {n['clip_image']} CLIP image, {n['clip_text']} CLIP text, "
           f"{n['osnet']} OSNet embedding(s)")
+    if a.live:
+        print(f"Test it now: python apps/enroll_target.py --verify --profile {out}")
+    return 0
+
+
+def face_embedder(cfg, c):
+    from eagle.identity import FaceEmbedder, model_paths
+    try:
+        return FaceEmbedder(model_paths(cfg)["insightface_root"], int(c["face"]["det_size"]),
+                            float(c["face"]["gray_threshold"]))
+    except Exception as e:                                    # noqa: BLE001
+        print(f"Face model not available ({e}). Run apps/fetch_models.py --only face; "
+              "pip install insightface onnxruntime")
+        return None
+
+
+def verify(a, cfg, c, tuning) -> int:
+    path = Path(a.profile or a.out).expanduser()
+    if not path.is_file():
+        print(f"no profile at {path}")
+        return 2
+    prof = TargetProfile.load(path)
+    face = face_embedder(cfg, c)
+    if face is None:
+        return 2
+    from eagle.facescan import PiCamera, live_verify
+    cam = PiCamera(tuning)
+    res = []
+    try:
+        res = live_verify(cam, face, prof, cfg, seconds=a.seconds or 30.0)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        cam.close()
+    scores = [s for _, s, _ in res if s is not None]
+    if scores:
+        print(f"face scores: median {np.median(scores):.2f}, max {max(scores):.2f} over {len(scores)} frame(s); "
+              f"verify threshold {c['face']['verify']:.2f}")
     return 0
 
 
