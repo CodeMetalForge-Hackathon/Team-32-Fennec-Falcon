@@ -272,6 +272,9 @@ border-radius:8px;padding:6px 10px;font-size:14px;display:none;z-index:2}
 .chip.on b{color:var(--green)}.chip span{font-size:14px}
 #log{font:12px/1.45 ui-monospace,monospace;color:var(--mut);overflow:hidden;flex:1}
 #log .target{color:var(--green)}#log .possible{color:var(--amber)}#log .not_target{color:#ff8080}#log .human{color:#8ab4ff}
+.zoomable{cursor:zoom-in}
+.card.big{position:fixed;inset:10px;z-index:20;cursor:zoom-out;box-shadow:0 0 0 9999px rgba(0,0,0,.85)}
+#hint{font-size:12px;color:var(--mut)}
 #foot{display:flex;gap:16px;font-size:12px;color:var(--mut);flex-wrap:wrap}.ok{color:var(--green)}.warn{color:var(--amber)}
 </style></head><body>
 <div id="banner"><div id="title">Starting...</div><div id="sub"></div></div>
@@ -288,7 +291,7 @@ border-radius:8px;padding:6px 10px;font-size:14px;display:none;z-index:2}
   <div class="card" id="side"><div id="chips"></div><div id="log"></div></div>
 </div>
 <div id="foot"><span id="clock"></span><span id="net"></span><span id="enrolled"></span>
-<span>All processing on-device (Raspberry Pi 5 + Hailo-8), no cloud</span><span id="nest"></span></div>
+<span>All processing on-device (Raspberry Pi 5 + Hailo-8), no cloud</span><span id="hint">Click a panel (or press 1 camera, 2 thermal, 3 sound) to enlarge, Esc to return</span><span id="nest"></span></div>
 <script>
 const $=id=>document.getElementById(id);const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 let cam='standard';
@@ -316,6 +319,10 @@ async function poll(){let s;try{s=await (await fetch('/state')).json()}catch(e){
 function loadImg(id,url,ms){const el=$(id);let busy=false;setInterval(()=>{if(busy)return;busy=true;const im=new Image();
   im.onload=()=>{el.src=im.src;busy=false};im.onerror=()=>{busy=false};im.src=(typeof url==='function'?url():url)+'?'+Date.now()},ms)}
 loadImg('cam',()=>'/cam/'+cam+'.jpg',120);loadImg('thermal','/thermal.png',400);loadImg('audio','/audio.png',250);
+const zoomCards=[...document.querySelectorAll('#views .card, #sound')];
+zoomCards.forEach(c=>{c.classList.add('zoomable');c.addEventListener('click',()=>toggleZoom(c))});
+function toggleZoom(c){const was=!!c&&c.classList.contains('big');zoomCards.forEach(x=>x.classList.remove('big'));if(!was&&c)c.classList.add('big')}
+document.addEventListener('keydown',e=>{if(e.key==='Escape')toggleZoom(null);const i={'1':0,'2':1,'3':2}[e.key];if(i!==undefined)toggleZoom(zoomCards[i])});
 poll();setInterval(poll,500);
 </script></body></html>"""
 
