@@ -5,7 +5,7 @@ on the ATAK map at the same place in Taiwan, on the same timeline, while printin
 
     python tools/headless_demo.py                          # settings from config.py (multicast)
     python tools/headless_demo.py --to 192.168.1.23:4242   # unicast to one phone
-    python tools/headless_demo.py --speed 6 --beacon       # faster, with the SWIR beacon answer
+    python tools/headless_demo.py --speed 6                # faster sensor-only search
 """
 import argparse
 import os
@@ -29,7 +29,6 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--to", type=target, action="append", help="CoT target host:port (repeatable)")
     ap.add_argument("--speed", type=float, help="simulated seconds per real second (default from config)")
-    ap.add_argument("--beacon", action="store_true", help="the person answers with a SWIR beacon")
     ap.add_argument("--iface", help="local IP of the network adapter for multicast")
     ap.add_argument("--hold", type=float, default=60.0, help="simulated seconds of relay orbit at the end")
     ap.add_argument("--fast", action="store_true", help="run as fast as possible (for checking)")
@@ -40,8 +39,6 @@ def main(argv=None):
         overrides["COT_TARGETS"] = args.to
     if args.speed:
         overrides["TIME_SCALE"] = args.speed
-    if args.beacon:
-        overrides["COOPERATIVE_SIGNAL"] = True
     if args.iface is not None:
         overrides["COT_MCAST_IFACE"] = args.iface
     cfg = settings.load(**overrides)

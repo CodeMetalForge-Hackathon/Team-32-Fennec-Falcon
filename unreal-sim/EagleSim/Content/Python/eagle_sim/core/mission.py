@@ -1,13 +1,13 @@
-"""The Eagle find-and-contact mission as a state machine. Pure Python, metres, simulated seconds.
+"""The Eagle sensor-only search mission as a state machine. Pure Python, metres, simulated seconds.
 
 Phases: INGRESS -> SEARCH (cells from the evasion plan) -> CONFIRM (optical-sectioning orbit)
--> PERCH -> DROP (comms pellet) -> AUTH -> HOLD (relay orbit).
+-> PERCH (observe using bird sensors) -> HOLD (relay orbit).
+The person carries no technology. Human detection does not verify identity.
 
 The mission never touches Unreal directly. It talks to an `engine` object that provides:
   ground(x, y) -> z or None         visible(cam, point, key) -> bool
   set_eagle(x, y, z, heading_rad, bank_deg, pitch_deg)
-  aim(cam, look_at)                 set_beacon(on)
-  pellet(start, end, frac)          label(key, text, xyz)
+  aim(cam, look_at)                 label(key, text, xyz)
   to_lla(x, y, z) -> (lat, lon, hae)
   send(payload_bytes)               log(text)         status(text)
 """
@@ -17,15 +17,15 @@ import random
 from . import config as C
 from . import cot, detect, flight
 
-INGRESS, TRANSIT, SEARCH, CONFIRM, PERCH, DROP, AUTH, HOLD = (
-    "INGRESS", "TRANSIT", "SEARCH", "CONFIRM", "PERCH", "DROP", "AUTH", "HOLD")
+INGRESS, TRANSIT, SEARCH, CONFIRM, PERCH, HOLD = (
+    "INGRESS", "TRANSIT", "SEARCH", "CONFIRM", "PERCH", "HOLD")
 
 
 class Scenario:
     """Where things are, in metres (x east, y north, z up). Built by the scene or a test."""
 
     def __init__(self, operator_center, operator_points, animal_center, animal_points,
-                 cells, perches, start, beacon_point=None):
+                 cells, perches, start):
         self.operator_center = operator_center      # (x, y, z) on the ground
         self.operator_points = operator_points      # head, torso, legs: ray targets
         self.animal_center = animal_center
@@ -33,8 +33,6 @@ class Scenario:
         self.cells = cells                          # [(x, y), ...]
         self.perches = perches                      # [(x, y, z_top), ...] cover-tree tops
         self.start = start                          # (x, y)
-        self.beacon_point = beacon_point or (operator_center[0], operator_center[1],
-                                             operator_center[2] + 0.6)
 
 
 class Mission:
@@ -64,14 +62,11 @@ class Mission:
         self.views = None
         self.cue = None
         self.found_animal = False
-        self.beacon_on = False
         self.events = []                 # (t, phase, text) for tests and the log
         self.cot_sent = []               # (type, callsign) for tests
         self._cot_timer = 0.0
         self._phase_t0 = 0.0
-        self._auth_step = 0
         self._perch = None
-        self._drop = None
         self._dispose_said = False
         self.ifov_ok_range = detect.max_detect_range(cfg.TARGET_M, cfg.CAM_HFOV_DEG,
                                                      cfg.CAM_PIXELS_H, cfg.MIN_PIXELS)
@@ -159,10 +154,6 @@ class Mission:
             self._confirm(dt)
         elif self.phase == PERCH:
             self._perched(dt)
-        elif self.phase == DROP:
-            self._dropping(dt)
-        elif self.phase == AUTH:
-            self._auth(dt)
         elif self.phase == HOLD:
             self._hold(dt)
         # attitude from motion
@@ -217,21 +208,6 @@ class Mission:
         self.look_at = (o.cx, o.cy, self._ground(o.cx, o.cy))
         hf, vf, rng = self.cfg.CAM_HFOV_DEG, self.vfov, self.ifov_ok_range
 
-        # cooperative answer: the person flashes a SWIR beacon at the recognition pass
-        if self.cfg.COOPERATIVE_SIGNAL:
-            near = math.dist((o.cx, o.cy), self.s.operator_center[:2]) <= self.cfg.BEACON_RANGE_M
-            flash = near and o.laps < 1.0 and int(self.t * 2) % 2 == 0
-            if flash != self.beacon_on:
-                self.beacon_on = flash
-                self.e.set_beacon(flash)
-            if flash and self._sees([self.s.beacon_point], "beacon", 90.0, 70.0,
-                                    self.cfg.BEACON_RANGE_M):
-                self._say("SWIR beacon answered the recognition pass: cue fixed to a few metres")
-                self.e.set_beacon(False)
-                self.beacon_on = False
-                self._start_confirm(self.s.beacon_point, err_m=3.0)
-                return
-
         if not self.found_animal and self._sees(self.s.animal_points, "animal", hf, vf, rng):
             self.found_animal = True
             self._say("Warm target ~0.9 m long, low, four-legged: muntjac. Logged, not a cue")
@@ -283,16 +259,16 @@ class Mission:
             oc = self.s.operator_center
             self._say("CONFIRMED: %d views over %.0f deg fuse to a person ~1.8 m long, ~34 C"
                       % (self.views.views, self.views.spread_deg))
-            self._send(cot.UNKNOWN_GROUND, "IP-1", self.cfg.PERSON_CALLSIGN + " (unauthenticated)",
-                       oc, 3.0, "Probable isolated person, confirmed by thermal sectioning")
-            self.e.label("operator", "IP-1 FOUND (unauthenticated)", oc)
+            self._send(cot.UNKNOWN_GROUND, "IP-1", self.cfg.PERSON_CALLSIGN + " (identity unverified)",
+                       oc, 3.0, "Probable isolated person, detected by bird thermal sectioning; identity unverified")
+            self.e.label("operator", "IP-1 PERSON DETECTED · ID UNVERIFIED", oc)
             self._begin_perch()
         elif o.laps >= self.cfg.CONFIRM_MAX_LAPS:
             self._say("Not confirmed after %.1f laps (%d views): back to the search" %
                       (o.laps, self.views.views))
             self._goto_cell(self.cell + 1)
 
-    # ------------------------------------------------------------ perch, drop, authenticate
+    # ------------------------------------------------------------ perch and observe
     def _begin_perch(self):
         oc = self.s.operator_center
         perch = min(self.s.perches, key=lambda p: math.dist(p[:2], oc[:2]))
@@ -310,40 +286,13 @@ class Mission:
         self._goto(perch[0], perch[1], None, land, z_abs=perch[2] + 0.4)
 
     def _perched(self, dt):
-        if self.t - self._phase_t0 > 2.0:
+        if self.t - self._phase_t0 > 5.0:
             oc = self.s.operator_center
-            a = self.rng.uniform(0, 2 * math.pi)
-            end = (oc[0] + 1.5 * math.cos(a), oc[1] + 1.5 * math.sin(a), oc[2] + 0.05)
-            start = (self.x, self.y, self.z - 0.3)
-            self._drop = (start, end)
-            self._set_phase(DROP)
-            self._say("Casting a comms pellet (LoRa + e-paper, 80 g) 1.5 m from IP-1")
-
-    def _dropping(self, dt):
-        start, end = self._drop
-        frac = min(1.0, (self.t - self._phase_t0) / 1.5)
-        self.e.pellet(start, end, frac)
-        if frac >= 1.0:
-            self._set_phase(AUTH)
-            self._auth_step = 0
-
-    def _auth(self, dt):
-        el = self.t - self._phase_t0
-        oc = self.s.operator_center
-        if self._auth_step == 0 and el > 0.5:
-            self._auth_step = 1
-            self._say("CHALLENGE 20 B to the pellet: ISOPREP question on the e-paper")
-        elif self._auth_step == 1 and el > 3.0:
-            self._auth_step = 2
-            self._say("REPLY 21 B: authenticated (ISOPREP answer correct, no duress). "
-                      "Status INJURED, can walk 2 km a night")
-            self._send(cot.FRIENDLY_PERSON, "IP-1", self.cfg.PERSON_CALLSIGN, oc, 3.0,
-                       "Isolated person AUTHENTICATED via pellet. INJURED, mobile 2 km/night")
-            self.e.label("operator", "IP-1 AUTHENTICATED", oc)
-        elif self._auth_step == 2 and el > 5.0:
-            self._auth_step = 3
-            self._say("Route sent to the pellet: walk 2 km a night to the coast pickup; "
-                      "ear pellets will guard the hide")
+            self._say("Bird-only observation complete: person detected; identity UNVERIFIED. "
+                      "No carried equipment or cooperative response assumed")
+            self._send(cot.UNKNOWN_GROUND, "IP-1", self.cfg.PERSON_CALLSIGN + " (identity unverified)",
+                       oc, 3.0, "Bird sensor observation; identity unverified; no equipment carried")
+            self.e.label("operator", "IP-1 PERSON DETECTED · ID UNVERIFIED", oc)
             self._begin_hold()
 
     def _begin_hold(self):

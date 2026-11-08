@@ -305,7 +305,7 @@ def _is_prop(role):
 
 
 def place_props(cfg, mats, world_obj=None, ignore=()):
-    """(Re)place forest, person, animal, beacon, pellet, eagle, cameras and labels on the terrain."""
+    """(Re)place forest, person, animal, eagle, cameras and labels on the terrain."""
     world_obj = world_obj or util.world()
     groups = util.demo_actors()
     util.destroy([a for role, acts in groups.items() if _is_prop(role) for a in acts])
@@ -332,7 +332,7 @@ def place_props(cfg, mats, world_obj=None, ignore=()):
                 continue
             _plant(i, tree, g, mats)
             planted += 1
-        task.enter_progress_frame(1, "Placing the person, the muntjac and the beacon")
+        task.enter_progress_frame(1, "Placing the unequipped person and the muntjac")
         _place_targets(cfg, mats, ground, site_g)
         task.enter_progress_frame(1, "Building the eagle")
         _build_eagle(cfg, mats, ground, site_g)
@@ -397,12 +397,6 @@ def _place_targets(cfg, mats, ground, site_g):
                         mats["Muntjac"], "Muntjac leg %d" % n, "animal", F_TARGETS, stencil=2,
                         shadows=False)
 
-    beacon = util.spawn_mesh("Sphere", util.to_ue(ox, oy, og + 0.6), (0.15, 0.15, 0.15), mats["Beacon"],
-                             "SWIR beacon", "beacon", F_TARGETS, stencil=3, shadows=False)
-    util.set_visible(beacon, False)
-    pellet = util.spawn_mesh("Sphere", util.to_ue(ox, oy, og + 0.3), (0.12, 0.12, 0.12), mats["Pellet"],
-                             "Comms pellet", "pellet", F_TARGETS, shadows=False)
-    util.set_visible(pellet, False)
 
 
 def _build_eagle(cfg, mats, ground, site_g):
@@ -508,8 +502,6 @@ class Scene:
         self.eagle_label = first("eagle_label")
         self.operator = groups.get("operator", [])
         self.animal = groups.get("animal", [])
-        self.beacon = first("beacon")
-        self.pellet = first("pellet")
         self.cell_labels = groups.get("cell_label", [])
         self.dynamic_labels = groups.get("label", [])
         self.trees = layout.make_trees(cfg)
@@ -521,8 +513,7 @@ class Scene:
                     self.sig = str(t)
 
     def missing(self):
-        need = {"terrain tileset": self.tileset, "eagle": self.eagle, "person": self.operator,
-                "beacon": self.beacon, "pellet": self.pellet}
+        need = {"terrain tileset": self.tileset, "eagle": self.eagle, "person": self.operator}
         need.update({"%s camera" % k: v for k, v in self.cams.items()})
         return [name for name, v in need.items() if not v]
 
@@ -549,10 +540,7 @@ class Scene:
         )
 
     def reset_props(self):
-        """Hide the beacon and pellet and remove labels from the last run."""
-        for a in (self.beacon, self.pellet):
-            if a is not None:
-                util.set_visible(a, False)
+        """Remove labels from the last run."""
         util.destroy(self.dynamic_labels)
         self.dynamic_labels = []
 

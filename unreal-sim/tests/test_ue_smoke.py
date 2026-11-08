@@ -107,17 +107,11 @@ def test_build_start_and_fly_to_hold(ue):
     assert {"chase", "thermal", "scene", "overview"} <= views, views
     assert fake_unreal._ED.pilot is not None and fake_unreal._ED.pilot.label == "Overview camera"
     texts = {a.label: a.text_render.text for a in world.actors if isinstance(a, fake_unreal.TextRenderActor)}
-    assert texts["Label operator"] == "IP-1 AUTHENTICATED"
-    assert texts["Label pellet"] == "COMMS PELLET"
+    assert texts["Label operator"] == "IP-1 PERSON DETECTED · ID UNVERIFIED"
     assert texts["OSD thermal 0"].startswith("EAGLE-1  HOLD")
     assert "One-way bird" in texts["OSD overview 1"]
     assert any("CONFIRMED" in e[2] for e in m.events)
-    # the scene camera was placed and the pellet came down near the person
-    pellet = [a for a in world.actors if a.label == "Comms pellet"][0]
-    ox, oy = cfg.OPERATOR_EN
-    assert abs(pellet.loc.x / 100 - ox) < 3 and abs(-pellet.loc.y / 100 - oy) < 3
-
-    # ---- CoT reached the UDP target: eagle track, cue, unauthenticated then authenticated person
+    # CoT carries bird observations, with no automatic friendly identity classification.
     types = []
     while True:
         try:
@@ -129,7 +123,9 @@ def test_build_start_and_fly_to_hold(ue):
         lat = float(root.find("point").get("lat"))
         assert abs(lat - cfg.SITE_LAT) < 0.05
     rx.close()
-    assert {"a-f-A-M-F-Q", "a-u-G", "a-f-G-U-C"} <= set(types), set(types)
+    assert {"a-f-A-M-F-Q", "a-u-G"} <= set(types), set(types)
+
+    assert "a-f-G-U-C" not in types
 
     # ---- stop frees the viewport and the tick
     app.stop()

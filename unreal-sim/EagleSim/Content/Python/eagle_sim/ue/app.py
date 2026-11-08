@@ -11,7 +11,7 @@ import traceback
 import unreal
 
 from ..core import cot, settings
-from ..core.mission import AUTH, CONFIRM, DROP, HOLD, INGRESS, PERCH, SEARCH, TRANSIT, Mission
+from ..core.mission import CONFIRM, HOLD, INGRESS, PERCH, SEARCH, TRANSIT, Mission
 from . import engine as engine_mod
 from . import materials, scene, util
 
@@ -28,7 +28,7 @@ class _State:
         self.view = None
         self.auto = True            # auto director: cut cameras by mission phase
         self.game_view = True
-        self.overrides = {}         # settings changed from the menu (beacon, speed)
+        self.overrides = {}         # settings changed from the menu (speed)
         self.last_cut = -99.0
         self.clock = 0.0
 
@@ -79,8 +79,8 @@ def _tick(dt):
 
 
 def _slowmo(m):
-    """Perch approach, perch, pellet drop and authentication play at real time."""
-    if m.phase in (PERCH, DROP, AUTH):
+    """Perch approach and bird-only observation play at real time."""
+    if m.phase in (PERCH,):
         return True
     return m.phase == TRANSIT and getattr(m.after_transit, "__name__", "") == "land"
 
@@ -101,7 +101,7 @@ def director_view(m):
     p = m.phase
     if p in (SEARCH, CONFIRM):
         return "thermal"
-    if p in (PERCH, DROP, AUTH):
+    if p in (PERCH,):
         return "scene"
     if p == HOLD:
         return "overview"
@@ -193,8 +193,7 @@ def start():
     _hook()
     _cut(director_view(mission) if S.auto else "chase")
     targets = ", ".join("%s:%s" % t for t in cfg.COT_TARGETS)
-    util.flash("Mission running at x%g. CoT to %s%s" % (
-        cfg.TIME_SCALE, targets, "  (cooperative SWIR beacon on)" if cfg.COOPERATIVE_SIGNAL else ""), 8.0)
+    util.flash("Mission running at x%g. CoT to %s; person carries no technology" % (cfg.TIME_SCALE, targets), 8.0)
 
 
 def pause():
@@ -249,12 +248,6 @@ def toggle_game_view():
 
 
 # ------------------------------------------------------------ menu: options
-def toggle_beacon():
-    on = not _cfg().COOPERATIVE_SIGNAL
-    S.overrides["COOPERATIVE_SIGNAL"] = on
-    util.flash("Cooperative SWIR beacon %s for the next start." % ("ON" if on else "OFF"))
-
-
 def set_speed(x):
     S.overrides["TIME_SCALE"] = float(x)
     if S.cfg is not None:
