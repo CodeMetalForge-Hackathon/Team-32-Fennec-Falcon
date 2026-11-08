@@ -315,7 +315,7 @@ async function poll(){let s;try{s=await (await fetch('/state')).json()}catch(e){
 }
 function loadImg(id,url,ms){const el=$(id);let busy=false;setInterval(()=>{if(busy)return;busy=true;const im=new Image();
   im.onload=()=>{el.src=im.src;busy=false};im.onerror=()=>{busy=false};im.src=(typeof url==='function'?url():url)+'?'+Date.now()},ms)}
-loadImg('cam',()=>'/cam/'+cam+'.jpg',333);loadImg('thermal','/thermal.png',400);loadImg('audio','/audio.png',250);
+loadImg('cam',()=>'/cam/'+cam+'.jpg',120);loadImg('thermal','/thermal.png',400);loadImg('audio','/audio.png',250);
 poll();setInterval(poll,500);
 </script></body></html>"""
 

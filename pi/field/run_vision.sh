@@ -22,7 +22,7 @@ case "$sensor" in *noir*) default_name=noir ;; *) default_name=standard ;; esac
 CAM_NAME="${EAGLE_CAMERA_NAME:-$default_name}"
 
 args=(--jsonl "$HOME/eagle/vision.jsonl" --headless yes --config "$FIELD_YAML"
-      --snapshot "$HOME/eagle/cam_${CAM_NAME}.jpg" --snapshot-hz 3)
+      --snapshot "$HOME/eagle/cam_${CAM_NAME}.jpg" --snapshot-hz 8)
 if [ -n "${EAGLE_CAMERA:-}" ]; then
   args+=(--camera "$EAGLE_CAMERA")
 fi

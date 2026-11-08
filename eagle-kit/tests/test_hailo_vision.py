@@ -158,3 +158,28 @@ def test_target_stays_green_for_hold_after_last_face_match(hv):
 
 def test_no_clip_flag(hv):
     assert hv.split_args(["--no-clip"])[0].no_clip and not hv.split_args([])[0].no_clip
+
+
+def test_async_identity_never_blocks_and_keeps_latest(hv):
+    import threading
+    import time as _t
+    gate = threading.Event()
+
+    class SlowMatcher:
+        def update(self, tid, frame, box):
+            gate.wait(2)                                   # a slow face model
+            return (3 if tid == 7 else 0, 0.5, 0.6 if tid == 7 else 0.1)
+
+    ai = hv.AsyncIdentity(SlowMatcher(), log=lambda *_: None)
+    frame = np.zeros((10, 10, 3), np.uint8)
+    t0 = _t.time()
+    assert ai.submit(frame, [7, 8], [[0, 0, 5, 5, 0.9], [1, 1, 6, 6, 0.8]])
+    assert _t.time() - t0 < 0.1                            # returned immediately
+    assert ai.busy() and not ai.submit(frame, [7], [[0, 0, 5, 5]])   # busy: newer frame skipped
+    assert ai.results([7, 8]) == [(0, 0.0, None), (0, 0.0, None)]   # nothing yet, no waiting
+    gate.set()
+    for _ in range(100):
+        if not ai.busy():
+            break
+        _t.sleep(0.01)
+    assert ai.results([7, 8, 9]) == [(3, 0.5, 0.6), (0, 0.5, 0.1), (0, 0.0, None)]

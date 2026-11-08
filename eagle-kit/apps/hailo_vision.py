@@ -30,6 +30,7 @@ import argparse
 import json
 import os
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -240,6 +241,60 @@ class Snapshotter:
         return True
 
 
+class AsyncIdentity:
+    """Face/appearance matching off the camera thread. The GStreamer callback must return fast or the
+    whole pipeline (and the snapshots) stalls for as long as ArcFace takes on the CPU (~0.3-1 s per
+    face on a Pi 5). submit() hands the newest frame to one worker thread and returns at once; frames
+    that arrive while it is busy are skipped (only the newest matters). results() returns the latest
+    (level, appearance, face) per track id, (0, 0.0, None) until a track has been matched once."""
+
+    def __init__(self, matcher, log=print, keep: int = 64):
+        self.m, self.log, self.keep = matcher, log, keep
+        self.lock, self.ev = threading.Lock(), threading.Event()
+        self.latest, self.job, self.order = {}, None, []
+        threading.Thread(target=self._run, daemon=True, name="identity").start()
+
+    def busy(self) -> bool:
+        with self.lock:
+            return self.job is not None
+
+    def submit(self, frame, ids, boxes) -> bool:
+        with self.lock:
+            if self.job is not None:
+                return False
+            self.job = (np.array(frame, copy=True), list(ids), [list(b[:4]) for b in boxes])
+        self.ev.set()
+        return True
+
+    def results(self, ids) -> list:
+        with self.lock:
+            return [self.latest.get(t, (0, 0.0, None)) for t in ids]
+
+    def _run(self):
+        while True:
+            self.ev.wait()
+            self.ev.clear()
+            with self.lock:
+                job = self.job
+            if job is None:
+                continue
+            frame, ids, boxes = job
+            out = {}
+            for t, b in zip(ids, boxes):
+                try:
+                    out[t] = tuple(self.m.update(t, frame, b))
+                except Exception as e:                              # never let matching kill the worker
+                    self.log(f"identity error: {type(e).__name__}: {e}")
+            with self.lock:
+                for t, r in out.items():
+                    if t not in self.latest:
+                        self.order.append(t)
+                    self.latest[t] = r
+                while len(self.order) > self.keep:
+                    self.latest.pop(self.order.pop(0), None)
+                self.job = None
+
+
 class FrameWatchdog:
     """Calls ``on_stall`` once if ``kick`` was not called for ``timeout_s`` (a hung camera pipeline otherwise
     stays 'running' while writing nothing)."""
@@ -331,6 +386,7 @@ def main(argv=None) -> None:
         print(f"identity: matching against {ours.profile}" + (" (face only, CLIP off)" if ours.no_clip else ""),
               flush=True)
 
+    ident = AsyncIdentity(matcher, log=lambda m: print(m, flush=True)) if matcher is not None else None
     writer = RateLimitedWriter(ours.jsonl, ours.rate)
     print(f"writing person boxes to {writer.path}", flush=True)
     snap = Snapshotter(ours.snapshot, ours.snapshot_hz, name=ours.target_name,
@@ -364,9 +420,11 @@ def main(argv=None) -> None:
             uid = det.get_objects_typed(hailo.HAILO_UNIQUE_ID)
             ids.append(uid[0].get_id() if len(uid) == 1 else -1)
         identity, frame = None, None
-        if matcher is not None and boxes:
-            frame = get_numpy_from_buffer(buffer, fmt, w, h)            # RGB
-            identity = [matcher.update(tid, frame, b[:4]) for tid, b in zip(ids, boxes)]
+        if ident is not None and boxes:
+            if not ident.busy():                                    # copy a frame only when the worker is free
+                frame = get_numpy_from_buffer(buffer, fmt, w, h)        # RGB
+                ident.submit(frame, ids, boxes)
+            identity = ident.results(ids)                           # latest results, never blocks
         writer.write(vision_line(time.time(), boxes, w, h, ids, identity), has_boxes=bool(boxes))
         if snap is not None:
             snap.hold.observe(ids, identity)                           # every frame, not only drawn ones
