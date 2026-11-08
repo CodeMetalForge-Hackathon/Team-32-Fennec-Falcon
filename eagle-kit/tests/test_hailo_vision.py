@@ -49,11 +49,23 @@ def test_rate_limit_and_heartbeat(hv, tmp_path):
     assert sum(wrote[20:]) == 1                              # then an empty heartbeat every 5 s
 
 
-def test_split_args_defaults_to_pi_camera(hv):
-    ours, rest = hv.split_args(["--jsonl", "/tmp/v.jsonl", "--arch", "hailo8l"])
+def test_split_args_defaults_to_pi_camera(hv, tmp_path):
+    md = ["--models-dir", str(tmp_path)]                     # empty: independent of ~/eagle-models on this machine
+    ours, rest = hv.split_args(["--jsonl", "/tmp/v.jsonl", "--arch", "hailo8l"] + md)
     assert ours.jsonl == "/tmp/v.jsonl" and rest == ["--input", "rpi", "--arch", "hailo8l"]
-    ours, rest = hv.split_args(["--input", "clip.mp4", "--rate", "5"])
+    ours, rest = hv.split_args(["--input", "clip.mp4", "--rate", "5"] + md)
     assert ours.rate == 5.0 and rest == ["--input", "clip.mp4"] and ours.tuning_file == "imx708_wide_noir.json"
+
+
+def test_split_args_uses_fetched_hef_for_the_requested_arch(hv, tmp_path):
+    (tmp_path / "hailo" / "hailo8").mkdir(parents=True)
+    hef8 = tmp_path / "hailo" / "hailo8" / "yolov5m_wo_spp.hef"
+    hef8.write_bytes(b"x")
+    md = ["--models-dir", str(tmp_path)]
+    assert hv.split_args(md)[1] == ["--input", "rpi", "--hef-path", str(hef8)]          # the only one fetched
+    assert hv.split_args(md + ["--arch", "hailo8"])[1][-2:] == ["--hef-path", str(hef8)]
+    assert "--hef-path" not in hv.split_args(md + ["--arch=hailo8l"])[1]               # never a wrong-arch HEF
+    assert hv.split_args(md + ["--hef-path", "x.hef"])[1] == ["--input", "rpi", "--hef-path", "x.hef"]
 
 
 def test_find_tuning_file(hv, tmp_path):

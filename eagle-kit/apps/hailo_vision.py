@@ -115,15 +115,30 @@ def split_args(argv):
     if not any(a in ("-i", "--input") or a.startswith("--input=") for a in rest):
         rest = ["--input", "rpi"] + rest
     if not any(a == "--hef-path" or a.startswith("--hef-path=") for a in rest):
-        hef = local_detection_hef(ours.models_dir)
+        hef = local_detection_hef(ours.models_dir, arch=_arg_value(rest, "--arch"))
         if hef:                                   # use the fetched HEF so hailo-apps never downloads one
             rest += ["--hef-path", hef]
     return ours, rest
 
 
-def local_detection_hef(models_dir: str) -> str | None:
-    """The detection HEF from apps/fetch_models.py, if exactly one architecture was fetched."""
+def _arg_value(argv, name: str) -> str | None:
+    """Value of ``name VALUE`` or ``name=VALUE`` in argv (last one wins), else None."""
+    val = None
+    for i, a in enumerate(argv):
+        if a == name and i + 1 < len(argv):
+            val = argv[i + 1]
+        elif a.startswith(name + "="):
+            val = a.split("=", 1)[1]
+    return val
+
+
+def local_detection_hef(models_dir: str, arch: str | None = None) -> str | None:
+    """The detection HEF from apps/fetch_models.py: the one for ``arch`` when given (a HEF compiled for
+    another architecture does not load), else the only one if exactly one architecture was fetched."""
     d = Path(os.path.expanduser(models_dir)) / "hailo"
+    if arch:
+        p = d / arch.lower() / "yolov5m_wo_spp.hef"
+        return str(p) if p.is_file() else None
     found = sorted(d.glob("*/yolov5m_wo_spp.hef")) if d.is_dir() else []
     return str(found[0]) if len(found) == 1 else None
 

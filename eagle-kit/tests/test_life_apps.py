@@ -44,11 +44,19 @@ def _args(**kw):
 
 
 def test_life_node_runs_with_missing_modules(root, cfg, capsys):
+    from eagle.config import deep_merge
+    # Never open real hardware here: on a Pi with a USB mic array plugged in, the default input device
+    # would otherwise be captured, and a PortAudio callback left running crashes later tests.
+    c = deep_merge(cfg, {"audio": {"device": "eagle-test-no-such-device"}})
     mod = _load_app(root, "life_node")
-    node = mod.LifeNode(cfg, _args())
-    for k in range(3):
-        node.step(now=100.0 + k)
+    node = mod.LifeNode(c, _args())
+    try:
+        for k in range(3):
+            node.step(now=100.0 + k)
+    finally:
+        node.close()
     text = capsys.readouterr().out
+    assert "MODULE  audio: unavailable" in text
     assert "MODULE  vitals: unavailable" in text and "MODULE  vision: unavailable" in text
     assert "thermal" in node.mods and "THERMAL 1 warm body" in text and "LIFE    list" in text
 
