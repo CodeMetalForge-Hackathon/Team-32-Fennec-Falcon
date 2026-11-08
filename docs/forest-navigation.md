@@ -2,6 +2,12 @@
 
 Open [the forest lab](../simulator/forest.html) directly, or open the Jungle Simulator and choose **Forest navigation & perching → Open forest lab** below the GPS-denied navigation panel. Use **Play mission**, **Step 1 second**, scenario selection and 1×/4×/8× playback. Reset restarts the selected scenario. Closing the lab pauses playback.
 
+### Move around the 3D scene
+
+Drag the forest view to orbit around it, scroll to zoom, and right-drag or shift-drag to pan. Touch controls support one-finger orbit and two-finger pinch/pan. **Overview**, **Top** and **Side** choose camera presets; **Reset view** restores the overview. **Follow drone** centers the moving aircraft while retaining orbit and zoom controls. These camera controls work during playback and while paused and do not modify the mission state. Keyboard users can focus the canvas, use arrow keys to orbit, +/− to zoom and Home to reset.
+
+The renderer uses a rotatable orthographic 3D camera with bounded elevation and zoom, not a fixed oblique projection. All six faces of each obstacle are sorted by camera depth. Obstacles are transparent and route/trail/drone overlays remain visible through them for explanation; visibility through a drawn obstacle does not imply collision clearance. Drone arms and rotor rings are world-space geometry. Axis markers rotate with the scene. Camera state remains separate from the planner and is retained across mission resets.
+
 For local HTTP access, run `python -m http.server 8770 --bind 127.0.0.1` from the repository root, then visit `http://127.0.0.1:8770/simulator/forest.html`.
 
 ![Forest lab showing a verified synthetic perch](images/forest-navigation.png)
@@ -46,4 +52,4 @@ These repositories are references, not bundled dependencies. EGO-Swarm is GPL-3.
 
 `node simulator/test-forest.cjs` exercises all six scenarios, verifies termination, continuous segment clearance, motor shutdown only after synthetic support confirmation, failed-grip exclusion and reselection, departure, and a blocked-route result. Nominal model durations at 0.05 s steps: branch 27.3 s, moving-branch alternate 26.6 s, grip-failure retry 41.2 s, clearing landing 29.7 s. These are modeled timings, not measured flight results.
 
-`node simulator/check-forest.cjs` checks browser playback, stepping, scenarios, reset, modal opening/closing, insertion into the existing simulator and mobile overflow, and saves desktop/mobile screenshots. Continuous main-scene Three.js animation is suppressed for the integration check; no rendering-performance claim is made. Existing navigation and sensing regression checks also pass. No hardware or SITL test is claimed for the new forest model.
+`node simulator/check-forest.cjs` checks browser playback, stepping, scenarios, reset, modal opening/closing, insertion into the existing simulator and mobile overflow, and saves desktop/mobile screenshots. Camera checks exercise drag orbit with a changed rendered image, wheel zoom, shift-pan, top/side/reset presets, follow selection, keyboard orbit/reset, and browser-generated touch pinch/pan. Dragging while paused is checked not to advance mission time. Continuous main-scene Three.js animation is suppressed for the integration check; no rendering-performance claim is made. Existing navigation and sensing regression checks also pass. No hardware or SITL test is claimed for the new forest model.
