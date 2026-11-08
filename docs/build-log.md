@@ -41,7 +41,7 @@ Every build gets an entry here: what we built, why, how it works, what we decide
 
 ### Verification
 - Every shot captured in headless Chromium under a fixed-step clock (jumping straight to it); no console errors.
-- The page script parses (`node --check` on the built page's script); `tests/test_present.js` updated for five birds (step 8 now reads 13.3 h).
+- The page script parses (`node --check` on the built page's script). `tests/test_present.js` passes on this build with its two search numbers updated for five birds (step 8: 13.3 h; step 9: 173 h): 10 steps, 12 numbers, no console errors.
 
 ### Open issues / next
 - The craft sits 3 km west of the map in the scene; the plan puts it about 20 km offshore. The pentagon is 300 m across to fit the 800 m map.

@@ -40,7 +40,7 @@ const { startServer, launch, routeCdn, watch, sleep, ready, SHOTS } = require('.
   } finally { await browser.close(); server.kill(); }
   // the cards must carry the model's numbers for the night and 14:00 presets (see docs/simulator-v2.md, Results)
   const has = (i, s) => out.steps[i] && (out.steps[i].stats.join(' ') + ' ' + out.steps[i].body).includes(s);
-  const expect = [[0, '250 m'], [1, '246 m'], [3, '5.5 px'], [3, '+6.6 °C'], [4, '94 m'], [5, '0.14'], [5, '0.99'], [6, '3.0 km'], [7, '10 m'], [7, '13.3 h'], [8, '-0.7 °C'], [8, '108 h']];
+  const expect = [[0, '250 m'], [1, '246 m'], [3, '5.5 px'], [3, '+6.6 °C'], [4, '94 m'], [5, '0.14'], [5, '0.99'], [6, '3.0 km'], [7, '10 m'], [7, '13.3 h'], [8, '-0.7 °C'], [8, '173 h']];
   const fails = expect.filter(([i, s]) => !has(i, s)).map(([i, s]) => `step ${i + 1}: "${s}" missing`);
   if (out.steps.length !== 10) fails.push(`expected 10 steps, saw ${out.steps.length}`);
   if (out.errors.length) fails.push('console errors: ' + out.errors.join(' | '));
