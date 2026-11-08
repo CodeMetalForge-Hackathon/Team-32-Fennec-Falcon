@@ -5,6 +5,7 @@ Wants=NetworkManager.service
 
 [Service]
 Type=oneshot
+EnvironmentFile=-@HOME@/eagle/hotspot.env
 RemainAfterExit=yes
 ExecStart=@REPO@/pi/field/hotspot_auto.sh
 StandardOutput=append:@HOME@/field_logs/hotspot.log

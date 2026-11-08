@@ -90,8 +90,8 @@ def test_enroll_profile_roundtrip(en, tmp_path):
 
 def test_person_detector_reuses_fusion_yolo(en):
     pytest.importorskip("cv2")
-    if not en.PERSON_MODEL.is_file():
-        pytest.skip("fusion/models/coco_yolov8n_320.onnx not present")
+    if not en.PERSON_MODEL.is_file() or en.PERSON_MODEL.stat().st_size < 1_000_000:   # missing, or a Git LFS pointer
+        pytest.skip("fusion/models/coco_yolov8n_320.onnx not present (run git lfs pull)")
     detect = en.load_person_detector()
     assert detect(np.full((240, 320, 3), 127, np.uint8)) == []          # flat grey: nobody there
 

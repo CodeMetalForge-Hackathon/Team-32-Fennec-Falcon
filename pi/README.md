@@ -17,7 +17,7 @@ HTI imager --USB--> Pi: thermal_rtsp.py --> FFmpeg H.264 --> MediaMTX --> RTSP /
 | `thermal_rtsp.py` | Capture, temperature conversion, warm-body detection, overlay, encode, publish. Reconnects on its own if the camera or MediaMTX drops. |
 | `mediamtx.yml` | MediaMTX config: RTSP, WebRTC, HLS, records to `/home/thermal_recordings` in 10-minute MP4s, kept 3 days. Only the Pi can publish; anyone on the network can watch. |
 | `setup_pi.sh` | One-time install (needs internet): FFmpeg, OpenCV, v4l-utils, the uvcvideo quirk, MediaMTX v1.21.3, boot services. |
-| `hotspot_on.sh` / `hotspot_off.sh` | Field Wi-Fi hotspot `THERMAL-PI` (password `thermal1234`). Pi is `10.42.0.1`. |
+| `hotspot_on.sh` / `hotspot_off.sh` | Field Wi-Fi hotspot `THERMAL-PI` (password from `~/eagle/hotspot.env`, not stored in the repo). Pi is `10.42.0.1`. |
 
 ## Steps
 
