@@ -46,7 +46,7 @@ Install on a fresh Pi: `bash pi/field/install.sh` after `eagle-kit/apps/fetch_mo
 
 | Check | Result |
 |---|---|
-| Unit and integration tests (`cd eagle-kit && python -m pytest -q`) | 303 passing, hardware-free |
+| Unit and integration tests (`cd eagle-kit && python -m pytest -q`) | 300+ passing, hardware-free |
 | All three sensors live together on the Pi, offline | Working (indoor, 2026-11-08) |
 | Encrypted FIX decrypted at the Nest | Working over loopback |
 | Operator Profile enrolment and face verification | Working indoors; see the card document for measured values |

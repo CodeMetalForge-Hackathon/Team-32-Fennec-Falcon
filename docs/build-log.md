@@ -20,7 +20,7 @@ The simulations stop at "a person is here" and report identity UNVERIFIED. Rescu
 ### Key results (measured, indoor, one enrolled person)
 - 26 photo faces enrolled, all agreeing with each other (lowest cosine 0.60); live scan matched the photos at mean cosine 0.46.
 - All three sensors, fusion and the encrypted message running together on the Pi with no network.
-- 303 automated tests pass without hardware.
+- 300+ automated tests pass without hardware.
 
 ### Decisions and trade-offs
 - Assumption: the person sought has a full face scan on file before going missing. Without it the payload still detects humans but cannot identify them.
