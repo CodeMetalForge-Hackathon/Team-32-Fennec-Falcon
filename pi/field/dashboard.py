@@ -287,7 +287,7 @@ label{display:block;font-size:13px;color:var(--mut);margin:8px 0 3px}
 pre{white-space:pre-wrap;word-break:break-word;background:#0c0e10;border-radius:8px;padding:8px;margin:6px 0 0;
 font:12.5px/1.4 ui-monospace,monospace;max-height:260px;overflow:auto}
 img{width:100%;border-radius:8px;background:#000;display:block}.cams{display:grid;gap:8px;grid-template-columns:1fr}
-@media(min-width:700px){.cams{grid-template-columns:1fr 1fr 1fr}}
+@media(min-width:700px){.cams{grid-template-columns:1fr 1fr}}.cams .wide{grid-column:1/-1}
 .verdict{font-size:17px;font-weight:600}.mut{color:var(--mut);font-size:13px}#msg{min-height:20px;color:var(--warn)}
 </style></head><body>
 <h1>Eagle field <span class="mut" id="clock"></span></h1>
@@ -300,8 +300,8 @@ img{width:100%;border-radius:8px;background:#000;display:block}.cams{display:gri
 <pre id="dets"></pre><h2 style="margin-top:10px">Rescuer messages (decrypted at the Nest)</h2><pre id="nest"></pre></div>
 
 <div class="card"><h2>Live view</h2><div class="cams">
+<div class="wide"><img id="cam_standard" alt="standard camera"><div class="mut">standard camera: green TARGET = face verified, yellow POSSIBLE = appearance only, red = person</div></div>
 <div><img id="thermal" alt="thermal"><div class="mut" id="trange">thermal</div></div>
-<div><img id="cam_standard" alt="standard camera"><div class="mut">standard camera</div></div>
 <div><img id="cam_noir" alt="NoIR wide camera"><div class="mut">NoIR wide camera</div></div></div></div>
 
 <div class="card"><h2>Recording</h2><div id="rec" class="mut"></div>
@@ -354,11 +354,16 @@ async function poll(){
   const a=s.action;document.querySelectorAll('.act').forEach(b=>b.disabled=!!(a.name&&a.running));
   if(a.name){$('act').textContent=`${a.label}: ${a.running?'running '+a.elapsed_s+' s':(a.exit_code===0?'finished OK':'failed (exit '+a.exit_code+')')}`;
     $('actlog').style.display='block';$('actlog').textContent=a.log.join('\\n');}
-  const t=Date.now();$('thermal').src='/thermal.png?'+t;['standard','noir'].forEach(c=>$('cam_'+c).src='/cam/'+c+'.jpg?'+t);
+  const t=Date.now();$('thermal').src='/thermal.png?'+t;$('cam_noir').src='/cam/noir.jpg?'+t;
 }
 $('thermal').onload=async()=>{try{const h=await fetch('/thermal.json');const j=await h.json();
   if(j.min!=null)$('trange').textContent=`thermal ${j.min.toFixed(1)} to ${j.max.toFixed(1)} C`;}catch(e){}};
 poll();setInterval(poll,2500);
+// The standard camera has its own faster refresh; the next frame is requested only after the last one
+// loaded (or failed), so a slow phone link never piles up requests.
+(function camLoop(){const im=$('cam_standard');let busy=false;
+  im.onload=im.onerror=()=>{busy=false};
+  setInterval(()=>{if(!busy){busy=true;im.src='/cam/standard.jpg?'+Date.now()}},500)})();
 </script></body></html>"""
 
 

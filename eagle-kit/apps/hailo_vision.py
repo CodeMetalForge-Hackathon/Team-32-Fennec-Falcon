@@ -121,7 +121,11 @@ def split_args(argv):
     ap.add_argument("--snapshot", default=None, metavar="JPG",
                     help="also save the latest frame (person boxes drawn) to this JPEG, e.g. ~/eagle/cam_standard.jpg "
                          "(the field page shows it)")
-    ap.add_argument("--snapshot-hz", type=float, default=1.0, help="snapshot rate (default 1 per second)")
+    ap.add_argument("--snapshot-hz", type=float, default=3.0, help="snapshot rate (default 3 per second)")
+    ap.add_argument("--target-name", default=os.environ.get("EAGLE_TARGET_NAME", "Mitch"),
+                    help="name in the snapshot labels, e.g. TARGET: MITCH (default $EAGLE_TARGET_NAME or Mitch)")
+    ap.add_argument("--hold-s", type=float, default=2.0,
+                    help="keep a track green this long after its last face-verified match (default 2 s)")
     ap.add_argument("--watchdog-s", type=float, default=60.0,
                     help="exit (status 4) when no camera frame arrived for this long, so systemd restarts us; 0 = off")
     ap.add_argument("--headless", choices=["auto", "yes", "no"], default="auto",
@@ -148,32 +152,82 @@ def _arg_value(argv, name: str) -> str | None:
     return val
 
 
-class Snapshotter:
-    """Latest camera frame as a JPEG at most ``hz`` times a second. Written to a temp file and renamed, so
-    a reader (the field page) never sees a half-written image."""
+GREEN, YELLOW, RED = (0, 200, 0), (0, 215, 255), (0, 0, 230)          # BGR
 
-    def __init__(self, path, hz: float = 1.0, clock=time.monotonic):
+
+class TargetHold:
+    """Per tracker id, keeps a face-verified match (level 3) "on" for ``hold_s`` after the last one, so the
+    green TARGET box does not flicker off while the target turns their face away. Fed every frame."""
+
+    def __init__(self, hold_s: float = 2.0, clock=time.monotonic):
+        self.hold_s, self.clock = float(hold_s), clock
+        self.last = {}                                   # track id -> (time of last level 3, face score)
+
+    def observe(self, ids, identity) -> None:
+        now = self.clock()
+        for tid, ident in zip(ids or [], identity or []):
+            if ident is not None and tid is not None and int(tid) >= 0 and int(ident[0]) >= 3:
+                self.last[int(tid)] = (now, ident[2])
+        self.last = {k: v for k, v in self.last.items() if now - v[0] <= max(self.hold_s, 10.0)}
+
+    def style(self, tid, ident, name: str) -> tuple:
+        """-> (kind, label) with kind 'target' | 'possible' | 'person' for one box."""
+        level, app, face = (int(ident[0]), ident[1], ident[2]) if ident is not None else (0, None, None)
+        if level >= 3:
+            return "target", f"TARGET: {name}" + (f" {face:.2f}" if face is not None else "")
+        held = self.last.get(int(tid)) if tid is not None and int(tid) >= 0 else None
+        if held is not None and self.clock() - held[0] <= self.hold_s:
+            return "target", f"TARGET: {name}" + (f" {held[1]:.2f}" if held[1] is not None else "")
+        if level >= 1:
+            return "possible", f"POSSIBLE {name}" + (f" {app:.2f}" if app is not None else "")
+        return "person", "PERSON"
+
+
+STYLE = {"target": (GREEN, 6), "possible": (YELLOW, 3), "person": (RED, 1)}
+
+
+class Snapshotter:
+    """Latest camera frame as a JPEG at most ``hz`` times a second, boxes drawn by identity: thick green
+    "TARGET: NAME face" (face verified, held ``TargetHold.hold_s``), yellow "POSSIBLE NAME appearance",
+    thin red "PERSON". Written to a temp file and renamed, so a reader never sees a half-written image."""
+
+    def __init__(self, path, hz: float = 3.0, name: str = "TARGET", hold: TargetHold | None = None,
+                 clock=time.monotonic):
         self.path = Path(os.path.expanduser(str(path)))
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.dt = 1.0 / float(hz) if hz and hz > 0 else float("inf")
         self.clock, self.last = clock, -float("inf")
+        self.name = str(name).upper()
+        self.hold = hold if hold is not None else TargetHold(clock=clock)
 
     def due(self) -> bool:
         return self.clock() - self.last >= self.dt
 
-    def save(self, rgb, boxes=(), levels=None) -> bool:
-        """``boxes``: [x0, y0, x1, y1, score] pixels; ``levels``: identity match level per box (or None)."""
+    def draw(self, rgb, boxes=(), ids=None, identity=None):
+        """-> (BGR image with boxes drawn, [kind per box])."""
+        import cv2
+        img = np.ascontiguousarray(np.asarray(rgb)[..., :3][..., ::-1])          # RGB -> BGR for OpenCV
+        kinds = []
+        for k, b in enumerate(boxes):
+            tid = ids[k] if ids is not None and k < len(ids) else None
+            ident = identity[k] if identity is not None and k < len(identity) else None
+            kind, label = self.hold.style(tid, ident, self.name)
+            kinds.append(kind)
+            color, thick = STYLE[kind]
+            x0, y0, x1, y1 = (int(round(v)) for v in b[:4])
+            cv2.rectangle(img, (x0, y0), (x1, y1), color, thick)
+            scale, tt = (0.9, 2) if kind != "person" else (0.6, 1)
+            (tw, th), base = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, scale, tt)
+            ty = y0 - 6 if y0 - th - 10 >= 0 else y0 + th + 8                 # above the box, or inside at the top
+            cv2.rectangle(img, (x0, ty - th - 4), (x0 + tw + 8, ty + base), color, -1)
+            cv2.putText(img, label, (x0 + 4, ty), cv2.FONT_HERSHEY_SIMPLEX, scale,
+                        (0, 0, 0) if kind == "possible" else (255, 255, 255), tt, cv2.LINE_AA)
+        return img, kinds
+
+    def save(self, rgb, boxes=(), ids=None, identity=None) -> bool:
         import cv2
         self.last = self.clock()
-        img = np.ascontiguousarray(np.asarray(rgb)[..., :3][..., ::-1])          # RGB -> BGR for OpenCV
-        for k, b in enumerate(boxes):
-            x0, y0, x1, y1 = (int(round(v)) for v in b[:4])
-            lvl = int(levels[k]) if levels and k < len(levels) else 0
-            color = (0, 0, 255) if lvl >= 2 else (0, 200, 255) if lvl == 1 else (0, 255, 0)
-            cv2.rectangle(img, (x0, y0), (x1, y1), color, 2)
-            label = f"{b[4]:.2f}" + (f" ID{lvl}" if lvl else "") if len(b) > 4 else ""
-            if label:
-                cv2.putText(img, label, (x0, max(12, y0 - 4)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+        img, _ = self.draw(rgb, boxes, ids, identity)
         ok, jpg = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 80])
         if not ok:
             return False
@@ -274,7 +328,8 @@ def main(argv=None) -> None:
 
     writer = RateLimitedWriter(ours.jsonl, ours.rate)
     print(f"writing person boxes to {writer.path}", flush=True)
-    snap = Snapshotter(ours.snapshot, ours.snapshot_hz) if ours.snapshot else None
+    snap = Snapshotter(ours.snapshot, ours.snapshot_hz, name=ours.target_name,
+                       hold=TargetHold(ours.hold_s)) if ours.snapshot else None
     if snap:
         print(f"snapshots ({ours.snapshot_hz:g}/s) to {snap.path}", flush=True)
 
@@ -308,10 +363,12 @@ def main(argv=None) -> None:
             frame = get_numpy_from_buffer(buffer, fmt, w, h)            # RGB
             identity = [matcher.update(tid, frame, b[:4]) for tid, b in zip(ids, boxes)]
         writer.write(vision_line(time.time(), boxes, w, h, ids, identity), has_boxes=bool(boxes))
+        if snap is not None:
+            snap.hold.observe(ids, identity)                           # every frame, not only drawn ones
         if snap is not None and snap.due():
             try:
-                snap.save(get_numpy_from_buffer(buffer, fmt, w, h) if frame is None else frame, boxes,
-                          [lv for lv, _, _ in identity] if identity else None)
+                snap.save(get_numpy_from_buffer(buffer, fmt, w, h) if frame is None else frame, boxes, ids,
+                          identity)
             except Exception as e:                                  # never let a snapshot stop detection
                 print(f"snapshot error: {type(e).__name__}: {e}", flush=True)
 

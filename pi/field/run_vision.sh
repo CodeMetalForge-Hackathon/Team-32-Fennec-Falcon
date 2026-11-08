@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # eagle-vision.service: Pi camera -> Hailo person boxes (+ identity) -> ~/eagle/vision.jsonl.
 # The camera is picked by sensor name: camera.sensor in field.yaml, or EAGLE_CAMERA=imx708_wide_noir to override.
-# A 1/s snapshot (boxes drawn) goes to ~/eagle/cam_<name>.jpg for the field page: name "noir" for a
+# A 3/s snapshot (boxes drawn by identity: green TARGET, yellow POSSIBLE, red PERSON) goes to ~/eagle/cam_<name>.jpg for the field page: name "noir" for a
 # *_noir sensor, else "standard" (EAGLE_CAMERA_NAME overrides).
 # Sets up what ~/hailo-apps/setup_env.sh would (it needs an interactive shell in its own folder).
 set -euo pipefail
@@ -22,7 +22,7 @@ case "$sensor" in *noir*) default_name=noir ;; *) default_name=standard ;; esac
 CAM_NAME="${EAGLE_CAMERA_NAME:-$default_name}"
 
 args=(--jsonl "$HOME/eagle/vision.jsonl" --headless yes --config "$FIELD_YAML"
-      --snapshot "$HOME/eagle/cam_${CAM_NAME}.jpg" --snapshot-hz 1)
+      --snapshot "$HOME/eagle/cam_${CAM_NAME}.jpg" --snapshot-hz 3)
 if [ -n "${EAGLE_CAMERA:-}" ]; then
   args+=(--camera "$EAGLE_CAMERA")
 fi

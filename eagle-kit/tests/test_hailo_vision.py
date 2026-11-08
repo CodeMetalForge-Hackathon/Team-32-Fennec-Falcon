@@ -110,17 +110,47 @@ def test_frame_watchdog(hv):
 
 
 def test_snapshotter_rate_and_atomic_write(hv, tmp_path):
-    cv2 = pytest.importorskip("cv2")
+    pytest.importorskip("cv2")
     now = [0.0]
-    snap = hv.Snapshotter(tmp_path / "eagle" / "cam_standard.jpg", hz=1.0, clock=lambda: now[0])
-    rgb = np.zeros((72, 128, 3), np.uint8)
-    rgb[..., 0] = 255                                                  # red in RGB
-    assert snap.due() and snap.save(rgb, [[10, 10, 50, 60, 0.9]], levels=[3])
-    img = cv2.imread(str(snap.path))
-    assert img.shape == (72, 128, 3) and img[40, 100, 2] > 200 and img[40, 100, 0] < 60   # stored as BGR red
-    assert not list(snap.path.parent.glob("*.tmp"))
-    now[0] = 0.5
+    snap = hv.Snapshotter(tmp_path / "eagle" / "cam_standard.jpg", clock=lambda: now[0])
+    assert snap.dt == pytest.approx(1 / 3)                              # 3 per second by default
+    assert snap.due() and snap.save(np.zeros((72, 128, 3), np.uint8), [[10, 10, 50, 60, 0.9]])
+    assert snap.path.stat().st_size > 0 and not list(snap.path.parent.glob("*.tmp"))
+    now[0] = 0.2
     assert not snap.due()
-    now[0] = 1.0
+    now[0] = 0.34
     assert snap.due()
-    assert hv.split_args(["--snapshot", "x.jpg"])[0].snapshot == "x.jpg"
+    a = hv.split_args(["--snapshot", "x.jpg"])[0]
+    assert a.snapshot == "x.jpg" and a.snapshot_hz == 3.0 and a.hold_s == 2.0
+
+
+def test_snapshot_styles_by_match_level(hv, tmp_path):
+    pytest.importorskip("cv2")
+    snap = hv.Snapshotter(tmp_path / "c.jpg", name="Mitch", clock=lambda: 0.0)
+    rgb = np.full((300, 600, 3), 128, np.uint8)
+    boxes = [[20, 60, 180, 280, 0.9], [220, 60, 380, 280, 0.8], [420, 60, 580, 280, 0.7]]
+    ident = [(3, 0.61, 0.52), (2, 0.47, None), (0, 0.12, None)]
+    img, kinds = snap.draw(rgb, boxes, ids=[1, 2, 3], identity=ident)
+    assert kinds == ["target", "possible", "person"]
+    assert hv.TargetHold().style(1, ident[0], "MITCH")[1] == "TARGET: MITCH 0.52"
+    assert hv.TargetHold().style(2, ident[1], "MITCH")[1] == "POSSIBLE MITCH 0.47"
+    assert hv.TargetHold().style(3, ident[2], "MITCH")[1] == "PERSON"
+    assert hv.TargetHold().style(4, None, "MITCH")[1] == "PERSON"     # no profile loaded
+    # box edges in BGR (OpenCV centres the line on the edge): green 6 px wide, yellow, red 1 px wide
+    assert tuple(img[200, 17]) == hv.GREEN and tuple(img[200, 22]) == hv.GREEN
+    assert tuple(img[200, 25]) == (128, 128, 128)
+    assert tuple(img[200, 220]) == hv.YELLOW
+    assert tuple(img[200, 420]) == hv.RED and tuple(img[200, 423]) == (128, 128, 128)
+
+
+def test_target_stays_green_for_hold_after_last_face_match(hv):
+    now = [0.0]
+    hold = hv.TargetHold(2.0, clock=lambda: now[0])
+    hold.observe([7, 8], [(3, 0.6, 0.55), (0, 0.1, None)])
+    now[0] = 1.5                                                        # face turned away: appearance only
+    hold.observe([7], [(1, 0.45, None)])
+    assert hold.style(7, (1, 0.45, None), "MITCH") == ("target", "TARGET: MITCH 0.55")
+    assert hold.style(8, (0, 0.1, None), "MITCH")[0] == "person"       # held per track, not for everyone
+    now[0] = 2.1
+    assert hold.style(7, (1, 0.45, None), "MITCH") == ("possible", "POSSIBLE MITCH 0.45")
+    assert hold.style(-1, (0, 0.1, None), "MITCH")[0] == "person"      # untracked boxes are never held
