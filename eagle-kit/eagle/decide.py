@@ -21,27 +21,34 @@ for every track, and writes the answer and its reasons to the decision log.
 2. May it transmit?
    SEND only when every gate holds:
    * P >= ``p_send`` for the mode (strict 0.99, default 0.95, training 0.95 but radio muted);
-   * corroboration: the briefed-code rule (>= 3 code events within 180 s on bearings within
-     +-10 deg, mean confidence >= 0.9 when the detector reports one) OR >= 2 independent sensor
-     modalities (thermal, acoustic, vision, radar, tag), so one detector's false alarm can
-     never report on its own;
-   * dwell: the track is >= ``min_dwell_s`` old and was seen within ``fresh_s``;
+   * corroboration: the briefed-code rule (>= 3 code events within 180 s, every bearing within
+     +-10 deg of the group's mean, mean confidence >= 0.9 when the detector reports one) OR >= 2
+     independent kinds of evidence: imaging (thermal and the camera seeing one body count once),
+     sound, radar, tag, identity. Code events before the rule holds add their LR but no kind, so
+     one detector's false alarm can never report on its own;
+   * dwell: the track is >= ``min_dwell_s`` old and was seen within ``fresh_s``; a track that
+     inherited a dead track's evidence must also have stayed still for ``moving_window_s``;
    * fix: circular error <= ``max_ce_m``;
-   * EMCON: no unknown person within the burst's intercept radius of the perch and no briefed
-     threat inside it (``mission.threat_dist_m``). Otherwise HOLD and ask to relocate
+   * EMCON: nobody else in view within the burst's intercept radius of the perch (anyone we
+     cannot call him is a possible listener, whatever their P, however close to him) and no
+     briefed threat inside it (``mission.threat_dist_m``). Otherwise HOLD and ask to relocate
      (``REQUEST_RELOCATE`` in the decision log; ``touch ~/eagle/relocated`` or the autopilot
-     signals it is done). In default mode an injured person's report goes anyway after
-     ``max_hold_injured_s`` (15 min); strict mode never sends from the perch while blocked.
+     signals it is done). A held report stays held until it is sent, even if he drops out of
+     view: relocation releases it, so does EMCON clear for ``clear_s`` while he is still in view,
+     and in default mode an injured person's report goes anyway ``max_hold_injured_s`` (15 min)
+     after the hold began; strict mode never sends from the perch while blocked.
 
    One report per person: a report goes out as two bursts of the same sealed frame 30-120 s
    apart (the Nest's replay window keeps one; one marker in ATAK), then the subject is
-   REPORTED. It is re-sent only if he moved > ``resend_move_m``, the identity level rose or
-   the flags changed, at most ``max_per_hour`` reports in all. Strict mode never re-sends,
-   never logs positions and drops the fix from memory after the second burst.
+   REPORTED. The only follow-up is one MOVED past max(100 m, 2 x the 95 % radius) in default
+   mode, at most ``max_per_hour`` reports in all. Strict mode never re-sends, never logs
+   positions and drops the fix from memory after the second burst.
 
-Bearing-only: briefed-code events heard on a bearing with no track (thermal fails in the
-afternoon, Fennec V without elevation) form bearing candidates. A confirmed code on a stable
-bearing can be reported as the circle that covers the ray from the perch out to
+Bearing-only: briefed-code events heard on a bearing only (thermal fails in the afternoon,
+Fennec V without elevation) form bearing candidates, even when one person is seen on that
+bearing: the Eagle cannot tell him from someone hidden behind him, so the person seen is a
+possible listener and the report is a BEARING, never a fix on the person seen. A confirmed code
+on a stable bearing is reported as the circle that covers the ray from the perch out to
 ``bearing_only.range_m``.
 
 Everything here is pure logic: no hardware, no radio. :mod:`apps.eagle_runtime` feeds it and
@@ -65,7 +72,14 @@ from .config import deep_merge
 from .fusion import LifeDetection, LifeList
 
 MODES = ("strict", "default", "training")
-MODALITIES = ("thermal", "acoustic", "vision", "radar", "tag")
+MODALITIES = ("thermal", "acoustic", "vision", "radar", "tag", "identity")
+KINDS = {"thermal": "imaging", "vision": "imaging"}   # one body seen by the thermal and the Pi camera
+
+
+def evidence_kinds(mods) -> list:
+    """Independent kinds of evidence behind the modalities: thermal and the camera seeing the
+    same body count once (imaging); sound, radar, tag and identity each count on their own."""
+    return sorted({KINDS.get(m, m) for m in mods})
 
 DEFAULTS: dict = {
     "mode": "default",
@@ -103,7 +117,7 @@ DEFAULTS: dict = {
     "gate": {"min_dwell_s": 20.0, "fresh_s": 120.0, "max_ce_m": 200.0},
     "geometry": {"merge_radius_m": 1.5, "alone_radius_m": 30.0, "group_radius_m": 5.0,
                  "still_radius_m": 3.0, "still_sample_s": 10.0, "moving_window_s": 60.0, "moving_m": 10.0,
-                 "inherit_radius_m": 5.0, "inherit_s": 1800.0},
+                 "inherit_radius_m": 2.0, "inherit_s": 1800.0},   # he is immobile: reborn within 2 m
     "emcon": {"min_radius_m": 30.0, "eavesdropper_dbm": -115.0, "clear_s": 120.0,
               "max_hold_s": 7200.0, "max_hold_injured_s": 900.0, "relocated_flag": "~/eagle/relocated"},
     "report": {"format": "fennec15",           # fennec15: the 15-byte Fennec Fix | fix48: the kit's 48-byte FIX
@@ -122,7 +136,8 @@ DEFAULTS: dict = {
         "courier": False,                      # True: the airframe can carry the sealed report out
         "courier_flag": "~/eagle/at_nest",     # newer than the hold = the courier reached the Nest: burst now
         "iridium": None},                      # {port: /dev/ttyUSB1, baud: 19200}: RockBLOCK 9603N
-    "bearing_only": {"enabled": True, "range_m": 150.0, "stable_span_s": 300.0, "lr_stable": 2.0},
+    "bearing_only": {"enabled": True, "range_m": 150.0, "stable_span_s": 300.0, "lr_stable": 2.0,
+                     "expire_s": 1800.0},      # a candidate with no code event for this long is dropped
     "log": {"path": "~/eagle/decisions.jsonl", "every_s": 10.0},
 }
 
@@ -279,6 +294,9 @@ class Belief:
     decided_t: float | None = None
     reported: dict | None = None
     n_reports: int = 0
+    hold_xy: np.ndarray | None = None        # where he was when his report passed the gate and was held
+    lost_t: float | None = None              # his track ended while his report was held: kept, frozen
+    inherited_t: float | None = None         # took a dead track's evidence: must stay still before a SEND
 
     def clues(self, lr: dict) -> list:
         out = []
@@ -291,7 +309,7 @@ class Belief:
                             "vision", f"camera person box ({self.vision})"))
         if self.id_level:
             ids = {int(k): float(v) for k, v in lr["identity"].items()}
-            out.append(Clue("identity", ids.get(self.id_level, 1.0), "vision",
+            out.append(Clue("identity", ids.get(self.id_level, 1.0), "identity",
                             f"identity {P.ID_LEVEL_NAMES.get(self.id_level, self.id_level)}"))
         if self.breathing:
             out.append(Clue("breathing", lr["breathing"], "radar", "radar: breathing"))
@@ -301,8 +319,8 @@ class Belief:
             out.append(Clue("tag", lr["tag"], "tag", "authenticated tag reply"))
         if self.code_confirmed_t is not None:
             out.append(Clue("code", lr["code"], "acoustic", "briefed code confirmed"))
-        elif self.code_best_n:
-            out.append(Clue("code", lr["code_event"] ** self.code_best_n, "acoustic",
+        elif self.code_best_n:             # LR, but no kind of evidence: one false match must not corroborate
+            out.append(Clue("code", lr["code_event"] ** self.code_best_n, "code-pending",
                             f"briefed code heard x{self.code_best_n} (not yet confirmed)"))
         for k, n in self.events.items():
             if n:
@@ -452,6 +470,8 @@ class DecisionEngine:
         self.code_kind = {c.get("name"): c.get("kind", "whistle") for c in (codes or []) if isinstance(c, dict)}
         self.area = self._area(self.c["mission"].get("search_area"), frame)
         self._next_bearing = 1
+        self._batch: dict = {}                   # track id -> {(sensor, t)} of the batch being ingested
+        self._clear_stale_relocated_flag()
 
     # ---- configuration helpers ------------------------------------------------------------------
     @staticmethod
@@ -484,16 +504,37 @@ class DecisionEngine:
         """The Eagle has moved away from him (autopilot callback or the relocated flag file)."""
         self.relocated_t = time.time() if t is None else t
 
-    def _relocated_since(self, t0: float) -> bool:
+    def _relocated_flag(self) -> Path | None:
         flag = self.c["emcon"].get("relocated_flag")
-        if flag:
-            p = Path(os.path.expanduser(str(flag)))
-            try:
-                if p.exists() and p.stat().st_mtime >= t0:
-                    return True
-            except OSError:
-                pass
-        return self.relocated_t is not None and self.relocated_t >= t0
+        return Path(os.path.expanduser(str(flag))) if flag else None
+
+    def _clear_stale_relocated_flag(self) -> None:
+        """A flag left from a rehearsal must never release a hold of this run."""
+        p = self._relocated_flag()
+        try:
+            if p is not None and p.exists():
+                p.unlink()
+                self.log(f"DECIDE  removed a stale relocation flag ({p}) left from an earlier run")
+        except OSError as e:
+            self.log(f"DECIDE  cannot remove the stale relocation flag {p}: {e}; relocation flag ignored")
+            self.c["emcon"]["relocated_flag"] = None
+
+    def _poll_relocated(self, now: float) -> None:
+        """The flag file is a one-shot signal on the engine's own clock: seen, consumed, timed now.
+        (Comparing its mtime with the hold breaks when the Pi's clock jumps.)"""
+        p = self._relocated_flag()
+        try:
+            if p is None or not p.exists():
+                return
+            p.unlink()
+        except OSError as e:
+            self.log(f"DECIDE  relocation flag {p} not consumed ({e}); ignored")
+            return
+        self.mark_relocated(now)
+        self.log("DECIDE  relocation signalled: held reports may go")
+
+    def _relocated_since(self, t0: float) -> bool:
+        return self.relocated_t is not None and self.relocated_t > t0
 
     # ---- evidence ---------------------------------------------------------------------------------
     def _resolve(self, track_id: int) -> int:
@@ -503,24 +544,29 @@ class DecisionEngine:
             track_id = self.alias[track_id]
         return track_id
 
-    def _near_live(self, xy) -> Belief | None:
+    def _near_live(self, xy, seen_with: set) -> Belief | None:
+        """The live belief a new track may be a duplicate of: within the merge radius, and not
+        seen by the same sensor in the same batch (two blobs in one thermal frame are two people)."""
         merge = float(self.c["geometry"]["merge_radius_m"])
         best, bd = None, merge
         for b in self.beliefs.values():
-            if b.track_id is None or b.xy is None:
+            if b.track_id is None or b.xy is None or b.lost_t is not None:
+                continue
+            ids = [b.track_id] + [d for d, p in self.alias.items() if self._resolve(p) == b.track_id]
+            if any(self._batch.get(i, set()) & seen_with for i in ids):
                 continue
             d = float(np.hypot(*(np.asarray(xy, float)[:2] - b.xy)))
             if d <= bd:
                 best, bd = b, d
         return best
 
-    def _belief(self, track_id: int, t: float, xy=None) -> Belief:
+    def _belief(self, track_id: int, t: float, xy=None, may_alias: bool = False) -> Belief:
         tid = self._resolve(track_id)
         key = f"track:{tid}"
         b = self.beliefs.get(key)
         if b is None:
-            if xy is not None:
-                prim = self._near_live(xy)
+            if xy is not None and may_alias:
+                prim = self._near_live(xy, self._batch.get(track_id, set()))
                 if prim is not None:      # the life list started a second track on the same person
                     self.alias[track_id] = prim.track_id
                     return prim
@@ -543,13 +589,21 @@ class DecisionEngine:
                           "events", "code_best_n", "code_confirmed_t", "status_bits", "cls", "reported", "n_reports"):
                     setattr(b, k, getattr(old, k))
                 b.code_events = deque(old.code_events)
+                b.inherited_t = b.born
                 del self.graveyard[i]
-                self.log(f"DECIDE  track {b.track_id} inherits the evidence of {old.subject} (same spot)")
+                self.log(f"DECIDE  track {b.track_id} inherits the evidence of {old.subject} (same spot); "
+                         f"it must stay still {self.c['geometry']['moving_window_s']:.0f} s before a report")
                 return
 
     def observe(self, track_id: int, det: LifeDetection) -> None:
         """One detection the life list attached to ``track_id``."""
-        b = self._belief(track_id, det.t, det.xy if det.is_point else None)
+        if (det.kind == "SOUND" and det.category == "SIGNAL" and (det.source or "").startswith("code:")
+                and not det.is_point):
+            # a code on a bearing only: the person seen on that bearing may not be the one tapping
+            # (someone hidden behind him could be). It goes to a bearing candidate, never to him.
+            self.observe_bearing(det)
+            return
+        b = self._belief(track_id, det.t, det.xy if det.is_point else None, may_alias=True)
         b.last_seen = max(b.last_seen, det.t)
         b.status_bits |= int(det.status_bits or 0)
         k, src = det.kind, det.source or ""
@@ -626,8 +680,14 @@ class DecisionEngine:
     def ingest(self, life: LedgerLifeList) -> None:
         """Feed everything the life list attached since the last call."""
         attached, unlocated = life.take_ledger()
+        self._batch = {}
         for tid, det in attached:
-            self.observe(tid, det)
+            self._batch.setdefault(tid, set()).add((sensor_of(det), round(float(det.t), 3)))
+        try:
+            for tid, det in attached:
+                self.observe(tid, det)
+        finally:
+            self._batch = {}
         for det in unlocated:
             if det.kind == "SOUND" and det.category == "SIGNAL":
                 self.observe_bearing(det)
@@ -643,6 +703,10 @@ class DecisionEngine:
         for t in tracks:
             if t.id in self.alias:
                 continue                                          # its evidence feeds the primary track
+            b = self.beliefs.get(f"track:{self._resolve(t.id)}")
+            if (b is not None and b.hold_xy is not None and not self.c["mission"].get("target_mobile", False)
+                    and float(np.hypot(*(pos[t.id] - b.hold_xy))) > float(g["still_radius_m"])):
+                self._detach_held(b, now, float(np.hypot(*(pos[t.id] - b.hold_xy))))
             b = self._belief(t.id, now, pos[t.id])
             b.xy, b.ce_m = pos[t.id], float(t.ce_m)
             b.status_bits |= int(t.status_bits or 0)
@@ -651,8 +715,8 @@ class DecisionEngine:
                 while b.hist and now - b.hist[0][0] > 7200.0 + 2 * float(g["still_sample_s"]):
                     b.hist.popleft()
             geo = {}
-            d = [float(np.hypot(*(pos[o] - pos[t.id]))) for o in pos if o != t.id]
-            d = [x for x in d if x > float(g["merge_radius_m"])]          # closer: the same person twice
+            me = self._resolve(t.id)          # a duplicate track of the same person is not company
+            d = [float(np.hypot(*(pos[o] - pos[t.id]))) for o in pos if o != t.id and self._resolve(o) != me]
             if any(x <= float(g["group_radius_m"]) for x in d):
                 geo["group"] = Clue("group", lr["group"], "context", "another person within "
                                     f"{g['group_radius_m']:.0f} m")
@@ -667,6 +731,18 @@ class DecisionEngine:
                 geo["moving"] = Clue("moving", lr["moving"], "context",
                                      f"moved > {g['moving_m']:.0f} m in {g['moving_window_s']:.0f} s")
             b.geo = geo
+
+    def _detach_held(self, b: Belief, now: float, jump_m: float) -> None:
+        """His track left the spot where his report was held (he is immobile): the life list has most
+        likely given his stale track to someone else. His held report stays, frozen at his fix; the
+        track starts afresh as whoever it now follows (a possible listener)."""
+        del self.beliefs[b.subject]
+        for d in [d for d, p in self.alias.items() if self._resolve(p) == b.track_id]:
+            del self.alias[d]
+        b.subject, b.track_id, b.lost_t = f"{b.subject}@held", -abs(int(b.track_id)) - 1_000_000, now
+        self.beliefs[b.subject] = b
+        self.log(f"DECIDE  {b.subject}: his track moved {jump_m:.1f} m from where his report was held; the report "
+                 "stays held at his fix and the track starts afresh")
 
     def _still(self, b: Belief, now: float, T: float) -> bool:
         g = self.c["geometry"]
@@ -707,22 +783,34 @@ class DecisionEngine:
     def tick(self, now: float, life: LifeList) -> list:
         """Re-evaluate every subject at ``now``; returns one :class:`Decision` per subject,
         most probable first. At most one subject per tick gets SEND."""
+        self._poll_relocated(now)
         tracks = [t for t in life.tracks if not t.rf_only]
         ids = {t.id for t in tracks}
         self.alias = {d: p for d, p in self.alias.items() if d in ids}
         for key in [k for k, b in self.beliefs.items() if b.track_id is not None and b.track_id not in ids]:
-            b = self.beliefs.pop(key)
+            b = self.beliefs[key]
+            if b.hold_t is not None and b.lost_t is not None:
+                continue                                          # held and out of view: stays, frozen
             heir = next((d for d, p in self.alias.items() if p == b.track_id), None)
             if heir is not None:                                  # the duplicate lives on: it carries the belief
+                del self.beliefs[key]
                 for d in [d for d, p in self.alias.items() if p == b.track_id]:
                     self.alias[d] = heir
                 del self.alias[heir]
                 b.track_id, b.subject = heir, f"track:{heir}"
                 self.beliefs[b.subject] = b
+            elif b.hold_t is not None:                            # his report is held: losing sight of him
+                b.lost_t = now                                    # (the Eagle may be flying off) keeps it
+                self.log(f"DECIDE  {b.subject}: out of view while held; his report stays held at his last fix")
             else:
+                del self.beliefs[key]
                 self.graveyard.append((now, b))
         while self.graveyard and now - self.graveyard[0][0] > float(self.c["geometry"]["inherit_s"]):
             self.graveyard.popleft()
+        expire = float(self.c["bearing_only"].get("expire_s", 1800.0))
+        for key in [k for k, b in self.beliefs.items() if b.track_id is None and b.hold_t is None
+                    and b.reported is None and now - b.last_seen > expire]:
+            del self.beliefs[key]                                 # a stale candidate never re-arms on one event
         self._geometry(now, tracks)
         for b in self.beliefs.values():
             if b.track_id is None:
@@ -744,17 +832,31 @@ class DecisionEngine:
 
     def _unknowns(self, b: Belief) -> list:
         """Other people in view who have not passed the gate themselves, as (subject, xy). Anyone
-        we cannot call him is a possible listener, whatever their P."""
-        merge = float(self.c["geometry"]["merge_radius_m"])
-        out = []
-        for o in self.beliefs.values():
-            if o is b or o.track_id is None or o.xy is None:
-                continue
-            if b.xy is not None and b.track_id is not None and float(np.hypot(*(o.xy - b.xy))) <= merge:
-                continue
-            if o.p(self.lr) < float(self.m["p_send"]):
-                out.append((o.subject, o.xy))
-        return out
+        we cannot call him is a possible listener, whatever their P and however close to him.
+        Duplicate tracks of one person share one belief, so they do not count; nor does a held
+        subject who is out of view."""
+        return [(o.subject, o.xy) for o in self.beliefs.values()
+                if o is not b and o.track_id is not None and o.xy is not None and o.lost_t is None]
+
+    def _emcon(self, b: Belief | None) -> tuple:
+        """-> (intercept radius, blockers, threatened, contested, why) for a burst from the perch now."""
+        r = self.intercept_radius()
+        blockers = [s for s, xy in self._unknowns(b) if float(np.hypot(*(xy - self.perch))) <= r]
+        threat = self.c["mission"].get("threat_dist_m")
+        threatened = threat is not None and float(threat) <= r
+        contested = bool(self.c["mission"].get("contested")) and self.mode != "training"
+        why = (f"{len(blockers)} other person(s) in view within the {r:.0f} m intercept radius" if blockers else
+               f"briefed threat {float(threat):.0f} m away, inside the {r:.0f} m intercept radius" if threatened
+               else "contested ground: never from the perch it listened from" if contested else "")
+        return r, blockers, threatened, contested, why
+
+    def listeners_now(self, subject: str) -> str:
+        """Why a burst from the perch now could be overheard by someone in view ('' = nobody): the
+        runtime asks again before the second burst. The briefed threat and contested ground were
+        already weighed for the first burst and are not asked again."""
+        b = self.beliefs.get(subject) or next((o for _, o in self.graveyard if o.subject == subject), None)
+        r, blockers, *_ = self._emcon(b)
+        return f"{len(blockers)} other person(s) in view within the {r:.0f} m intercept radius" if blockers else ""
 
     def _false_alarm(self, b: Belief) -> str:
         why = [w for w, on in (("authenticated tag", b.tag), ("briefed code", b.code_confirmed_t is not None),
@@ -766,14 +868,17 @@ class DecisionEngine:
         return "HIGH: warm, still and alone; a resting sentry or a sleeping farmer looks the same"
 
     def _decide(self, b: Belief, now: float) -> Decision:
-        lr, gt, m, e = self.lr, self.c["gate"], self.m, self.c["emcon"]
+        lr, gt, m = self.lr, self.c["gate"], self.m
         clues = sorted(b.clues(lr), key=lambda c: -abs(math.log(c.lr)))
         p = _odds_to_p(b.prior_lo + sum(math.log(c.lr) for c in clues))
         mods = sorted({c.modality for c in clues if c.lr > 1.0 and c.modality in MODALITIES})
+        kinds = evidence_kinds(mods)
+        settled = b.inherited_t is None or self._still(b, now, float(self.c["geometry"]["moving_window_s"]))
         gates = {
             "p": p >= float(m["p_send"]),
-            "corroborated": b.code_confirmed_t is not None or len(mods) >= int(m["min_modalities"]),
-            "dwell": now - b.born >= float(gt["min_dwell_s"]) and now - b.last_seen <= float(gt["fresh_s"]),
+            "corroborated": b.code_confirmed_t is not None or len(kinds) >= int(m["min_modalities"]),
+            "dwell": (now - b.born >= float(gt["min_dwell_s"]) and now - b.last_seen <= float(gt["fresh_s"])
+                      and settled),
             "fix": b.ce_m is not None and b.ce_m <= float(gt["max_ce_m"]),
         }
         d = Decision(now, b.subject, b.track_id, WATCH, p, "", gates, clues, mods, b.xy, b.ce_m,
@@ -781,12 +886,18 @@ class DecisionEngine:
         if b.track_id is None and self._covered_by_track(b):
             d.reason = "a track on this bearing carries the evidence"
             return d
+        if b.hold_t is not None:              # passed the gate earlier and waits for EMCON: stays held
+            if b.lost_t is None and not gates["p"]:
+                b.hold_t = b.blocked_t = b.hold_xy = None
+                b.relocate_requested = False
+                self.log(f"DECIDE  {b.subject}: hold dropped, P fell to {p:.3f}")
+            else:
+                return self._held(b, d, now)
         if not all(gates.values()):
-            d.reason = self._why_not(b, p, mods, gates, now)
+            d.reason = self._why_not(b, p, mods, kinds, gates, now)
             if b.reported:
                 d.action = REPORTED
                 d.reason = f"reported {b.n_reports}x; " + d.reason
-            b.hold_t = None
             return d
         if b.decided_t is None:
             b.decided_t = now
@@ -803,65 +914,85 @@ class DecisionEngine:
         if len(self.sent_t) >= int(self.c["report"]["max_per_hour"]):
             d.action, d.reason = HOLD, f"report budget used ({self.c['report']['max_per_hour']} per hour)"
             return d
-        # EMCON
-        r = self.intercept_radius()
-        blockers = [s for s, xy in self._unknowns(b) if float(np.hypot(*(xy - self.perch))) <= r]
-        threat = self.c["mission"].get("threat_dist_m")
-        threatened = threat is not None and float(threat) <= r
-        contested = bool(self.c["mission"].get("contested")) and self.mode != "training"
+        r, blockers, threatened, contested, _ = self._emcon(b)
         if blockers or threatened or contested:
-            b.blocked_t = now
-        if b.hold_t is not None and self._relocated_since(b.hold_t):
-            d.action = SEND
-            d.reason = (d.reason + "; " if d.reason else "") + "relocated away from him"
-            return d
-        recently_blocked = b.blocked_t is not None and now - b.blocked_t < float(e["clear_s"]) and b.hold_t is not None
-        if blockers or threatened or contested or recently_blocked:
-            if b.hold_t is None:
-                b.hold_t = now
-            injured = (b.status_bits & P.ST_INJURED) or self.c["mission"].get("target_state") == "injured"
-            max_hold = float(e["max_hold_injured_s"] if injured else e["max_hold_s"])
-            what = (f"{len(blockers)} unknown person(s) within the {r:.0f} m intercept radius" if blockers else
-                    f"briefed threat {float(threat):.0f} m away, inside the {r:.0f} m intercept radius" if threatened
-                    else "contested ground: never from the perch it listened from" if contested
-                    else f"EMCON clear for {now - b.blocked_t:.0f} of {e['clear_s']:.0f} s")
-            if not b.relocate_requested and (blockers or threatened or contested):
-                b.relocate_requested = True
-                self.log(f"ACTION  REQUEST_RELOCATE for {b.subject}: {what}; move >= 2 km away, then signal "
-                         f"(touch {e.get('relocated_flag')})")
-            if now - b.hold_t >= max_hold and m["on_hold_timeout"] == "send":
-                d.action = SEND
-                d.reason = f"held {now - b.hold_t:.0f} s ({what}); urgency: sending anyway"
-            else:
-                d.action = HOLD
-                d.reason = f"{what}; held {now - b.hold_t:.0f}/{max_hold:.0f} s" + (
-                    "" if m["on_hold_timeout"] == "send" else " (strict: waits for relocation)")
-            return d
+            b.hold_t = b.blocked_t = now
+            b.hold_xy = None if b.xy is None else np.array(b.xy, float)
+            return self._held(b, d, now)
         d.action = SEND
         d.reason = (d.reason + "; " if d.reason else "") + f"all gates hold, EMCON clear ({r:.0f} m)"
         return d
 
+    def _held(self, b: Belief, d: Decision, now: float) -> Decision:
+        """A report that passed the gate but could be overheard stays held until it goes; losing
+        sight of him does not cancel it. Released by relocation; by EMCON clear for ``clear_s``
+        while he is still in view (out of view, the Eagle may be flying off to relocate, so nobody
+        in view proves nothing); or, in default mode, by the urgency timeout counted from the hold."""
+        e, m = self.c["emcon"], self.m
+        d.false_alarm = self._false_alarm(b)
+        d.resend = b.reported is not None
+        if b.hold_xy is not None:                 # the report says where he was when it passed the gate
+            d.xy = b.hold_xy
+        if len(self.sent_t) >= int(self.c["report"]["max_per_hour"]):
+            d.action, d.reason = HOLD, f"report budget used ({self.c['report']['max_per_hour']} per hour)"
+            return d
+        held = now - b.hold_t
+        if self._relocated_since(b.hold_t):
+            d.action, d.reason = SEND, f"held {held:.0f} s; relocated away from him"
+            return d
+        r, blockers, threatened, contested, what = self._emcon(b)
+        if blockers or threatened or contested:
+            b.blocked_t = now
+            if not b.relocate_requested:
+                b.relocate_requested = True
+                self.log(f"ACTION  REQUEST_RELOCATE for {b.subject}: {what}; move >= 2 km away, then signal "
+                         f"(touch {e.get('relocated_flag')})")
+        clear_for = now - (b.blocked_t if b.blocked_t is not None else b.hold_t)
+        in_view = b.lost_t is None and now - b.last_seen <= float(self.c["gate"]["fresh_s"])
+        if not (blockers or threatened or contested) and in_view and clear_for >= float(e["clear_s"]):
+            d.action, d.reason = SEND, f"held {held:.0f} s; EMCON clear for {clear_for:.0f} s ({r:.0f} m)"
+            return d
+        injured = (b.status_bits & P.ST_INJURED) or self.c["mission"].get("target_state") == "injured"
+        max_hold = float(e["max_hold_injured_s"] if injured else e["max_hold_s"])
+        why = what or (f"EMCON clear for {clear_for:.0f} of {e['clear_s']:.0f} s" if in_view
+                       else "out of view: waits for relocation" + (" or the timeout" if m["on_hold_timeout"] == "send"
+                                                                    else ""))
+        if held >= max_hold and m["on_hold_timeout"] == "send":
+            d.action, d.reason = SEND, f"held {held:.0f} s ({why}); urgency: sending anyway"
+            return d
+        d.action = HOLD
+        d.reason = f"{why}; held {held:.0f}/{max_hold:.0f} s" + (
+            "" if m["on_hold_timeout"] == "send" else " (strict: waits for relocation)")
+        return d
+
     def _covered_by_track(self, b: Belief) -> bool:
+        """A bearing candidate defers to a track on its bearing only if that track holds code
+        evidence of its own (a code with a position); a person merely seen there does not."""
         tol = float(self.c["code"]["bearing_tol_deg"])
         for o in self.beliefs.values():
-            if o.track_id is None or o.xy is None:
+            if o.track_id is None or o.xy is None or o.lost_t is not None:
+                continue
+            if o.code_confirmed_t is None and not o.code_best_n:
                 continue
             az = math.degrees(math.atan2(*(o.xy - self.perch)[::-1]))
-            if abs(ang_diff_deg(az, b.az_deg)) <= tol and o.p(self.lr) >= 0.5:
+            if abs(ang_diff_deg(az, b.az_deg)) <= tol:
                 return True
         return False
 
-    def _why_not(self, b, p, mods, gates, now) -> str:
+    def _why_not(self, b, p, mods, kinds, gates, now) -> str:
         m, gt = self.m, self.c["gate"]
         if not gates["p"]:
             return f"P {p:.3f} < {m['p_send']}"
         if not gates["corroborated"]:
-            return (f"one modality ({', '.join(mods) or 'none'}); needs {m['min_modalities']} "
-                    f"or the briefed-code rule")
+            return (f"one kind of evidence ({', '.join(mods) or 'none'}); needs {m['min_modalities']} "
+                    f"(thermal and camera count as one) or the briefed-code rule")
         if not gates["dwell"]:
             if now - b.last_seen > float(gt["fresh_s"]):
                 return f"not seen for {now - b.last_seen:.0f} s"
-            return f"held {now - b.born:.0f} of {gt['min_dwell_s']:.0f} s"
+            if now - b.born < float(gt["min_dwell_s"]):
+                return f"held {now - b.born:.0f} of {gt['min_dwell_s']:.0f} s"
+            return (f"took a dead track's evidence: must stay still "
+                    f"{self.c['geometry']['moving_window_s']:.0f} s first")
         return f"fix ce {b.ce_m if b.ce_m is not None else float('nan'):.0f} m > {gt['max_ce_m']:.0f} m"
 
     def _resend_reason(self, b: Belief, now: float) -> str:
@@ -964,9 +1095,10 @@ class DecisionEngine:
             return
         self.sent_t.append(now)
         b.n_reports += 1
-        b.reported = {"t": now, "xy": None if b.xy is None else np.array(b.xy), "id_level": b.id_level,
+        xy = b.hold_xy if b.hold_xy is not None else b.xy           # what the report said
+        b.reported = {"t": now, "xy": None if xy is None else np.array(xy), "id_level": b.id_level,
                       "status_bits": b.status_bits, "err95": self.err95(b.ce_m)}
-        b.hold_t, b.blocked_t, b.relocate_requested = None, None, False
+        b.hold_t, b.blocked_t, b.hold_xy, b.relocate_requested = None, None, None, False
 
     def wipe(self, subject: str) -> None:
         """Strict mode, after the last burst: keep that he was reported, drop where."""

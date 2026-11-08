@@ -4,6 +4,41 @@ Every build gets an entry here: what we built, why, how it works, what we decide
 
 ---
 
+## 2026-11-07 · Transmit decision v2: fixes from an independent review
+
+**Files:** [`eagle-kit/eagle/decide.py`](../eagle-kit/eagle/decide.py), [`eagle-kit/apps/eagle_runtime.py`](../eagle-kit/apps/eagle_runtime.py), [`eagle-kit/apps/replay_decisions.py`](../eagle-kit/apps/replay_decisions.py), [`eagle-kit/eagle/infer.py`](../eagle-kit/eagle/infer.py), [`eagle-kit/apps/export_thermal_calib.py`](../eagle-kit/apps/export_thermal_calib.py), [`pi/field/install.sh`](../pi/field/install.sh), [`pi/field/use_runtime.sh`](../pi/field/use_runtime.sh) · **Docs:** [pi-runtime.md](pi-runtime.md#may-it-transmit)
+
+### What
+A review of the decision code by a second agent that had not written it found 6 high, 6 medium and 5 low defects, each reproduced with a probe script. All are fixed except state persistence across restarts.
+
+### Why
+Most of the high ones let the Eagle transmit with someone close enough to hear it, or report the wrong person.
+
+### How it works
+- **Who can hear it:** everyone else in view is a possible listener, whatever their P and however close to him; two bodies in one thermal frame are two people, never one person seen twice.
+- **Holds:** a held report stays held until it is sent, at the position where it passed the gate; relocation (the flag is consumed, a stale one removed at start), EMCON clear while he is in view, or the default-mode timeout from the start of the hold release it. If his track wanders 3 m from that spot, the report stays put and the track starts afresh.
+- **Evidence:** thermal and the Pi camera on one body count as one kind; unconfirmed code events add LR but no kind; a code heard on a bearing only never goes to the person seen on that bearing; inherited evidence needs 60 s of stillness at a 2 m spot; stale bearing candidates expire after 30 min.
+- **Code rule:** every bearing within +-10 deg of the group's own mean (the old search missed a third of qualifying triples); the false-report model now includes that geometry: one per 600 days at 2 false matches an hour, 22 days at 6, 14 h at 20 (modelled).
+- **Runtime:** burst 2 waits (default) or is dropped (strict) if someone in view could hear it; a send error is logged and retried in 30 s instead of killing the process; the radio is drained every step; strict mode records nothing and keeps positions out of the console log; simulations and replays never consume the relocation flag; `install.sh` enables `eagle-life` or `eagle-runtime`, never both; a HEF without on-chip NMS falls back to the CPU; the calibration exporter reads one file at a time.
+
+### Key results (modelled)
+The six scenes give the same outcomes as v1 (night SEND at the third tap P 0.990; coughs 80 min P 0.970; code heard but unseen BEARING at 5 min P 0.971; stranger near the perch HOLD then the 15 min timeout; unconscious and patrol never). The reviewer's probes: a stranger 1.2 m from him now holds the report; one false code match plus 2 h of stillness never reports; a sentry on the code's bearing is never reported as him.
+
+### Decisions and trade-offs
+| Decision | Why | Cost |
+|---|---|---|
+| A bearing-only code never confirms the person seen on that bearing | The sentry in front of a hidden man must not be reported as him | When he is the person seen, the report is a BEARING after a hold, not a fix |
+| Everyone in view is a listener | An unknown person 1 m from him hears the burst as well as one 100 m away | A duplicate track the life list fails to merge holds the report (default sends after 15 min) |
+| Hold survives losing sight of him | Relocating means losing sight of him | A held report can go out up to 15 min (default) after he was last seen |
+
+### Verification
+365 tests pass, 4 skip. Each defect has a test that reproduces the reviewer's probe; the reviewer's probe scripts, re-run on the fixed code, give no unsafe SEND.
+
+### Open issues / next
+Decision state is still in memory only: a restart loses holds and REPORTED marks. Not on hardware yet.
+
+---
+
 ## 2026-11-07 · Transmit decision v1: what to send and how it gets home
 
 **Files:** [`eagle-kit/eagle/fennec.py`](../eagle-kit/eagle/fennec.py), [`eagle-kit/eagle/iridium.py`](../eagle-kit/eagle/iridium.py), [`eagle-kit/eagle/decide.py`](../eagle-kit/eagle/decide.py), [`eagle-kit/eagle/nest.py`](../eagle-kit/eagle/nest.py), [`eagle-kit/apps/eagle_runtime.py`](../eagle-kit/apps/eagle_runtime.py) · **Docs:** [pi-runtime.md](pi-runtime.md#what-it-sends-and-how-it-gets-home)

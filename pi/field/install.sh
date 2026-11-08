@@ -30,6 +30,12 @@ done
 if [ -n "$template" ]; then
   tmp=(); for n in "${plain[@]}"; do [ "$n" = "${template%@}" ] || tmp+=("$n"); done; plain=("${tmp[@]}")
 fi
+# eagle-runtime replaces eagle-life (pi/field/use_runtime.sh): enable one of the two, never both.
+node="eagle-life"
+systemctl is-enabled --quiet eagle-runtime.service 2>/dev/null && node="eagle-runtime"
+tmp=(); for n in "${plain[@]}"; do
+  if [ "$n" != "eagle-life" ] && [ "$n" != "eagle-runtime" ] || [ "$n" = "$node" ]; then tmp+=("$n"); fi
+done; plain=("${tmp[@]}")
 enable_units=("${plain[@]/%/.service}")
 if [ -n "$template" ]; then
   for v in "${VISION_NAMES[@]}"; do enable_units+=("${template}${v}.service"); done

@@ -160,6 +160,86 @@ def test_training_mode_over_udp_reaches_the_bench_nest(rt_mod, cfg, tmp_path):
     assert "TEST" in kinds and "STATUS" in kinds                      # training: STATUS every 15 min on the bench
 
 
+def _step_until(rt, t0, t_end, until=lambda: False):
+    t = t0
+    while t <= t_end and not until():
+        rt.step(t)
+        t += 1.0
+    return t
+
+
+def test_a_send_error_never_stops_the_eagle_and_the_report_is_retried(rt_mod, cfg, tmp_path):
+    c, _ = _cfg(cfg, tmp_path)
+    sim, dur, _, _ = rt_mod.make_sim("night", c["perch"]["enu_m"][:2])
+    rt = rt_mod.EagleRuntime(c, _args(tmp_path, no_radio=True), sim=sim)
+    calls, real = [], rt.report
+
+    def flaky(d, now):
+        calls.append(now)
+        if len(calls) == 1:
+            raise OSError("radio unplugged")
+        return real(d, now)
+
+    rt.report = flaky
+    try:
+        _step_until(rt, 1000.0, 1000.0 + dur + 60.0)
+    finally:
+        rt.close()
+    assert len(calls) == 2 and calls[1] - calls[0] >= rt_mod.TX_RETRY_S
+    assert [r for r in _log(tmp_path) if r.get("event") == "SEND"]
+
+
+@pytest.mark.parametrize("mode", ["default", "strict"])
+def test_burst_2_waits_while_someone_could_hear_it_and_strict_drops_it(rt_mod, cfg, tmp_path, mode):
+    c, (pn, pq) = _cfg(cfg, tmp_path, decide={"mode": mode})
+    nest_rx = UdpTransport(f"127.0.0.1:{pq}", f"127.0.0.1:{pn}")
+    sim, dur, _, _ = rt_mod.make_sim("night", c["perch"]["enu_m"][:2])
+    rt = rt_mod.EagleRuntime(c, _args(tmp_path), sim=sim)
+    try:
+        t = _step_until(rt, 1000.0, 1000.0 + dur, until=lambda: bool(rt.pending))
+        assert rt.pending                                              # burst 1 is out
+        someone = {"who": "1 other person(s) in view within the 300 m intercept radius"}
+        rt.engine.listeners_now = lambda subject: someone["who"]       # a stranger walks into view
+        t = _step_until(rt, t, t + 200.0)
+        assert len(_frames(nest_rx)) == 1
+        if mode == "strict":
+            assert not rt.pending and any(r.get("event") == "BURST2_DROPPED" for r in _log(tmp_path))
+        else:
+            assert rt.pending and rt.pending[0]["waiting"]
+            someone["who"] = ""                                          # gone
+            _step_until(rt, t, t + 20.0)
+            assert not rt.pending and len(_frames(nest_rx)) == 1         # the second copy went out
+    finally:
+        rt.close()
+        nest_rx.close()
+
+
+def test_strict_mode_keeps_positions_off_the_disk(rt_mod, cfg, tmp_path, capsys):
+    import re
+    import life_node
+    c, _ = _cfg(cfg, tmp_path, decide={"mode": "strict"})
+    rt = _run(rt_mod, c, _args(tmp_path, no_radio=True, record=str(tmp_path / "rec")), "night")
+    out = capsys.readouterr().out
+    assert rt.rec is None and not (tmp_path / "rec").exists() and "recording is off" in out
+    assert "list (not transmitted)" not in out and not re.search(r"\bE -?\d+(\.\d+)? N -?\d+", out)
+    sends = [r for r in _log(tmp_path) if r.get("event") == "SEND"]
+    assert sends and all("enu_m" not in r for r in _log(tmp_path))
+    assert life_node.log.__name__ == "log"                             # the log filter is undone on close
+
+
+def test_the_radio_is_drained_every_step(rt_mod, cfg, tmp_path):
+    c, _ = _cfg(cfg, tmp_path)
+    rt = rt_mod.EagleRuntime(c, _args(tmp_path))
+    n = {"drain": 0}
+    rt.radio.drain = lambda: n.__setitem__("drain", n["drain"] + 1)
+    try:
+        for k in range(3):
+            rt.step(1000.0 + k)
+    finally:
+        rt.close()
+    assert n["drain"] == 3
+
+
 def test_refuses_the_public_test_keys_on_a_real_radio(rt_mod, cfg, tmp_path):
     c, _ = _cfg(cfg, tmp_path, transport="serial", radio={"serial_port": "/dev/does-not-exist"})
     with pytest.raises(SystemExit, match="TEST keys"):

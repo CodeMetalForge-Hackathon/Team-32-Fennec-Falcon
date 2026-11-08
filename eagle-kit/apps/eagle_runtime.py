@@ -24,6 +24,7 @@ never from the perch while EMCON is blocked, no re-sends, no positions on the Pi
 from __future__ import annotations
 
 import argparse
+import re
 import signal
 import sys
 import time
@@ -46,6 +47,27 @@ from eagle.geo import LocalFrame                                     # noqa: E40
 
 EVERY = {"thermal": 2.0, "audio": 4.0, "vitals": 10.0, "rf": 20.0, "vision": 1.0}
 RF_TRANSPORTS = ("serial", "meshtastic")
+TX_RETRY_S = 30.0                    # a report whose send failed is tried again after this
+BURST2_RECHECK_S, BURST2_GIVE_UP_S = 10.0, 600.0   # burst 2 waits while someone is in range, then is dropped
+_POSITION = re.compile(r"\bE -?\d+(?:\.\d+)? N -?\d+(?:\.\d+)?")
+
+
+def _scrub_positions_in_logs():
+    """Strict mode: no position reaches the console log (journald, ~/field_logs). Wraps the log
+    function this module and apps/life_node.py share; returns the undo."""
+    import life_node as ln
+    orig = ln.log
+
+    def scrubbed(msg: str) -> None:
+        orig(_POSITION.sub("E - N -", str(msg)))
+
+    ln.log = scrubbed
+    globals()["log"] = scrubbed
+
+    def undo() -> None:
+        ln.log = orig
+        globals()["log"] = orig
+    return undo
 
 
 def uses_test_keys(cfg: dict) -> bool:
@@ -88,10 +110,21 @@ class EagleRuntime(LifeNode):
                              "python -c 'import secrets; print(secrets.token_hex(32))', same values on the Nest), "
                              "or pass --allow-test-keys for a bench test.")
         self.sim = sim
-        if sim is not None:
-            cfg = deep_merge(cfg, {"life": {"modules": []}})
+        if sim is not None:                          # a simulation never consumes the field service's relocation flag
+            cfg = deep_merge(cfg, {"life": {"modules": []}, "decide": {"emcon": {"relocated_flag": None}}})
             args.modules = None
-        super().__init__(cfg, args, clock)
+        self._unscrub = None
+        if mode == "strict":                         # strict keeps no position on the Pi's disk
+            self._unscrub = _scrub_positions_in_logs()
+            if getattr(args, "record", None):
+                log("RECORD  strict mode keeps no positions on the Pi: recording is off (--record ignored)")
+                args.record = None
+        try:
+            super().__init__(cfg, args, clock)
+        except BaseException:
+            if self._unscrub:
+                self._unscrub()
+            raise
         self.life = LedgerLifeList.from_config(self.L.get("fusion", {}), perch_xy=self.perch[:2])
         o = cfg["site"]["origin"]
         self.frame = LocalFrame(o["lat"], o["lon"], o.get("hae_m", 0.0))
@@ -111,6 +144,7 @@ class EagleRuntime(LifeNode):
             from eagle.infer import make_thermal_model
             self.tmodel = make_thermal_model(self.L.get("thermal", {}).get("model"), log=log)
         self.pending: list = []
+        self.tx_retry_t: dict = {}                   # subject -> earliest retry after a failed send
         self.list_sig, self.list_t = None, -1e9
         self.fmt, self.codec, self.iridium, self.courier = D["report"].get("format", "fennec15"), None, None, []
         self.silenced, self.next_status = False, 0.0
@@ -232,26 +266,47 @@ class EagleRuntime(LifeNode):
             self._update(dets, now)
         self.life.evaluate(now)
         self.engine.ingest(self.life)
+        self._guard("RADIO   receive", self._drain)    # beacons first: the burst power EMCON plans for
         self.engine.set_link(self.planned_tx_dbm())
         decisions = self.engine.tick(now, self.life)
         self.dlog.write(decisions, now)
         for d in decisions:
             if d.action == SEND:
-                self.report(d, now)
+                if now >= self.tx_retry_t.get(d.subject, 0.0):
+                    if not self._guard(f"TX      report for {d.subject}", self.report, d, now):
+                        self.tx_retry_t[d.subject] = now + TX_RETRY_S   # still decided: tried again then
                 break
-        self.flush(now)
-        self.check_courier(now)
-        self.check_compromised(now)
-        self.status_report(decisions, now)
+        self._guard("TX      burst 2", self.flush, now)
+        self._guard("TX      courier", self.check_courier, now)
+        self._guard("TX      COMPROMISED check", self.check_compromised, now)
+        self._guard("TX      STATUS", self.status_report, decisions, now)
         self.list_report(now)
         return decisions
+
+    @staticmethod
+    def _guard(what: str, fn, *a) -> bool:
+        """A radio or modem error must never stop the Eagle (systemd would restart it and every
+        hold, confirmed code and REPORTED mark would be lost)."""
+        try:
+            fn(*a)
+            return True
+        except Exception as e:
+            log(f"{what} failed: {type(e).__name__}: {e}")
+            return False
+
+    def _drain(self) -> None:
+        if self.radio is not None:
+            self.radio.drain()
 
     def _update(self, dets: list, now: float) -> None:
         try:
             self.life.update(dets, now=now)
         except Exception as e:                       # one bad detection must not stop the Eagle
             log(f"LIFE    update error: {type(e).__name__}: {e}")
+            done = {id(d) for _, d in self.life.ledger}  # attached before the error: never attach twice
             for d in dets:
+                if id(d) in done:
+                    continue
                 try:
                     self.life.update([d], now=now)
                 except Exception as e1:
@@ -268,6 +323,9 @@ class EagleRuntime(LifeNode):
         if now - self.list_t < float(rep.get("min_gap_s", 5.0)):
             return
         self.list_sig, self.list_t = sig, now
+        if not self.engine.log_positions:               # strict: the table holds east/north
+            log(f"LIFE    {len(self.life.tracks)} track(s) (positions not logged in {self.engine.mode} mode)")
+            return
         log("LIFE    list (not transmitted):\n" + "          " + self.life.summary(now).replace("\n", "\n          "))
         if self.rec:
             self.rec.event("life_list", summary=self.life.summary(now), persons=self.life.life_persons(now))
@@ -309,7 +367,8 @@ class EagleRuntime(LifeNode):
             self.radio.drain()
             res = self.radio.send_fix(body)
             delay = self.engine.repeat_delay_s()
-            self.pending.append({"due": now + delay, "frame": res.frame, "tx": res.tx_dbm, "subject": d.subject})
+            self.pending.append({"due": now + delay, "first_due": now + delay, "frame": res.frame, "tx": res.tx_dbm,
+                                 "subject": d.subject, "urgent": "urgency" in d.reason})
             log(f"TX      burst 1/2 {what}; burst 2 in {delay:.0f} s")
             rec.update({"bytes": len(res.frame), "tx_dbm": res.tx_dbm, "airtime_ms": round(res.airtime_s * 1e3, 1),
                         "burst": 1})
@@ -348,7 +407,8 @@ class EagleRuntime(LifeNode):
             self.radio.drain()
             toa = self.radio.t.send(pkt, power)
             delay = e.repeat_delay_s()
-            self.pending.append({"due": now + delay, "frame": pkt, "tx": power, "subject": d.subject})
+            self.pending.append({"due": now + delay, "first_due": now + delay, "frame": pkt, "tx": power,
+                                 "subject": d.subject, "urgent": "urgency" in d.reason})
             log(f"TX      burst 1/2 {what}: 15 B sealed @ {power:+d} dBm, {toa * 1e3:.1f} ms, path {path} ({why}); "
                 f"burst 2 in {delay:.0f} s")
             rec.update({"tx_dbm": power, "airtime_ms": round(toa * 1e3, 1), "burst": 1})
@@ -429,22 +489,56 @@ class EagleRuntime(LifeNode):
         log(f"TX      STATUS (training): {len(self.life.tracks)} track(s), best P {best:.2f}")
 
     def flush(self, now: float) -> None:
+        """Burst 2: the same sealed frame, unless someone in view could now hear it. Then it waits
+        (default) or is dropped (strict, or after 10 min); a burst 1 sent on the urgency timeout
+        already accepted that risk, so its burst 2 follows regardless."""
         alt = self.engine.c["report"].get("second_burst_mhz")
         for item in [p for p in self.pending if now >= p["due"]]:
+            who = "" if item.get("urgent") else self.engine.listeners_now(item["subject"])
+            if who:
+                if self.engine.mode == "strict" or now - item.get("first_due", item["due"]) > BURST2_GIVE_UP_S:
+                    self.pending.remove(item)
+                    log(f"TX      burst 2/2 for {item['subject']} dropped: {who}")
+                    self.dlog.write([], now, {"event": "BURST2_DROPPED", "subject": item["subject"], "why": who})
+                    if self.engine.m.get("wipe_after_send"):
+                        self.engine.wipe(item["subject"])
+                else:
+                    if not item.get("waiting"):
+                        log(f"TX      burst 2/2 for {item['subject']} waits: {who}")
+                    item["due"], item["waiting"] = now + BURST2_RECHECK_S, True
+                continue
             self.pending.remove(item)
             t = self.radio.t
-            if alt:
-                t.configure(float(alt), t.sf, t.bw_khz, t.cr)
-            toa = t.send(item["frame"], item["tx"])
-            if alt:
-                r = self.cfg["radio"]
-                t.configure(float(r.get("freq_mhz", 915.0)), t.sf, t.bw_khz, t.cr)
+            try:
+                if alt:
+                    t.configure(float(alt), t.sf, t.bw_khz, t.cr)
+                toa = t.send(item["frame"], item["tx"])
+            except Exception as err:                       # one more try in 10 s, then give up
+                item["tries"] = item.get("tries", 0) + 1
+                log(f"TX      burst 2/2 for {item['subject']} failed ({type(err).__name__}: {err})"
+                    + ("; retry in 10 s" if item["tries"] < 2 else "; dropped"))
+                if item["tries"] < 2:
+                    item["due"] = now + BURST2_RECHECK_S
+                    self.pending.append(item)
+                continue
+            finally:
+                if alt:
+                    r = self.cfg["radio"]
+                    t.configure(float(r.get("freq_mhz", 915.0)), t.sf, t.bw_khz, t.cr)
             log(f"TX      burst 2/2 for {item['subject']}: the same sealed frame ({len(item['frame'])} B @ "
                 f"{item['tx']:+d} dBm, {toa * 1e3:.1f} ms); the Nest keeps one copy")
             self.dlog.write([], now, {"event": "SEND", "subject": item["subject"], "burst": 2})
             if self.engine.m.get("wipe_after_send"):
                 self.engine.wipe(item["subject"])
                 item["frame"] = None
+
+    def close(self) -> None:
+        try:
+            super().close()
+        finally:
+            if self._unscrub:
+                self._unscrub()
+                self._unscrub = None
 
     # ---- loops ------------------------------------------------------------------------------------
     def run(self, duration: float | None = None, step_s: float = 0.5) -> None:
@@ -463,7 +557,7 @@ class EagleRuntime(LifeNode):
                 t += step_s
                 if speed:
                     time.sleep(step_s / speed)
-            while self.pending:                                   # let the second burst go out
+            while self.pending and t < duration + BURST2_GIVE_UP_S + 300.0:   # let the second burst go out
                 t += step_s
                 self.step(t0 + t)
                 if speed:

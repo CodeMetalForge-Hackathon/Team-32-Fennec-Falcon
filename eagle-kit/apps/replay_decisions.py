@@ -69,6 +69,8 @@ def load_batches(path: Path) -> list:
 def replay(batches: list, cfg: dict, *, mode: str | None = None, tick_s: float = 1.0, log=print) -> dict:
     if mode:
         cfg = deep_merge(cfg, {"decide": {"mode": mode}})
+    # a replay never reads (or consumes) the live relocation flag of an Eagle running on this Pi
+    cfg = deep_merge(cfg, {"decide": {"emcon": {"relocated_flag": None}}})
     perch = cfg["perch"]["enu_m"][:2]
     o = cfg["site"]["origin"]
     life = LedgerLifeList.from_config(cfg.get("life", {}).get("fusion", {}), perch_xy=perch)

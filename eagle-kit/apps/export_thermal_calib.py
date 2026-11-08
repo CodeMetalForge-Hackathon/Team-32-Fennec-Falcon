@@ -29,11 +29,11 @@ def main(argv=None) -> int:
     args = ap.parse_args(argv)
     import cv2
     files = sorted(f for r in args.recordings for f in Path(r).expanduser().glob("thermal_*.npz"))
-    stacks = []
+    counts = []                                      # one file in memory at a time (an hour is ~1.4 GB as float32)
     for f in files:
-        z = np.load(f)
-        stacks.append(z["centi_c"].astype(np.float32) / 100.0 if "centi_c" in z else z["temps_c"])
-    n = sum(len(s) for s in stacks)
+        with np.load(f) as z:
+            counts.append(int(z["centi_c" if "centi_c" in z else "temps_c"].shape[0]))
+    n = sum(counts)
     if not n:
         print("no thermal_*.npz frames found")
         return 1
@@ -41,13 +41,16 @@ def main(argv=None) -> int:
     out = Path(args.out).expanduser()
     out.mkdir(parents=True, exist_ok=True)
     k = written = 0
-    for s in stacks:
-        for fr in s:
-            if k in keep:
-                g = thermal_to_gray(fr.astype(np.float32))
-                cv2.imwrite(str(out / f"thermal_{k:06d}.png"), cv2.cvtColor(g, cv2.COLOR_GRAY2BGR))
-                written += 1
-            k += 1
+    for f in files:
+        with np.load(f) as z:
+            centi = "centi_c" in z
+            for fr in z["centi_c" if centi else "temps_c"]:
+                if k in keep:
+                    t = fr.astype(np.float32) / 100.0 if centi else fr.astype(np.float32)
+                    g = thermal_to_gray(t)
+                    cv2.imwrite(str(out / f"thermal_{k:06d}.png"), cv2.cvtColor(g, cv2.COLOR_GRAY2BGR))
+                    written += 1
+                k += 1
     print(f"{written} images from {n} frames in {len(files)} file(s) -> {out}")
     return 0
 

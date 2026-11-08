@@ -82,10 +82,12 @@ The LRs below 1 are what keep a resting patrol member or a warm decoy from being
 SEND only when all of these hold:
 
 1. **P** >= 0.95 (default), 0.99 (strict).
-2. **Corroboration:** the briefed-code rule (>= 3 code events within 180 s, bearings within +-10 deg of their mean, mean confidence >= 0.9 when the detector gives one) **or** >= 2 independent sensor modalities (thermal, acoustic, vision, radar, tag). One detector's false alarm can never report on its own.
-3. **Dwell:** the track is >= 20 s old and was seen within the last 120 s.
+2. **Corroboration:** the briefed-code rule (>= 3 code events within 180 s, every bearing within +-10 deg of the group's own mean, mean confidence >= 0.9 when the detector gives one) **or** >= 2 independent kinds of evidence: imaging (the thermal camera and the Pi camera seeing one body count once), sound, radar, tag, identity. Code events before the rule holds add their LR but count as no kind, so one false code match on a warm, still body never reports. One detector's false alarm can never report on its own.
+3. **Dwell:** the track is >= 20 s old and was seen within the last 120 s. A track that took a dead track's evidence (reborn within 2 m of his spot within 30 min) must also have stayed still for 60 s.
 4. **Fix:** circular error <= 200 m.
-5. **EMCON:** no unknown person inside the burst's intercept radius of the perch, and no briefed threat inside it (`mission.threat_dist_m`). The radius comes from the power the radio would use and the kit's log-distance path loss: ~1,100 m at the planned 8 dBm for the default 800 m Nest link, ~300 m at the radio's minimum -9 dBm (**modelled**, listener at -115 dBm). So anyone the Eagle can see can hear it. If blocked: HOLD and log `REQUEST_RELOCATE`; the report goes once the Eagle has moved away (`touch ~/eagle/relocated`, later the autopilot), or, in default mode only, after 15 min for an injured person.
+5. **EMCON:** nobody else in view inside the burst's intercept radius of the perch, and no briefed threat inside it (`mission.threat_dist_m`). Anyone the Eagle cannot call him is a possible listener, whatever their P and however close to him: two bodies in one thermal frame are two people, never one person seen twice. The radius comes from the power the radio would use and the kit's log-distance path loss: ~1,100 m at the planned 8 dBm for the default 800 m Nest link, ~300 m at the radio's minimum -9 dBm (**modelled**, listener at -115 dBm). So anyone the Eagle can see can hear it. If blocked: HOLD and log `REQUEST_RELOCATE`.
+
+**A held report stays held until it is sent**, even if he drops out of view (he is hidden, or the Eagle is flying off). It keeps the position where it passed the gate; if his track later wanders more than 3 m from it (the life list has given his stale track to someone else), the report stays at his fix and the track starts afresh as a possible listener. It is released by relocation (`touch ~/eagle/relocated`, consumed when read; a flag left from an earlier run is removed at start; later the autopilot), by EMCON clear for 120 s while he is still in view, or, in default mode only, by the urgency timeout counted from the start of the hold: 15 min for an injured person, 2 h otherwise. Strict mode waits for relocation.
 
 Then: one report, two bursts of the same frame 30-120 s apart (the Nest's replay window keeps one, so ATAK shows one marker), and the subject is REPORTED. The only follow-up is one MOVED if he moves past max(100 m, 2 x the 95 % radius), in default mode only, at most 4 reports per hour; a better identity or a new flag does not justify another emission. The report's 95 % radius adds the Eagle's own position error (10 m without GPS, **assumed** from simulator v2).
 
@@ -97,13 +99,13 @@ Every decision carries a false-alarm label from what carried it: LOW (briefed co
 |---|---|---|---|---|---|
 | training | 0.95 | sends (logged) | yes | positions | muted, except `--transport udp` to a bench Nest |
 | default | 0.95 | sends after 15 min (injured) / 2 h | yes | positions | on |
-| strict | 0.99 | never; waits for relocation | no | no positions; fix wiped after the second burst | on |
+| strict | 0.99 | never; waits for relocation | no | no positions: recording off, positions kept out of the console log, fix wiped after the second burst | on |
 
 The runtime refuses to transmit on a real radio with the repository's public test keys (training mode and `--allow-test-keys` excepted). The field config (`pi/field/field.yaml`) sends over loopback UDP to the Nest on the same Pi, so no key change is needed for that.
 
 ### Bearing-only
 
-Afternoon heat can hide him from the thermal camera, and a linear mic bar gives no elevation, so a code can be heard on a bearing with no track. Code events on one bearing form a bearing candidate; with the code rule and 5 min on the same bearing (LR 2) it reaches P 0.971 and is reported as the circle covering the ray from the perch to 150 m (centre 75 m out, ce 75 m). If a track appears on that bearing, the track carries the evidence instead.
+Afternoon heat can hide him from the thermal camera, and a linear mic bar gives no elevation, so a code can be heard on a bearing with no position. Code events heard on a bearing only always form a bearing candidate, even when one person is seen on that bearing: the Eagle cannot tell that person from someone hidden behind them, so the person seen never gets the code and counts as a possible listener. With the code rule and 5 min on the same bearing (LR 2) the candidate reaches P 0.971 and is reported as a BEARING (the Eagle's position and the azimuth; in a simulation, a TEST circle covering the ray from the perch to 150 m). A candidate defers to a track on its bearing only if that track holds code events with a position of its own, and is dropped after 30 min without a code event.
 
 ### Results (modelled, synthetic scenes)
 
@@ -130,10 +132,10 @@ Once the gate decides, the Eagle sends one report per person: the team's **Fenne
 
 1. **Is it him?** P(him) per track (above).
 2. **May it break silence?** P, corroboration, dwell, fix (above). No: nothing is sent.
-3. **From where?** Unknown people inside the burst's intercept radius, a briefed threat inside it, or `mission.contested: true` → HOLD and REQUEST_RELOCATE (hop 2+ km). Default mode sends an injured person's report after 15 min anyway; strict never sends from the perch it listened from.
+3. **From where?** Anyone else in view inside the burst's intercept radius, a briefed threat inside it, or `mission.contested: true` → HOLD and REQUEST_RELOCATE (hop 2+ km). The held report stays held until relocation, EMCON clear while he is in view, or (default mode) the urgency timeout: 15 min for an injured person; strict never sends from the perch it listened from.
 4. **What?** The least that lets the base act (next table).
 5. **Which way?** The first path in the mode's order that closes (paths table).
-6. **How?** Seal once; two identical bursts 30-120 s apart at the lowest power that closes (optionally the second on another channel, `report.second_burst_mhz`), or one Iridium session that confirms delivery, or hold it for the courier.
+6. **How?** Seal once; two identical bursts 30-120 s apart at the lowest power that closes (optionally the second on another channel, `report.second_burst_mhz`), or one Iridium session that confirms delivery, or hold it for the courier. Before burst 2 the Eagle looks again: if someone in view could now hear it, burst 2 waits (default, up to 10 min) or is dropped (strict); a burst 1 sent on the urgency timeout already accepted that risk, so its burst 2 follows. A failed send never stops the Eagle; the report is tried again 30 s later.
 7. **After.** The subject is REPORTED. One MOVED if he moves past max(100 m, 2 x the 95 % radius); nothing else re-sends. Strict mode wipes the fix from memory.
 
 ### What it says: the least information that lets the base act
@@ -245,7 +247,7 @@ Left alone on purpose, to avoid conflicts with work in flight:
 ## Decisions and trade-offs
 
 - **The runtime subclasses `LifeNode`** instead of editing it: every sensor driver, the recorder and `--require` are reused, and work on `life_node.py` does not conflict. The cost: a change inside `LifeNode.step` or `step_thermal` must be mirrored in `EagleRuntime` (done for `--record`, `--require` and the recording toggle, Alex's commits a9d4945, c6c3f73 and 4fbee88).
-- **One life-list update per sensor.** In one batch, a heat blob and a sound from the same person start two tracks (the life list gives each track one detection per batch, and both kinds may start tracks), so evidence splits. The runtime updates per sensor, and the engine folds a track born within 1.5 m of a live one into it.
+- **One life-list update per sensor.** In one batch, a heat blob and a sound from the same person start two tracks (the life list gives each track one detection per batch, and both kinds may start tracks), so evidence splits. The runtime updates per sensor, and the engine folds a track born within 1.5 m of a live one into it, unless the same sensor saw both in the same batch: two bodies in one thermal frame are two people, and each is the other's possible listener.
 - **Stillness from track history, not the life list's filter.** The filter is tuned for people who barely move, so a walker spawns new tracks; walkers never build evidence, which is what the gate wants.
 - **The 15-byte Fennec Fix is the default; the 48-byte FIX stays.** The LoRa modem firmware forwards any frame, so only the Nest needed a decoder (`eagle/nest.py`). Fennec frames start 0x40-0x7F, the kit's frames 0x01-0x05, so both coexist on one channel.
 - **Identity only raises P** (LR >= 1), matching `eagle/fusion.py`'s rule that identity never suppresses a human.
@@ -253,7 +255,8 @@ Left alone on purpose, to avoid conflicts with work in flight:
 
 ## Verification
 
-- `python -m pytest -q` in `eagle-kit/`: 346 passed, 4 skipped, on top of `sar-integration` at 4fbee88. 67 tests are new (`test_decide.py` 24, `test_fennec.py` 25, `test_infer.py` 7, `test_runtime.py` 11). The 4 skips need pyroomacoustics, pymap3d or a YAMNet file.
+- `python -m pytest -q` in `eagle-kit/`: 365 passed, 4 skipped, on top of `sar-integration` at 4fbee88. 86 tests are new (`test_decide.py` 38, `test_fennec.py` 25, `test_infer.py` 7, `test_runtime.py` 16). The 4 skips need pyroomacoustics, pymap3d or a YAMNet file.
+- An independent review of the decision code found 6 high, 6 medium and 5 low defects (a stranger beside him missed by EMCON, a high-P stranger exempt, one false code match corroborating, holds lost when he dropped out of view, a passer-by taking his evidence, a bearing-only code confirming the wrong person, thermal and camera counted twice, burst 2 never re-checked, strict mode recording positions, a stale relocation flag, crash on a send error, and others). Each has a test reproducing the reviewer's probe in `test_decide.py` or `test_runtime.py`.
 - `test_fennec.py` embeds the relay design's reference code and checks the codec against it bit for bit (300 random reports), plus tamper rejection of every byte, BEARING round trips, the persisted counter, the Nest's replay window, message composition, the path order in every mode, contested ground, the RockBLOCK AT sequence (scripted modem), the courier hold, COMPROMISED (one report, key file wiped, silent after) and two Eagles' bearings crossing at the Nest.
 - `test_decide.py` reproduces simulator v2 (code: TRANSMIT after the code; coughs: 80 min; unconscious: never at P 0.92) and checks every gate, EMCON, modes, re-send, budget, bearing-only, duplicate tracks and inheritance after occlusion.
 - `test_infer.py`: both decoders on synthetic tensors, the real ONNX model on onnxruntime and OpenCV (agree to 1e-2), Hailo-to-CPU fallback.
@@ -269,3 +272,6 @@ Left alone on purpose, to avoid conflicts with work in flight:
 - The RockBLOCK driver follows Iridium's AT command reference but has only run against a scripted modem.
 - The intercept radius uses the kit's log-distance model with no terrain; `site.dem` is not used for it yet.
 - Briefed-code events carry no detector confidence yet, so the code rule's 0.9 mean-confidence test is skipped until `step_audio` passes one.
+- Decision state lives in memory only. A crash or restart loses holds, confirmed codes and REPORTED marks: a held report must be decided again, and a sent one could be sent a second time. Send errors no longer crash the process; persisting the state (without positions in strict mode) is not done.
+- With a code heard on a bearing only and a person seen on that bearing, the Eagle holds and sends a BEARING, never a fix on the person seen (he may not be the one tapping). A code with a position (elevation from the mic array, or the Fennec V's ears-up pose) is needed for a fix in that case.
+- Strict mode records nothing, so the field page's Verdict card has no decisions to show in strict mode.

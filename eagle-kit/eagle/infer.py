@@ -213,6 +213,8 @@ class HailoRuntime:
         if h != w:
             raise RuntimeError(f"HEF input {h}x{w} is not square")
         self.nms = bool(getattr(self.m, "is_nms_postprocess_enabled", lambda: False)()) or self._has_nms()
+        if not self.nms:      # a YOLOv8 HEF without on-chip NMS has six raw heads; only the NMS output is decoded
+            raise RuntimeError(f"{hef} has no on-chip NMS output: compile it with NMS (pi/compile_thermal_hef.sh)")
 
     def _has_nms(self) -> bool:
         try:

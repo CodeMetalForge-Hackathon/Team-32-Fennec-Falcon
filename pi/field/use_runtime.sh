@@ -17,11 +17,13 @@ if [ "${1:-}" = "off" ]; then
 fi
 
 [ -x "$PY" ] || { echo "missing $PY: install hailo-apps first (README section 10)"; exit 1; }
-if ! "$PY" -c "import onnxruntime" 2>/dev/null; then
-  "$PY" -m pip install -q onnxruntime || echo "onnxruntime not installed: the thermal model falls back to OpenCV"
+AS_USER=()                                         # under sudo: pip and the self-test run as the Pi's user
+[ "$(id -u)" = 0 ] && AS_USER=(sudo -u "$USER_NAME" -H)
+if ! "${AS_USER[@]}" "$PY" -c "import onnxruntime" 2>/dev/null; then
+  "${AS_USER[@]}" "$PY" -m pip install -q onnxruntime || echo "onnxruntime not installed: the thermal model falls back to OpenCV"
 fi
 echo "== self-test: the night scene through the gate, no radio"
-(cd "$EAGLE_KIT" && "$PY" apps/eagle_runtime.py --sim night --no-radio --speed 0 | grep -E "DECIDE  track|TX ") \
+(cd "$EAGLE_KIT" && "${AS_USER[@]}" "$PY" apps/eagle_runtime.py --sim night --no-radio --speed 0 | grep -E "DECIDE  track|TX ") \
   || { echo "self-test failed: see the output above"; exit 1; }
 
 chmod +x "$HERE/run_runtime.sh"

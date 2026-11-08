@@ -138,12 +138,28 @@ def test_night_briefed_code_sends_after_the_code_rule():
 
 
 def test_one_false_code_match_does_not_report():
+    """Review: one false code match on a warm, still, lone body must not report, even after 2 h of stillness."""
     eng = engine()
-    scene = lambda t: ([heat(t, HIM, 0.8)] if t % 20 == 0 else []) + ([code(t)] if t == 300 else [])  # noqa: E731
-    _, send, hist = run(eng, scene, 1500)
+    scene = lambda t: ([heat(t, HIM, 0.8)] if t % 60 == 0 else []) + ([code(t)] if t == 300 else [])  # noqa: E731
+    _, send, hist = run(eng, scene, 7500, step=30.0)
     assert send is None
     last = hist[-1][1][0]
-    assert 0.8 < last.p < 0.95 and last.action == WATCH
+    assert last.p > 0.95 and last.action == WATCH and "one kind of evidence" in last.reason
+
+
+def test_thermal_and_camera_on_one_body_are_one_kind_of_evidence():
+    """Review: a lone person still for 2 h, seen by the thermal camera and the Pi camera, is not two kinds."""
+    eng = engine()
+
+    def scene(t):
+        if t % 60:
+            return []
+        return [heat(t, HIM, 0.8), LifeDetection("PERSON", t, xy=HIM, cov=iso_cov(0.5), source="vision:lying")]
+
+    _, send, hist = run(eng, scene, 7500, step=60.0)
+    assert send is None
+    last = hist[-1][1][0]
+    assert last.p > 0.95 and set(last.modalities) == {"thermal", "vision"} and "one kind of evidence" in last.reason
 
 
 def test_coughs_and_heat_decide_at_80_min_like_the_simulator():
@@ -163,7 +179,7 @@ def test_unconscious_thermal_only_never_reports_on_one_sensor():
     _, send, hist = run(eng, scene, 7500, step=60.0)
     assert send is None
     last = hist[-1][1][0]
-    assert last.p > 0.95 and "one modality" in last.reason
+    assert last.p > 0.95 and "one kind of evidence" in last.reason
 
 
 def test_radar_breathing_is_the_second_modality_for_the_unconscious():
@@ -269,6 +285,50 @@ def test_unknown_person_near_the_perch_holds_then_relocation_sends():
     assert send is not None and send.subject == "track:1" and "relocated" in send.reason
 
 
+def test_relocation_releases_the_held_report_after_he_drops_out_of_view():
+    """Review: the Eagle flies off to relocate, nobody is seen any more, and the held report must still go."""
+    eng = engine(emcon={"max_hold_injured_s": 1e6})
+    eng.set_link(-9.0)
+    life, _, hist = run(eng, _decided_scene(stranger_at=[-25.0, -10.0]), 300, stop_on_send=False)
+    assert [d.action for t, ds in hist for d in ds if d.subject == "track:1" and t >= 160][0] == HOLD
+    far = lambda t: [heat(t, [300.0, 300.0])] if t == 1400.0 else []  # noqa: E731  (in transit: tracks die)
+    _, send, _ = run(eng, far, 1500, life=life, t0=310.0)
+    assert send is None and 1 not in {tr.id for tr in life.tracks} and eng.beliefs["track:1"].lost_t is not None
+    eng.mark_relocated(1510.0)
+    _, send, _ = run(eng, lambda t: [], 1530, life=life, t0=1520.0)
+    assert send is not None and send.subject == "track:1" and "relocated" in send.reason
+    assert np.hypot(*(send.xy - HIM)) < 2.0                              # his last fix
+
+
+def test_intermittent_sightings_do_not_restart_the_injured_hold():
+    eng = engine()
+    eng.set_link(-9.0)
+
+    def scene(t):
+        out = [heat(t, HIM, 0.8)] if t % 20 == 0 and (t < 200 or t % 150 == 0) else []
+        out += [heat(t, [-25.0, -10.0], 0.3)] if t % 20 == 0 else []
+        if t in (100.0, 130.0, 160.0):
+            out.append(code(t))
+        return out
+
+    _, send, _ = run(eng, scene, 1300)
+    assert send is not None and "urgency" in send.reason and send.t == pytest.approx(160.0 + 900.0, abs=10.0)
+
+
+def test_relocation_flag_is_consumed_and_a_stale_one_ignored(tmp_path):
+    flag = tmp_path / "relocated"
+    flag.touch()                                                      # left over from a rehearsal
+    eng = engine(emcon={"relocated_flag": str(flag)})
+    assert not flag.exists()
+    eng.set_link(-9.0)
+    scene = _decided_scene(stranger_at=[-25.0, -10.0])
+    life, send, _ = run(eng, scene, 300)
+    assert send is None
+    flag.touch()
+    _, send, _ = run(eng, scene, 330, life=life, t0=310.0)
+    assert send is not None and "relocated" in send.reason and not flag.exists()
+
+
 def test_default_mode_sends_after_the_injured_hold_timeout_strict_never():
     for mode, expect in (("default", SEND), ("strict", HOLD)):
         eng = engine(mode=mode, emcon={"max_hold_injured_s": 300.0, "relocated_flag": None})
@@ -289,17 +349,76 @@ def test_briefed_threat_inside_intercept_radius_blocks_the_perch_burst():
     assert d.action == HOLD and "briefed threat" in d.reason
 
 
-def test_duplicate_track_of_him_is_not_a_stranger():
+class _Life:
+    """Just enough of a life list to hand the engine two tracks and what was attached to them."""
+
+    def __init__(self, tracks, ledger):
+        self.tracks, self._ledger = tracks, ledger
+
+    def take_ledger(self):
+        out, self._ledger = self._ledger, []
+        return out, []
+
+
+def _track(i, xy):
+    return type("T", (), {"id": i, "x": np.asarray(xy, float), "ce_m": 0.5, "status_bits": 0, "rf_only": False})()
+
+
+def test_duplicate_track_from_another_sensor_is_not_a_stranger():
     eng = engine()
     eng.set_link(-9.0)
-    life = LedgerLifeList(perch_xy=PERCH)
-    life.update([heat(0.0, HIM, 0.8), heat(0.0, HIM + [1.0, 0.0], 0.8)], now=0.0)   # one batch: two births
+    life = _Life([_track(1, HIM), _track(2, HIM + [1.0, 0.0])],      # thermal and audio each started a track
+                 [(1, heat(0.0, HIM, 0.8)), (2, sound(0.0, "COUGH", HIM + [1.0, 0.0]))])
     eng.ingest(life)
     ds = eng.tick(2.0, life)
     assert len(life.tracks) == 2 and len(ds) == 1          # the duplicate feeds track 1's belief
     assert eng.alias == {2: 1}
     assert any(c.key == "alone" for c in ds[0].clues)
     assert eng._unknowns(eng.beliefs["track:1"]) == []
+
+
+def test_two_bodies_in_one_thermal_frame_are_two_people_and_block_the_burst():
+    """Review: a stranger first seen 1.2 m from him must not be folded into his belief."""
+    eng = engine()
+    eng.set_link(-9.0)
+    life = LedgerLifeList(perch_xy=PERCH)
+    life.update([heat(0.0, HIM, 0.8), heat(0.0, HIM + [1.2, 0.0], 0.8)], now=0.0)   # one frame, two bodies
+    eng.ingest(life)
+    ds = eng.tick(2.0, life)
+    assert len(ds) == 2 and eng.alias == {}
+    assert all(any(c.key == "group" for c in d.clues) for d in ds)
+    assert [s for s, _ in eng._unknowns(eng.beliefs["track:1"])] == ["track:2"]
+
+
+def test_a_stranger_beside_him_holds_the_report():
+    eng = engine()
+    eng.set_link(-9.0)
+
+    def scene(t):
+        out = [heat(t, HIM, 0.8), heat(t, HIM + [1.2, 0.0], 0.8)] if t % 20 == 0 else []
+        if t in (600.0, 650.0, 700.0):
+            out.append(code(t))
+        return out
+
+    _, send, hist = run(eng, scene, 1700)
+    assert send is not None and send.t == pytest.approx(1600.0)   # held at 700 s, injured timeout 900 s
+    assert "urgency" in send.reason
+    held = [d for t, ds in hist if 700 <= t < 1600 for d in ds if d.subject == "track:1"]
+    assert held and all(d.action == HOLD and "other person" in d.reason for d in held)
+
+
+def test_a_high_p_stranger_is_still_a_listener():
+    """Review: anyone who has not passed the gate is a possible listener, even at P >= 0.95."""
+    eng = engine()
+    eng.set_link(-9.0)
+    life = LedgerLifeList(perch_xy=PERCH)
+    life.update([heat(0.0, HIM, 0.8), heat(0.0, [40.0, 0.0], 0.8)], now=0.0)
+    eng.ingest(life)
+    eng.tick(1.0, life)
+    sentry = next(b for b in eng.beliefs.values() if b.xy is not None and b.xy[0] > 30)
+    sentry.events["cough"], sentry.vision = 4, "lying"           # pushes the sentry's P past 0.95
+    assert sentry.p(eng.lr) >= 0.95
+    assert [s for s, _ in eng._unknowns(eng.beliefs["track:1"])] == [sentry.subject]
 
 
 # ---------------------------------------------------------------------------------- after sending
@@ -369,6 +488,36 @@ def test_bearing_only_code_reports_the_ray_after_a_stable_span():
     assert abs(az_to(send.xy) - az_to(far)) < 3.0
 
 
+def test_a_code_on_a_bearing_only_never_confirms_the_person_seen_there():
+    """Review: he is unseen at 60 m; a sentry is seen at 15 m, 1 deg off; the code must not make the sentry him."""
+    eng = engine(mission={"others_expected": 6, "search_area": None})
+    eng.set_link(-9.0)
+    far = np.array([60.0, 0.0])
+    sentry = np.array([15.0, 15.0 * math.tan(math.radians(1.0))])
+    times = {100.0, 130.0, 160.0} | {float(t) for t in range(220, 1200, 60)}
+
+    def scene(t):
+        out = [heat(t, sentry, 0.8)] if t % 20 == 0 else []
+        return out + ([code(t, far, point=False)] if t in times else [])
+
+    _, send, hist = run(eng, scene, 1200)
+    assert send is None
+    assert eng.beliefs["track:1"].code_confirmed_t is None and not eng.beliefs["track:1"].code_best_n
+    last = {d.subject: d for d in hist[-1][1]}
+    bear = [d for s, d in last.items() if s.startswith("bearing:")]
+    assert bear and bear[0].action == HOLD and "other person" in bear[0].reason    # the sentry may hear it
+
+
+def test_a_stale_bearing_candidate_expires():
+    eng = engine()
+    life = LedgerLifeList(perch_xy=PERCH)
+    eng.observe_bearing(code(0.0, [60.0, 50.0], point=False))
+    eng.tick(10.0, life)
+    assert any(k.startswith("bearing:") for k in eng.beliefs)
+    eng.tick(2000.0, life)
+    assert not any(k.startswith("bearing:") for k in eng.beliefs)
+
+
 def test_bearing_candidate_defers_to_a_track_on_that_bearing():
     eng = engine()
     scene = _decided_scene()
@@ -398,6 +547,69 @@ def test_reborn_track_at_the_same_spot_keeps_its_evidence():
     eng.tick(260.0, life)
     reborn = [b for b in eng.beliefs.values() if b.xy is not None and np.hypot(*(b.xy - HIM)) < 2.0]
     assert len(reborn) == 1 and reborn[0].track_id != 1 and reborn[0].code_best_n == 2
+
+
+def test_inherited_evidence_waits_until_the_new_track_has_stayed_still():
+    eng = engine()
+    eng.set_link(-9.0)
+    life = LedgerLifeList(perch_xy=PERCH, death_s=60.0)
+    for t in (0.0, 20.0, 40.0):                          # code confirmed (decided, never sent), then he is hidden
+        life.update([heat(t, HIM, 0.8)], now=t)
+        life.update([code(t + 1.0)], now=t + 1.0)
+        eng.ingest(life)
+        eng.tick(t + 1.0, life)
+    life.update([heat(200.0, [80.0, 80.0])], now=200.0)
+    eng.ingest(life)
+    eng.tick(200.0, life)
+    assert "track:1" not in eng.beliefs
+    acts = {}
+    for t in range(300, 400, 10):                        # reborn 0.5 m from his spot
+        life.update([heat(float(t), HIM + [0.5, 0.0], 0.8)], now=float(t))
+        eng.ingest(life)
+        for d in eng.tick(float(t), life):
+            if d.xy is not None and np.hypot(*(d.xy - HIM)) < 2.0:
+                acts[t] = (d.action, d.reason)
+    assert acts[330][0] == WATCH and "stay still" in acts[330][1]
+    assert acts[390][0] == SEND
+
+
+def test_a_passer_by_at_his_spot_does_not_take_his_held_report():
+    """Review: he is hidden while his report is held; a passer-by 3.6 m from his spot must not be reported."""
+    eng = engine(mode="strict")
+    eng.m["p_send"] = 0.95
+    eng.set_link(-9.0)
+    life = LedgerLifeList(perch_xy=PERCH, death_s=60.0)
+    run(eng, _decided_scene(stranger_at=[-25.0, -10.0]), 200, life=life, stop_on_send=False)
+    assert eng.beliefs["track:1"].hold_t is not None
+    passer = HIM + [3.6, 0.0]
+    _, send, _ = run(eng, lambda t: [heat(t, passer + [0.05 * (t - 300.0), 0.0], 0.8)] if t % 10 == 0 else [],
+                     900, life=life, t0=300.0)
+    assert send is None
+    him = eng.beliefs["track:1"]
+    assert him.lost_t is not None and him.hold_t is not None
+    assert all(b.code_confirmed_t is None for b in eng.beliefs.values() if b is not him)
+
+
+def test_a_passer_by_given_his_stale_track_does_not_move_or_release_his_report():
+    """Review P5: the life list hands his stale track to a passer-by 3.6 m away; his held report must
+    stay held at his fix (strict), or go at his fix on the injured timeout (default)."""
+    for mode in ("strict", "default"):
+        eng = engine(mode=mode)
+        eng.m["p_send"] = 0.95
+        eng.set_link(-9.0)
+        life = LedgerLifeList(perch_xy=PERCH, death_s=600.0)
+
+        def scene(t):
+            out = [heat(t, HIM, 0.8)] if t < 300 and t % 20 == 0 else []          # then he is hidden
+            out += [heat(t, [-25.0, -10.0], 0.3)] if t < 400 and t % 20 == 0 else []  # the stranger leaves
+            out += [heat(t, HIM + [3.0, 2.0], 0.5)] if 1100 <= t <= 1110 else []     # a passer-by, seen twice
+            return out + ([code(t)] if t in (100.0, 130.0, 160.0) else [])
+
+        _, send, _ = run(eng, scene, 2000)
+        if mode == "strict":
+            assert send is None and "track:1@held" in eng.beliefs
+        else:
+            assert send is not None and "urgency" in send.reason and np.hypot(*(send.xy - HIM)) < 0.5
 
 
 def test_decision_log_writes_changes_and_hides_positions_in_strict(tmp_path):
