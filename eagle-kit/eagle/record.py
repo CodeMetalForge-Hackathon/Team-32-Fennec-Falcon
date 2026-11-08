@@ -75,6 +75,7 @@ class Recorder:
         self._th_t, self._th_f, self._th_n, self._th_start, self._th_last = [], [], 0, None, -1e9
         self._wav, self._wav_n, self._wav_start = None, 0, None
         self._audio_total = None                 # LiveCapture.total already written
+        self._live_pcm, self._live_audio_t = np.zeros(0, np.float32), -1e9
         self.log(f"RECORD  {self.dir}")
 
     # ---- disk guard ---------------------------------------------------------------------------
@@ -160,6 +161,7 @@ class Recorder:
         if not len(block):
             return
         now = self.clock()
+        self._write_live_audio(block, cap.fs, now)
         if self._wav is None or now - self._wav_start >= self.chunk_s:
             self._close_wav()
             if not self._check_space():
@@ -176,6 +178,23 @@ class Recorder:
             self._wav_start = now
         pcm = np.clip(np.round(np.asarray(block, np.float32) * 32767.0), -32768, 32767).astype("<i2")
         self._wav.writeframes(pcm.tobytes())
+
+    def _write_live_audio(self, block, fs, now, seconds: float = 4.0, every_s: float = 0.25) -> None:
+        """Last ``seconds`` of mono audio at <root>/live_audio.npz (pcm int16, fs, t) for the demo page's
+        spectrogram and level meter. Temp file + rename, at most every ``every_s``."""
+        b = np.asarray(block, np.float32)
+        mono = b.mean(axis=1) if b.ndim == 2 else b
+        self._live_pcm = np.concatenate([self._live_pcm, mono])[-int(seconds * fs):]
+        if now - self._live_audio_t < every_s:
+            return
+        self._live_audio_t = now
+        try:
+            tmp = self.dir.parent / "live_audio.tmp.npz"
+            np.savez(tmp, pcm=np.clip(np.round(self._live_pcm * 32767.0), -32768, 32767).astype(np.int16),
+                     fs=np.array(int(fs)), t=np.array(now))
+            os.replace(tmp, self.dir.parent / "live_audio.npz")
+        except OSError:
+            pass
 
     def _close_wav(self) -> None:
         if self._wav is not None:

@@ -44,3 +44,25 @@ def test_recorder_writes_live_thermal(tmp_path):
     assert live[0, 0] == 3125
     assert not (tmp_path / "live_thermal.tmp.npy").exists()
     rec.close()
+
+
+def test_recorder_writes_live_audio(tmp_path):
+    import importlib.util
+    from pathlib import Path
+    spec = importlib.util.spec_from_file_location("trec", Path(__file__).with_name("test_record.py"))
+    trec = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(trec)
+    cap = trec.FakeCapture()
+    t = [1000.0]
+    rec = Recorder(tmp_path, log=lambda *a: None, clock=lambda: t[0])
+    rec.audio(cap)                                        # first call only sets the start sample
+    cap.feed(8000)
+    rec.audio(cap)
+    d = np.load(tmp_path / "live_audio.npz")
+    assert d["pcm"].dtype == np.int16 and len(d["pcm"]) == 8000 and int(d["fs"]) == 16000
+    for _ in range(12):                                   # 6 s more: the live buffer keeps the last 4 s
+        t[0] += 0.5
+        cap.feed(8000)
+        rec.audio(cap)
+    assert len(np.load(tmp_path / "live_audio.npz")["pcm"]) == 64000
+    rec.close()

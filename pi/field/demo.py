@@ -42,6 +42,53 @@ HUMAN_SOUNDS = {"VOICE": "voice", "DISTRESS": "shout / distress", "BREATH": "bre
 LEVEL_NAMES = {1: "appearance", 2: "strong appearance", 3: "face verified"}
 
 
+# ------------------------------------------------------------------ pictures
+def thermal_view(path: Path):
+    """-> (png, min C, max C, age s) of the latest thermal frame, or None. Denoised (3x3 mean) and stretched
+    to the temperatures actually in view (2nd..99.7th percentile, at least 6 C wide) so a person stands out
+    instead of sensor speckle. Sent at native resolution; the browser scales it smoothly."""
+    try:
+        import numpy as np
+        c = np.load(path).astype(np.float32) / 100.0
+    except Exception:
+        return None
+    h, w = c.shape
+    k = np.pad(c, 1, mode="edge")
+    c = sum(k[i:i + h, j:j + w] for i in range(3) for j in range(3)) / 9.0
+    lo, hi = (float(v) for v in np.percentile(c, [2.0, 99.7]))
+    if hi - lo < 6.0:
+        lo = hi - 6.0
+    idx = (np.clip((c - lo) / (hi - lo), 0, 1) * 255).astype(np.uint8)
+    rows = b"".join(b"\x00" + idx[r].tobytes() for r in range(h))
+    return dash._png(w, h, rows), float(c.min()), float(c.max()), dash.age_s(path)
+
+
+def audio_view(path: Path):
+    """-> (spectrogram png, level dBFS of the last 0.5 s, age s), or None. Last ~4 s, 0-8 kHz, low at the
+    bottom, 70 dB of range below the loudest bin."""
+    try:
+        import numpy as np
+        d = np.load(path)
+        x = d["pcm"].astype(np.float32) / 32768.0
+        fs = int(d["fs"])
+    except Exception:
+        return None
+    n, hop = 512, 256
+    if len(x) < n:
+        return None
+    frames = np.lib.stride_tricks.sliding_window_view(x, n)[::hop] * np.hanning(n)
+    spec = 20 * np.log10(np.abs(np.fft.rfft(frames, axis=1)) + 1e-9)        # (T, 257)
+    spec = spec[:, : n // 2]                                                # 0 .. fs/2
+    top = max(float(spec.max()), -60.0)
+    img = (np.clip((spec - (top - 70.0)) / 70.0, 0, 1) * 255).astype(np.uint8).T[::-1]   # (F, T), low freq bottom
+    img = img.repeat(2, 1)
+    h, w = img.shape
+    rows = b"".join(b"\x00" + img[r].tobytes() for r in range(h))
+    tail = x[-fs // 2:]
+    level = float(20 * np.log10(np.sqrt(np.mean(tail ** 2)) + 1e-9))
+    return dash._png(w, h, rows), level, dash.age_s(path)
+
+
 # ------------------------------------------------------------------ inputs
 def latest_vision_lines(eagle_dir: Path, n: int = 40) -> list:
     files = sorted(eagle_dir.glob("vision*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
@@ -179,9 +226,15 @@ def state(logs: Path, eagle_dir: Path, verdict: Verdict) -> dict:
                           else f"not {TARGET_NAME} ({vis['face_not_target']:.2f})" if vis["face_not_target"] is not None
                           else "no face close enough")},
     }
+    th = thermal_view(logs / "live_thermal.npy")
+    au = audio_view(logs / "live_audio.npz")
+    feeds = {"thermal": {"age_s": None if th is None or th[3] is None else round(th[3], 1),
+                         "min_c": None if th is None else round(th[1], 1), "max_c": None if th is None else round(th[2], 1)},
+             "audio": {"age_s": None if au is None or au[2] is None else round(au[2], 1),
+                       "level_db": None if au is None else round(au[1], 1)}}
     nest = [l for l in dash.tail_lines(logs / "nest.log", 300) if "RX" in l or "COT" in l or "FIX" in l][-3:]
     return {"time": time.strftime("%H:%M:%S"), "verdict": v, "chips": chips, "network": network_state(),
-            "target_enrolled": (eagle_dir / "target_profile.npz").exists(), "nest": nest,
+            "target_enrolled": (eagle_dir / "target_profile.npz").exists(), "nest": nest, "feeds": feeds,
             "ages": {"vision_s": None if vis["age_s"] is None else round(vis["age_s"], 1),
                      "thermal_s": dash.age_s(logs / "live_thermal.npy"),
                      **{f"cam_{c}_s": dash.age_s(eagle_dir / f"cam_{c}.jpg") for c in CAMERAS}}}
@@ -203,7 +256,11 @@ font:16px/1.35 system-ui,-apple-system,sans-serif;display:flex;flex-direction:co
 .card{background:var(--card);border-radius:14px;padding:10px;display:flex;flex-direction:column;min-height:0}
 .label{font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.08em;margin:0 0 6px}
 .cam{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;background:#000;border-radius:10px;overflow:hidden}
-.cam img{max-width:100%;max-height:100%;object-fit:contain}
+.cam{position:relative}.cam img{max-width:100%;max-height:100%;object-fit:contain;width:100%;height:100%}
+.stale{position:absolute;inset:auto 8px 8px 8px;background:rgba(239,68,68,.92);color:#fff;font-weight:700;
+border-radius:8px;padding:6px 10px;font-size:14px;display:none}
+#meter{height:10px;border-radius:5px;background:#1f252d;overflow:hidden;margin-top:6px}
+#meterbar{height:100%;width:0;background:linear-gradient(90deg,#22c55e,#f5a524 70%,#ef4444);transition:width .2s}
 #side{display:flex;flex-direction:column;gap:12px;min-height:0}#side .card{flex:1}
 #chips{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .chip{border-radius:10px;padding:8px 10px;background:#1f252d;border:2px solid transparent}
@@ -217,11 +274,15 @@ font:16px/1.35 system-ui,-apple-system,sans-serif;display:flex;flex-direction:co
 <div id="banner"><div id="title">Starting...</div><div id="sub"></div></div>
 <div id="main">
   <div class="card"><div class="label">Camera: <span id="camname">standard</span></div>
-    <div class="cam"><img id="cam" alt="camera"></div></div>
+    <div class="cam"><img id="cam" alt="camera"><div class="stale" id="cstale"></div></div></div>
   <div id="side">
-    <div class="card"><div class="label">Thermal</div><div class="cam"><img id="thermal" alt="thermal"></div></div>
+    <div class="card"><div class="label">Thermal <span id="trange"></span></div>
+      <div class="cam"><img id="thermal" alt="thermal"><div class="stale" id="tstale"></div></div></div>
+    <div class="card"><div class="label">Sound <span id="alevel"></span></div>
+      <div class="cam"><img id="audio" alt="sound spectrogram"><div class="stale" id="astale"></div></div>
+      <div id="meter"><div id="meterbar"></div></div></div>
     <div class="card" style="flex:0 0 auto"><div class="label">Sensors</div><div id="chips"></div></div>
-    <div class="card"><div class="label">Verdict log</div><div id="log"></div></div>
+    <div class="card" style="flex:0 0 auto;max-height:22vh"><div class="label">Verdict log</div><div id="log"></div></div>
   </div>
 </div>
 <div id="foot"><span id="clock"></span><span id="net"></span><span id="enrolled"></span>
@@ -238,11 +299,19 @@ async function poll(){let s;try{s=await (await fetch('/state')).json()}catch(e){
   $('net').innerHTML=s.network==='offline'?'<span class="ok">● Network: OFFLINE (no internet)</span>':'<span class="warn">● Network: '+s.network+'</span>';
   $('enrolled').innerHTML=s.target_enrolled?'<span class="ok">Target enrolled</span>':'<span class="warn">No target enrolled</span>';
   $('nest').textContent=s.nest.length?'Rescuer link: '+s.nest[s.nest.length-1].slice(0,90):'';
+  const f=s.feeds;
+  const stale=(id,age,lim,msg)=>{const e=$(id);if(age==null||age>lim){e.style.display='block';e.textContent=msg+(age!=null?' (last update '+Math.round(age)+' s ago)':'')}else e.style.display='none'};
+  stale('tstale',f.thermal.age_s,5,'THERMAL PAUSED: life_node stopped or recording off');
+  stale('astale',f.audio.age_s,5,'SOUND PAUSED: life_node stopped or recording off');
+  $('trange').textContent=f.thermal.min_c!=null?`${f.thermal.min_c} to ${f.thermal.max_c} °C`:'';
+  const lv=f.audio.level_db;$('alevel').textContent=lv!=null?lv.toFixed(0)+' dBFS':'';
+  $('meterbar').style.width=lv==null?'0%':Math.max(0,Math.min(100,(lv+70)/60*100))+'%';
   const a=s.ages;cam=(a.cam_standard_s!=null&&a.cam_standard_s<5)||a.cam_noir_s==null||a.cam_noir_s>5?'standard':'noir';$('camname').textContent=cam==='standard'?'standard':'NoIR wide';
+  const ca=cam==='standard'?a.cam_standard_s:a.cam_noir_s;stale('cstale',ca,4,'CAMERA PAUSED: run  sudo systemctl restart eagle-vision');
 }
 function loadImg(id,url,ms){const el=$(id);let busy=false;setInterval(()=>{if(busy)return;busy=true;const im=new Image();
   im.onload=()=>{el.src=im.src;busy=false};im.onerror=()=>{busy=false};im.src=(typeof url==='function'?url():url)+'?'+Date.now()},ms)}
-loadImg('cam',()=>'/cam/'+cam+'.jpg',333);loadImg('thermal','/thermal.png',500);
+loadImg('cam',()=>'/cam/'+cam+'.jpg',333);loadImg('thermal','/thermal.png',400);loadImg('audio','/audio.png',300);
 poll();setInterval(poll,500);
 </script></body></html>"""
 
@@ -264,7 +333,10 @@ def make_handler(logs: Path, eagle_dir: Path, verdict: Verdict):
             elif path == "/state":
                 self._send(200, json.dumps(state(logs, eagle_dir, verdict), default=str).encode(), "application/json")
             elif path == "/thermal.png":
-                r = dash.thermal_png(logs / "live_thermal.npy", scale=3)
+                r = thermal_view(logs / "live_thermal.npy")
+                self._send(200, r[0], "image/png") if r else self.send_error(404)
+            elif path == "/audio.png":
+                r = audio_view(logs / "live_audio.npz")
                 self._send(200, r[0], "image/png") if r else self.send_error(404)
             elif path.startswith("/cam/") and path.endswith(".jpg") and path[5:-4] in CAMERAS:
                 try:
