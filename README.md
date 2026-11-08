@@ -8,7 +8,7 @@ A person is cut off under dense forest canopy: a downed aircrew member, or a hik
 
 This repository holds the software we build for it. The first piece is a physics-based 3D simulator of the full mission. The second is an Unreal Engine demo of the wide-area thermal search over real terrain, with live ATAK markers.
 
-The Eagle itself is modelled as a flapping-wing drone built to a Mountain Hawk-Eagle's size (1.6 m wings) and dressed as one; it flies, lands, folds its wings and takes off in the simulator, in a standalone viewer and as glTF for Unreal ([eagle-drone.md](docs/eagle-drone.md)).
+The Eagle itself is modelled as a flapping-wing drone built to a Mountain Hawk-Eagle's size (1.6 m wings) and dressed as one; it flies, lands, folds its wings and takes off in the simulator, in a standalone viewer and as glTF for Unreal, with a to-scale cutaway of every part inside the disguise ([eagle-drone.md](docs/eagle-drone.md)).
 
 ![The Eagle drone model: the bare airframe, the Mountain Hawk-Eagle disguise in flight, and perched with its wings folded](docs/images/eagle-drone-model.jpg)
 

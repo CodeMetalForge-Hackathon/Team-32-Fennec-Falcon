@@ -4,6 +4,51 @@ Every build gets an entry here: what we built, why, how it works, what we decide
 
 ---
 
+## 2026-11-08 · Eagle: airframe refitted inside the disguise; cutaway with every part
+
+**Files:** [`simulator/v2/eagle_drone.js`](../simulator/v2/eagle_drone.js), [`simulator/v2/cutaway.js`](../simulator/v2/cutaway.js) (new), [`simulator/v2/eagle_viewer.src.html`](../simulator/v2/eagle_viewer.src.html), [`simulator/v2/build.js`](../simulator/v2/build.js), [`simulator/v2/assets/`](../simulator/v2/assets/) (re-exported) · **Docs:** [eagle-drone.md](eagle-drone.md#fit-the-airframe-inside-the-disguise)
+
+![Cutaway, wings open](images/eagle-drone-cutaway.jpg)
+
+### What
+The airframe now fits inside the eagle disguise in every pose, and the viewer has a cutaway: a still, to-scale section through the bird with 24 numbered parts (disguise layers, airframe, drive, sensors, compute, radios, power) and a parts list with sizes and estimated masses. It opens in its own window from **Cutaway view ↗**.
+
+### Why
+Mitch's x-ray screenshot showed the airframe poking out of the eagle: the chrome nose above the head, the diamond tail out to the sides, the wing panels past the feathers. A disguise only works if the drone fits inside it, and the team needs to see what goes where and whether the real parts fit.
+
+### How it works
+- One envelope for everything: the eagle's body and head rings are shared constants. The pod is the body less the disguise stack (feathers 9 mm, skin 1 mm, foam 5 mm); the sensor head is the head less 5 mm; each lamella and tail slat is its feather's core (14 mm shorter, vanes 85 % as wide).
+- Nose cone → chrome sensor head on the neck (it turns with the head); fixed diamond tail → 12 tail slats on the tail joints (they close with the feathers). The disguise gained a feathered ankle that covers the leg joint when the legs tuck.
+- 20 internal parts are rigid meshes on the bones at real or placeholder sizes; the pushrods re-aim at the humerus horns every pose. Skin and foam are extra lofts from the same envelope.
+- The cutaway renders once with clipping planes in the body frame: the near side is cut back in steps so each layer shows. An ID render (surface and body region per pixel) moves each numbered dot onto the part it names, or drops it if that part is hidden from that side. Labels sit in two columns; leader crossings are reduced by swapping label slots. The 3D context is released after the still.
+
+### Key results
+- Airframe outside the disguise, worst over 8 views and 9 poses (measured, silhouette test): tail 92 → ≤ 2 mm, head 54 → 0 mm, wings 37 → ≤ 2.5 mm, legs 4.3 → ≤ 1 mm; 2 mm is one pixel. One 3.5 mm sliver remains mid-fold.
+- All 20 parts (23 with mirrored pairs) fit their spaces with no overlaps; tightest 0.8 mm (grip servos).
+- Estimated mass 1.90 kg against the 2.6 kg target.
+- Findings: the HT-203U phone housing (68.6 × 45.7 × 12.7 mm, listing) does not fit the head, so the core comes out; a Pi Camera 3 board is too big for behind an eye; the 110 mm mic bar fits only across the pod's widest point; the Iridium patch has to sit outside the carbon, partly under the folded wings when perched.
+
+### Decisions and trade-offs
+| Decision | Why | Cost |
+|---|---|---|
+| Change the reference airframe's nose and tail | Neither can fit inside a perched eagle | The bare airframe looks less like the render |
+| Lamellae as feather cores, not wider panels | The feather film wraps them, so they never show | Less carbon area per wing than the render suggests |
+| Mic bar across the pod, ports through the wall | The only place a 110 mm bar fits | Needs acoustic windows; motor noise is close |
+| Masses as estimates, labelled per row | Most parts are not chosen yet | The total is a budget, not a weight |
+
+### Verification
+- Silhouette fit test (headless, `render/fit.js`, not in the repo): numbers above, both skins.
+- Parts fit test (`render/partfit.js`, not in the repo): every part inside its space, no overlaps.
+- Cutaway in headless Chromium at desktop width and phone width, light and dark: both poses render (10 s and 22 s on SwiftShader), 24 parts labelled, no console errors, no sideways page scroll.
+- Viewer: the context-loss tests and the desktop/phone layout check still pass. `.glb` files re-exported; Khronos validator 0 errors. `tests/test_present.js` passes.
+
+### Open issues / next
+- Choose the real motor, gearbox, servos, battery and flight controller, then replace the placeholders.
+- Measure the HT-203U core out of its housing; pick the RGB camera module.
+- Acoustic windows for the mic bar; whether the folded wings block the Iridium patch.
+
+---
+
 ## 2026-11-08 · Eagle viewer: bring the 3D view back when the browser drops it
 
 **Files:** [`simulator/v2/eagle_viewer.src.html`](../simulator/v2/eagle_viewer.src.html) (built into `eagle_viewer.html`), [`simulator/v2/build.js`](../simulator/v2/build.js) · **Docs:** [eagle-drone.md](eagle-drone.md#viewer)

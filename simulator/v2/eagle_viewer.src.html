@@ -92,12 +92,44 @@ ul.checks { margin: 0; padding: 0 0 0 18px; display: grid; gap: 6px; font-size: 
 ul.checks li::marker { color: var(--accent); }
 footer { font-size: 13px; color: var(--muted); display: grid; gap: 4px; }
 footer a { color: var(--accent); }
+/* cutaway */
+a.tog { text-decoration: none; display: inline-block; color: var(--ink); }
+a.tog:hover { border-color: var(--accent); }
+.cutfig { display: grid; gap: 8px; }
+.cutscroll { position: relative; overflow-x: auto; border-radius: var(--r); border: 1px solid var(--line); background: #f2f0ea; }
+.cutscroll img { display: block; width: 100%; min-width: 900px; height: auto; aspect-ratio: 2400 / 1500; }
+.cutwait { position: absolute; inset: 0; display: grid; place-items: center; color: #56655f; font: 14px/1.4 var(--f-data); padding: 16px; text-align: center; }
+.cutwait[data-err] { color: #9a3b1c; }
+.bomtbl td:first-child { width: 2.4em; }
+.bomtbl tr.grp td { font: 600 11px/1.2 var(--f-data); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); padding-top: 16px; border-bottom-color: var(--ink); }
+.bomtbl td.no { font: 600 13px/1.5 var(--f-data); color: var(--on-accent); }
+.bomtbl td.no span { display: inline-grid; place-items: center; min-width: 24px; height: 24px; border-radius: 12px; padding: 0 5px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.28); }
+.bomtbl td.nm { font-weight: 600; white-space: nowrap; }
+.bomtbl td.wh { color: var(--muted); min-width: 22ch; }
+.bomtbl td.sz { font: 13px/1.5 var(--f-data); min-width: 14ch; }
+.bomtbl td.ms { font: 500 13px/1.5 var(--f-data); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.bomtbl td.bs { font: 500 11px/1.9 var(--f-data); color: var(--muted); white-space: nowrap; }
+.bomtbl tfoot td { font-weight: 600; border-bottom: 0; padding-top: 12px; }
+@media (max-width: 640px) {   /* parts list as stacked rows on a phone: number, name and mass, then what it is, then size and basis */
+  .bomtbl, .bomtbl tbody, .bomtbl tfoot { display: block; }
+  .bomtbl thead { display: none; }
+  .bomtbl tr.grp, .bomtbl tr.grp td { display: block; }
+  .bomtbl tr:not(.grp) { display: grid; grid-template-columns: 34px 1fr auto; gap: 3px 10px; padding: 9px 0; border-bottom: 1px solid var(--line); }
+  .bomtbl tr:not(.grp) td { border: 0; padding: 0; min-width: 0; }
+  .bomtbl td.no { grid-column: 1; grid-row: 1 / span 3; }
+  .bomtbl td.nm { grid-column: 2; grid-row: 1; white-space: normal; }
+  .bomtbl td.ms { grid-column: 3; grid-row: 1; }
+  .bomtbl td.wh { grid-column: 2 / 4; grid-row: 2; }
+  .bomtbl td.sz { grid-column: 2; grid-row: 3; }
+  .bomtbl td.bs { grid-column: 3; grid-row: 3; text-align: right; }
+  .bomtbl tfoot td:empty { display: none; }
+}
 @media (max-width: 980px) { .grid { grid-template-columns: 1fr 1fr; } .grid .card.wide { grid-column: 1 / -1; } }
 @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } .stage { aspect-ratio: 4 / 5; max-height: 70vh; } .hud { min-width: 0; font-size: 11px; left: 8px; top: 8px; } .hud .st { font-size: 13px; } .hud div span:first-child { width: 72px; } .hint, .badge { display: none; } }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
 </style>
 
-<div class="wrap">
+<div class="wrap" id="viewerView">
   <header>
     <div class="eyebrow">Fennec · Eagle-1 airframe · Team 32</div>
     <h1>Hawk-Eagle Drone</h1>
@@ -153,6 +185,9 @@ footer a { color: var(--accent); }
         <button type="button" id="cFree" data-c="free" aria-pressed="false">Free</button>
       </div>
     </div>
+    <div class="group"><span class="lbl">Parts</span>
+      <a class="tog" id="cutLink" href="@@CUTAWAY_HREF@@" target="_blank" rel="noopener">Cutaway view ↗</a>
+    </div>
   </div>
 
   <div class="grid">
@@ -194,7 +229,7 @@ footer a { color: var(--accent); }
       <h2>Reference airframe</h2>
       <figure>
         <img src="@@REF@@" alt="Render of the bare drone: dark carbon wings, a carbon pod with a chrome nose cone, silver wing linkage with orange lights, and a diamond tail" width="1279" height="720">
-        <figcaption>The bare drone the disguise goes over: carbon pod, chrome nose, wing linkage, diamond tail. Scaled here to a 1.6 m span.</figcaption>
+        <figcaption>The bare drone the disguise goes over: carbon pod, chrome nose, wing linkage, diamond tail. In the model it is scaled to a 1.6 m span and built to fit inside the eagle: the chrome nose is the sensor head inside the eagle's head, and the fixed diamond tail became 12 slats that close with the tail feathers.</figcaption>
       </figure>
       <ul class="checks">
         <li>Perches upright inside the canopy and scans with quick head turns, as raptors do.</li>
@@ -210,16 +245,50 @@ footer a { color: var(--accent); }
   </footer>
 </div>
 
+<div class="wrap" id="cutView" hidden>
+  <header>
+    <div class="eyebrow">Fennec · Eagle-1 · cutaway</div>
+    <h1>Inside the Hawk-Eagle</h1>
+    <p class="lede">Every part of the drone, <b>to scale</b>, inside its Mountain Hawk-Eagle disguise. The near side is cut back in steps (feathers, skin, foam, carbon pod) so each layer shows, and the inner wing has its feather film peeled off its carbon lamellae. Numbers match the parts list.</p>
+  </header>
+  <div class="rail" role="toolbar" aria-label="Cutaway controls">
+    <div class="group"><span class="lbl" id="lPose">Pose</span>
+      <div class="seg" aria-labelledby="lPose" id="cutPose">
+        <button type="button" data-v="open" aria-pressed="true">Wings open</button>
+        <button type="button" data-v="perched" aria-pressed="false">Perched</button>
+      </div>
+    </div>
+    <div class="group"><span class="lbl">Labels</span>
+      <button type="button" class="tog" id="cutLabels" aria-pressed="true">Numbers and names</button>
+    </div>
+    <div class="group"><span class="lbl">Flying model</span>
+      <a class="tog" href="#">Back to the flight view</a>
+    </div>
+  </div>
+  <figure class="cutfig">
+    <div class="cutscroll"><img id="cutImg" alt="Cutaway of the Eagle drone with numbered callouts for every part" width="2400" height="1500" hidden><div class="cutwait" id="cutWait" role="status">Cutting the eagle open…</div></div>
+    <figcaption id="cutCap">Orthographic view, so the 100 mm bar holds anywhere in the picture plane. On a phone, scroll the picture sideways.</figcaption>
+  </figure>
+  <section class="card">
+    <h2>Parts list</h2>
+    <div class="tbl"><table class="bomtbl" id="bom"></table></div>
+    <p id="bomNote">Spec = the maker's figure. Est. = our estimate. Placeholder = the part is not chosen yet; the size shown is what fits. Model = measured on this 3D model.</p>
+  </section>
+  <footer>
+    <span>Every part is checked to fit inside its space (carbon pod, sensor head, the eagle's outline) with no two parts touching; the airframe stays inside the disguise in every pose. Sizes marked spec: RockBLOCK 9603 (Iridium), reSpeaker Flex XVF3800 Linear (Seeed), HT-203U listing, Heltec WiFi LoRa 32 V3, Raspberry Pi AI HAT+ product brief.</span>
+  </footer>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <script id="eagle-drone">
 /*@@EAGLE@@*/
 </script>
 <script>
-(() => {
+function initViewer() {
 'use strict';
 const $ = s => document.querySelector(s);
-if (!window.THREE || !window.EagleDrone) { $('#loading').textContent = 'Could not load three.js. Check the connection and reload.'; return; }
+if (!window.THREE || !window.EagleDrone) { $('#loading').textContent = 'Could not load three.js. Check the connection and reload.'; return null; }
 const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const stage = $('#stage');
 
@@ -436,10 +505,10 @@ function restart3d(manual) {
 }
 $('#restart').addEventListener('click', () => restart3d(true));
 if (dead) showNotice('This browser could not start a 3D view. Close other 3D tabs, then press Restart.', true);
-let last = performance.now(), visible = true;
+let last = performance.now(), visible = true, paused = false;
 document.addEventListener('visibilitychange', () => { visible = !document.hidden; last = performance.now(); });
 function frame(now) {
-  requestAnimationFrame(frame); if (!visible) return;
+  requestAnimationFrame(frame); if (!visible || paused) return;
   // a dropped context that the browser has not handed back after 2.5 s: build a new renderer
   // (three tries, then a Restart button, so a browser that keeps refusing is not asked forever)
   if (lostAt && !dead && now - lostAt > 2500) {
@@ -458,5 +527,9 @@ function frame(now) {
 requestAnimationFrame(frame);
 setState('perched', 'Perched · folded · scanning');
 if (!RM) fullLoop(); else setPressed('man', '');
-})();
+return { pause(v) { paused = !!v; last = performance.now(); } };
+}
+</script>
+<script>
+/*@@CUTAWAY_JS@@*/
 </script>

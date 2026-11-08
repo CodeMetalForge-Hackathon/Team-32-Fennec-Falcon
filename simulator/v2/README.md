@@ -15,7 +15,7 @@ left, then press **Run mission**.
 
 The Eagle is a flapping-wing drone at Mountain Hawk-Eagle size: it flies in, lands on the perch and
 folds its wings at the start of **Run mission**. Pick its disguise under *Input · the Eagle*. To look at
-the model on its own, open `eagle_viewer.html` ([reference](../../docs/eagle-drone.md)).
+the model on its own, open `eagle_viewer.html`; for every part inside it, `eagle_viewer.html#cutaway` ([reference](../../docs/eagle-drone.md)).
 
 **Present ▶** (or **P**) runs the judges' demo: ten cards with live numbers from the model; → next,
 ← back, A auto-advance, Esc exit. Run sheet: [`docs/demo-runbook.md`](../../docs/demo-runbook.md).
@@ -46,7 +46,8 @@ console.log(r.processing.decision, r.output.chosen, r.timeToReport_s);    // TRA
 | `model.js` | Physics and decision model: no dependencies, Node or browser (`window.EagleModel`) |
 | `build.js` | `node build.js` inlines `model.js` and `eagle_drone.js` into `index.src.html` and writes `index.html`; also builds `eagle_viewer.html` |
 | `eagle_drone.js` | The Eagle as a 3D model: Mountain Hawk-Eagle size, three skins (hawk-eagle, serpent eagle, bare airframe), flight, landing, wing fold and take-off. [Reference](../../docs/eagle-drone.md) |
-| `eagle_viewer.html` | Standalone viewer for the model (built from `eagle_viewer.src.html`) |
+| `eagle_viewer.html` | Standalone viewer for the model (built from `eagle_viewer.src.html`); `#cutaway` opens the cutaway |
+| `cutaway.js` | The cutaway view and parts list, inlined into `eagle_viewer.html` by `build.js` |
 | `assets/` | The model as `.glb` files with eight animation clips, for Unreal or Blender |
 | `tools/export_glb.js` | Rebuilds `assets/*.glb` from `eagle_drone.js` in headless Chromium |
 | `model_table.js` | Prints the model's numbers for every preset and what-if case |

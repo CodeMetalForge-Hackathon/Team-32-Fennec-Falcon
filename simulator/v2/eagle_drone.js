@@ -63,6 +63,66 @@ function makeEagleDrone(THREE) {
   // toes: [yaw (deg, + = inward), length of the two segments, talon]
   const TOES = [[18, 0.026, 0.020, 0.018], [0, 0.032, 0.024, 0.021], [-24, 0.026, 0.018, 0.017], [180, 0.024, 0.016, 0.026]];
 
+  // ---------- envelopes: the eagle's outer surface, and everything that has to fit inside it ----------
+  // body and neck rings: [bone, z (body frame), centre y, half-width, half-height above, below]
+  const BODY_RINGS = [
+    ['body', -0.172, 0.014, 0.020, 0.012, 0.012], ['body', -0.15, 0.008, 0.038, 0.026, 0.028], ['body', -0.115, 0.002, 0.054, 0.038, 0.048], ['body', -0.07, -0.002, 0.068, 0.048, 0.062],
+    ['body', -0.02, 0.000, 0.078, 0.055, 0.071], ['body', 0.03, 0.004, 0.080, 0.057, 0.073], ['body', 0.075, 0.008, 0.074, 0.055, 0.068], ['body', 0.11, 0.013, 0.061, 0.048, 0.058],
+    ['neck', 0.138, 0.020, 0.050, 0.043, 0.048], ['neck', 0.158, 0.025, 0.043, 0.039, 0.042],
+  ];
+  // head rings in the head bone's frame: [z, centre y, half-width, half-height above, below]
+  const HEAD_RINGS = [[-0.002, 0.004, 0.036, 0.036, 0.034], [0.018, 0.009, 0.037, 0.039, 0.033], [0.036, 0.009, 0.034, 0.035, 0.029], [0.05, 0.006, 0.027, 0.028, 0.023],
+    [0.060, 0.003, 0.019, 0.019, 0.016], [0.067, 0.001, 0.010, 0.010, 0.009], [0.070, 0.000, 0.003, 0.003, 0.003]];
+  // the disguise stack between the feather tips and the carbon pod (m, modelled): contour feathers, stretch skin, foam fairing,
+  // then the pod's carbon wall; the head is a printed shell under a thin feather layer
+  const STACK = { feathers: 0.009, skin: 0.001, foam: 0.005, shell: 0.0015, headFeathers: 0.003, headShell: 0.002 };
+  const inset = (r, d) => r - Math.min(d, 0.45 * r);
+  // a carbon lamella (wing or tail) is its feather's core: shorter at the tip, narrower in each vane; the printed feather film wraps it
+  const LAM = { tip: 0.014, vane: 0.85 };
+  const insetRing = (r, d) => ({ z: r.z, cy: r.cy, rx: inset(r.rx, d), ryT: inset(r.ryT, d), ryB: inset(r.ryB, d) });
+  const BODY_ENV = BODY_RINGS.filter(r => r[0] === 'body').map(([, z, cy, rx, ryT, ryB]) => ({ z, cy, rx, ryT, ryB }));
+  const POD_RINGS = (() => {
+    const d = STACK.feathers + STACK.skin + STACK.foam, r = BODY_ENV.map(e => insetRing(e, d)), f = r[r.length - 1];
+    r.push({ z: 0.122, cy: f.cy + 0.003, rx: f.rx * 0.72, ryT: f.ryT * 0.72, ryB: f.ryB * 0.72 });   // front bulkhead, the neck joint sits here
+    return r;
+  })();
+  const SENSOR_HEAD_RINGS = HEAD_RINGS.slice(0, 5).map(([z, cy, rx, ryT, ryB]) => insetRing({ z, cy, rx, ryT, ryB }, STACK.headFeathers + STACK.headShell));
+
+  // ---------- internal parts, to scale, in their bone's frame at the bind pose (metres; body frame: +X left, +Y up, +Z forward) ----------
+  // box: d = [x, y, z] size; cyl: r, h, axis. 'in' is the space the part must fit: pod (inside the carbon wall), body (inside the
+  // eagle's outer surface, e.g. under the mantle feathers), head (inside the sensor head), tail (between the central tail slats).
+  // Sizes marked spec come from the maker; everything else is an estimate or a placeholder until the real part is chosen.
+  const PARTS = [
+    { id: 'battery', bom: 24, bone: 'body', shape: 'box', at: [0, -0.0208, 0.010], d: [0.043, 0.034, 0.136], col: 0x2c4a68, in: 'pod',
+      sub: [{ shape: 'box', at: [0, 0, 0.012], d: [0.0436, 0.0346, 0.03], col: 0xd8d2c4 }] },
+    { id: 'esc', bom: 14, bone: 'body', shape: 'box', at: [0, -0.015, 0.095], d: [0.022, 0.009, 0.030], col: 0x22303d, in: 'pod' },
+    { id: 'pi5', bom: 20, bone: 'body', shape: 'box', at: [0, 0, -0.022], d: [0.056, 0.0016, 0.085], col: 0x1d6a3a, in: 'pod',
+      sub: [{ shape: 'box', at: [0, 0.0088, 0.0315], d: [0.054, 0.016, 0.0205], col: 0xb9bdc3 },   // USB and Ethernet jacks
+        { shape: 'box', at: [0, 0.016, -0.010], d: [0.0565, 0.0016, 0.065], col: 0x15402a },          // AI HAT+ on 16 mm standoffs
+        { shape: 'box', at: [0, 0.0178, -0.012], d: [0.016, 0.002, 0.016], col: 0x121416 },           // Hailo-8
+        { shape: 'box', at: [0, 0.0022, -0.006], d: [0.016, 0.0028, 0.016], col: 0x2a2d31 }] },       // SoC
+    { id: 'fc', bom: 21, bone: 'body', shape: 'box', at: [0, 0, -0.088], d: [0.036, 0.008, 0.036], col: 0x2b2f6b, in: 'pod' },
+    { id: 'xvf', bom: 19, bone: 'body', shape: 'box', at: [0, 0.0105, -0.086], d: [0.034, 0.005, 0.034], col: 0x1d3a6b, in: 'pod' },
+    { id: 'radio', bom: 22, bone: 'body', shape: 'box', at: [0.034, -0.018, 0.025], d: [0.0102, 0.0255, 0.0502], col: 0x1d4f8f, in: 'pod' },
+    { id: 'micbar', bom: 19, bone: 'body', shape: 'box', at: [0, 0, 0.027], d: [0.110, 0.0016, 0.012], col: 0x1d3a6b, in: 'pod',
+      sub: [-0.0495, -0.0165, 0.0165, 0.0495].map(x => ({ shape: 'cyl', at: [x, -0.0014, 0], r: 0.0022, h: 0.0012, axis: 'y', col: 0xc9cdd2 })) },
+    { id: 'gnss', bom: 21, bone: 'body', shape: 'box', at: [0, 0.0425, -0.022], d: [0.020, 0.006, 0.020], col: 0x8c6d3f, in: 'body' },
+    { id: 'iridium', bom: 23, bone: 'body', shape: 'box', at: [0, 0.0465, 0.040], d: [0.045, 0.015, 0.045], col: 0xe4e3de, in: 'body',
+      sub: [{ shape: 'box', at: [0, 0.0076, 0], d: [0.025, 0.0012, 0.025], col: 0xbf9a5f }] },
+    { id: 'motor', bom: 14, bone: 'body', shape: 'cyl', at: [0, 0.020, 0.048], r: 0.0175, h: 0.028, axis: 'z', col: 0xb07644, in: 'pod' },
+    { id: 'gearbox', bom: 15, bone: 'body', shape: 'box', at: [0, 0.022, 0.074], d: [0.044, 0.036, 0.022], col: 0x8b9198, in: 'pod' },
+    { id: 'crank', bom: 15, bone: 'body', shape: 'cyl', at: [0, 0.022, 0.0875], r: 0.015, h: 0.004, axis: 'z', col: 0x5f656c, in: 'pod' },
+    { id: 'foldServo', bom: 16, bone: 'body', shape: 'box', at: [0.034, 0.012, 0.046], d: [0.012, 0.029, 0.023], col: 0x23272d, in: 'pod', mirror: true },
+    { id: 'neckPan', bom: 16, bone: 'body', shape: 'box', at: [0, 0.022, 0.104], d: [0.022, 0.012, 0.023], col: 0x23272d, in: 'pod' },
+    { id: 'neckTilt', bom: 16, bone: 'body', shape: 'box', at: [0, 0.004, 0.106], d: [0.022, 0.012, 0.022], col: 0x23272d, in: 'pod' },
+    { id: 'tailServo', bom: 16, bone: 'body', shape: 'box', at: [0.0125, 0.002, -0.124], d: [0.012, 0.022, 0.023], col: 0x23272d, in: 'pod', mirror: true },
+    { id: 'gripServo', bom: 16, bone: 'body', shape: 'box', at: [0.028, -0.034, -0.030], d: [0.008, 0.017, 0.016], col: 0x23272d, in: 'pod', mirror: true },
+    { id: 'thermal', bom: 17, bone: 'head', shape: 'box', at: [0, 0.008, 0.020], d: [0.022, 0.020, 0.022], col: 0x2a2d31, in: 'head',
+      sub: [{ shape: 'cyl', at: [0, -0.002, 0.023], r: 0.0045, h: 0.022, axis: 'z', col: 0x15171a }, { shape: 'cyl', at: [0, -0.002, 0.0342], r: 0.0047, h: 0.0006, axis: 'z', col: 0xc8a64a }] },
+    { id: 'rgbCam', bom: 18, bone: 'head', shape: 'box', at: [0.0185, 0.0125, 0.034], d: [0.009, 0.009, 0.009], rot: [0, 52, 0], col: 0x1b2e22, in: 'head' },
+    { id: 'antenna', bom: 22, bone: 'tail', shape: 'cyl', at: [0, 0.004, -0.051], r: 0.0009, h: 0.078, axis: 'z', col: 0xd0a24a, in: 'tail' },
+  ];
+
   // ---------- liveries ----------
   const LIVERIES = {
     hawkEagle: { label: 'Disguise · Mountain Hawk-Eagle', disguise: true, feathered: true },
@@ -400,6 +460,18 @@ function makeEagleDrone(THREE) {
     }
     get mesh() { return this.meshes[this.livery]; }
 
+    // ----- what is under the feathers: disguise layers (skin, foam, head shell) and the internal parts -----
+    showLayers(on) {
+      if (on && !this.layerMesh) this.layerMesh = this.makeMesh('layers');
+      if (this.layerMesh) this.layerMesh.visible = !!on;
+      return this;
+    }
+    showParts(on) {
+      if (on && !this.parts) { this.parts = buildParts(this); this.parts.update(); }
+      if (this.parts) this.parts.list.forEach(m => { m.visible = !!on; });
+      return this;
+    }
+
     // ----- pose -> bones -----
     applyPose(binding) {
       const P = this.pose, rig = this.rig, by = rig.by;
@@ -471,6 +543,7 @@ function makeEagleDrone(THREE) {
         rig.setL('toe' + i + 'a', null, qa_);
         rig.setL('toe' + i + 'b', null, qa(new THREE.Quaternion(), AX, (curl * 64 - open * 10) * DEG));
       });
+      if (this.parts) this.parts.update();
     }
 
     // ----- modes and maneuvers -----
@@ -728,6 +801,28 @@ function makeEagleDrone(THREE) {
     }
     const v3 = (x, y, z) => new THREE.Vector3(x, y, z);
 
+    // ===== disguise under-layers: stretch skin (with the printed head shell) and foam fairing, from the same envelope =====
+    if (livery === 'layers') {
+      const body = I('body'), neck = I('neck'), head = I('head'), n = BODY_RINGS.length;
+      const loc = (b, y, z) => v3(0, y, z).applyMatrix4(new THREE.Matrix4().copy(bind[b]).invert());
+      const shell = (d, col, headD, headCol) => {
+        const rings = BODY_RINGS.map(([bn, z, cy, rx, ryT, ryB], i) => {
+          const b = bn === 'neck' ? neck : body, c = loc(b, cy, z), r = insetRing({ z, cy, rx, ryT, ryB }, d);
+          const b1 = b === neck ? (i === n - 2 ? body : head) : b, w1 = b === neck ? (i === n - 2 ? 0.35 : 0.55) : 0;
+          return { b, b1, w1, c: [c.x, c.y, c.z], rx: r.rx, ryT: r.ryT, ryB: r.ryB, v: i / (n - 1), col };
+        });
+        if (headD != null) HEAD_RINGS.slice(0, 6).forEach(([z, cy, rx, ryT, ryB]) => { const r = insetRing({ z, cy, rx, ryT, ryB }, headD); rings.push({ b: head, c: [0, cy, z], rx: r.rx, ryT: r.ryT, ryB: r.ryB, v: 1, col: headCol }); });
+        return rings;
+      };
+      loft(M, shell(STACK.feathers, [0.86, 0.80, 0.70], STACK.headFeathers, [0.80, 0.82, 0.84]), A.body, { slot: 0, capStart: true, capEnd: true });   // skin + head shell
+      loft(M, shell(STACK.feathers + STACK.skin, [0.95, 0.80, 0.36]), A.body, { slot: 1, capStart: true, capEnd: true });   // foam
+      const geometry = M.build ? (() => { const o = new Builder(); o.append(M); return o.build(); })() : null;
+      const mk = o => { const m = new THREE.MeshStandardMaterial(Object.assign({ vertexColors: true, side: THREE.DoubleSide }, o)); m.skinning = true; return m; };
+      const materials = [mk({ roughness: 0.9, metalness: 0 }), mk({ roughness: 1, metalness: 0 }), mk({ roughness: 0.5 })];
+      materials.forEach((m, i) => { m.name = 'EagleDrone_layers_' + ['skin', 'foam', 'spare'][i]; });
+      return { geometry, materials, canvas: null, texture: null };
+    }
+
     // ===== wings (left) =====
     const hum = I('humL'), fore = I('foreL'), hand = I('handL');
     // leading edge: a flattened airfoil tube along each arm bone, wider toward the body
@@ -747,11 +842,12 @@ function makeEagleDrone(THREE) {
       }
       for (let i = 0; i < n; i++) for (let j = 0; j < segs; j++) { const a = rows[i][j], bb = rows[i][j + 1], c = rows[i + 1][j], d = rows[i + 1][j + 1]; L.tri(0, a, c, bb); L.tri(0, bb, c, d); }
     };
-    armSeg(hum, RIG.hum, 0.013, 0.010, 0.028, 0.024, 0.030, 0.022);
-    armSeg(fore, RIG.fore, 0.0095, 0.0075, 0.024, 0.020, 0.024, 0.016);
-    armSeg(hand, RIG.hand, 0.009, 0.005, 0.020, 0.010, 0.016, 0.008);
-    blob(L, fore, [0, 0, 0.006], [0.016, 0.0105, 0.022], air ? A.carbon : FS.armD, 0, 0.95);   // elbow
-    blob(L, hand, [0, 0, 0.005], [0.013, 0.0085, 0.017], air ? A.carbon : FS.armD, 0, 0.95);   // wrist
+    const ak = air ? 0.8 : 1;   // the airframe's spar fairings sit inside the feathered arm
+    armSeg(hum, RIG.hum, 0.013 * ak, 0.010 * ak, 0.028 * ak, 0.024 * ak, 0.030 * ak, 0.022 * ak);
+    armSeg(fore, RIG.fore, 0.0095 * ak, 0.0075 * ak, 0.024 * ak, 0.020 * ak, 0.024 * ak, 0.016 * ak);
+    armSeg(hand, RIG.hand, 0.009 * ak, 0.005 * ak, 0.020 * ak, 0.010 * ak, 0.016 * ak, 0.008 * ak);
+    blob(L, fore, [0, 0, 0.006], [0.016 * ak, 0.0105 * ak, 0.022 * ak], air ? A.carbon : FS.armD, 0, 0.95);   // elbow
+    blob(L, hand, [0, 0, 0.005], [0.013 * ak, 0.0085 * ak, 0.017 * ak], air ? A.carbon : FS.armD, 0, 0.95);   // wrist
     // alula (bastard wing) at the wrist
     if (!air) feather(L, hand, { L: 0.075, wo: 0.006, wi: 0.012, x0: 0.004, y: 0.006, d: FS.pcovD, vRect: FS.uwV, layers: 'both', seg: 4, droop: 0.02 });
 
@@ -759,7 +855,9 @@ function makeEagleDrone(THREE) {
     PRIM.forEach((pr, i) => {
       const b = I('P' + (i + 1) + 'L'), shade = 0.9 + 0.1 * (i / 9);
       if (air) {
-        feather(L, b, { L: pr.L * 0.97, wo: 0.028, wi: 0.046, d: FS.lamD, vRect: FS.lamV, droop: 0.02, col: 1, square: i < 8 });
+        // carbon lamella: the core the primary's feather film is bonded to (shorter, narrower, same curve and notches)
+        const Ll = pr.L - LAM.tip;
+        feather(L, b, { L: Ll, wo: pr.wo * LAM.vane, wi: pr.wi * LAM.vane, eo: pr.eo, ei: pr.ei, d: FS.lamD, vRect: FS.lamV, droop: 0.035 * Ll / pr.L, col: 1 });
       } else {
         feather(L, b, { L: pr.L, wo: pr.wo, wi: pr.wi, eo: pr.eo, ei: pr.ei, d: FS.primD, vRect: FS.primV, droop: 0.035, col: shade, colV: 1 });
         // primary covert on top, underwing covert below
@@ -771,9 +869,11 @@ function makeEagleDrone(THREE) {
     SEC.forEach((s, i) => {
       const b = I('S' + (i + 1) + 'L'), ter = i > 9;
       if (air) {
-        feather(L, b, { L: 0.236, wo: 0.032, wi: 0.042, d: FS.lamD, vRect: FS.lamV, droop: 0.01, square: true });
-        if (i % 2 === 0) feather(L, b, { L: 0.115, wo: 0.034, wi: 0.040, x0: -0.01, y: 0.004, d: A.carbon, layers: 'top', seg: 3 });
-        feather(L, b, { L: 0.10, wo: 0.034, wi: 0.040, x0: -0.01, y: -0.004, vRect: FS.lamV, layers: 'bottom', seg: 3 });
+        const Ll = s.L - LAM.tip;
+        feather(L, b, { L: Ll, wo: s.wo * LAM.vane, wi: s.wi * LAM.vane, d: FS.lamD, vRect: FS.lamV, droop: 0.02 * Ll / s.L });
+        // covert stiffeners: carbon strips under the covert feathers, top and bottom
+        if (i % 2 === 0) feather(L, b, { L: s.L * 0.38, wo: 0.017, wi: 0.028, x0: -0.004, y: 0.003, d: A.carbon, layers: 'top', seg: 3, droop: 0.02 });
+        feather(L, b, { L: s.L * 0.36, wo: 0.017, wi: 0.028, x0: -0.004, y: -0.003, vRect: FS.lamV, layers: 'bottom', seg: 3 });
       } else {
         feather(L, b, { L: s.L, wo: s.wo, wi: s.wi, d: ter ? FS.terD : FS.secD, vRect: FS.secV, droop: 0.02, col: ter ? 0.95 : 1 });
         feather(L, b, { L: s.L * (ter ? 0.55 : 0.43), wo: 0.020, wi: 0.034, x0: -0.004, y: 0.0035, d: FS.covD, layers: 'top', seg: 4, droop: 0.02 });
@@ -785,7 +885,7 @@ function makeEagleDrone(THREE) {
     // humerals (on their own bones) and scapulars (on the back, bound to the body)
     HUM.forEach((h, i) => {
       const b = I('H' + (i + 1) + 'L');
-      if (air) feather(L, b, { L: h.L, wo: 0.034, wi: 0.04, d: FS.lamD, vRect: FS.lamV, droop: 0.01 });
+      if (air) feather(L, b, { L: h.L - LAM.tip, wo: 0.026 * LAM.vane, wi: 0.04 * LAM.vane, d: FS.lamD, vRect: FS.lamV, droop: 0.02 * (h.L - LAM.tip) / h.L });
       else feather(L, b, { L: h.L, wo: 0.026, wi: 0.04, d: FS.terD, vRect: FS.secV, droop: 0.02, col: 0.93 });
     });
     if (!air) { const bodyB = I('body');
@@ -798,14 +898,13 @@ function makeEagleDrone(THREE) {
     // ===== tail (left half, mirrored) =====
     RECT.forEach((len, i) => {
       const b = I('T' + (i + 1) + 'L');
-      if (air) { if (i === 0) {
-        // kite panel: one half of the diamond tail, bound to the tail bone (tail-bone frame: -Z = back)
-        const tb = I('tail'), c = [v3(0, 0.006, 0.07), v3(0.003, 0.006, 0.07), v3(0.17, 0.0, -0.06), v3(0.004, 0.0, -0.31), v3(0, 0.0, -0.31)], uvs = [[0.0, 1], [0.05, 1], [1, 0.5], [0.05, 0], [0, 0]];
-        const top = c.map((p, j) => V(L, tb, p, v3(0, 1, 0), uvIn(FS.kite, uvs[j][0], uvs[j][1])));
-        const bot = c.map((p, j) => V(L, tb, p.clone().add(v3(0, -0.002, 0)), v3(0, -1, 0), uvIn(FS.kite, uvs[j][0], uvs[j][1])));
-        L.tri(0, top[0], top[1], top[2]); L.tri(0, top[0], top[2], top[3]); L.tri(0, top[0], top[3], top[4]);
-        L.tri(0, bot[0], bot[2], bot[1]); L.tri(0, bot[0], bot[3], bot[2]); L.tri(0, bot[0], bot[4], bot[3]);
-      } return; }
+      if (air) {
+        // carbon tail slat: the core of the rectrix, so the tail fans and closes like the bird's
+        const Ll = len - LAM.tip;
+        feather(L, b, { L: Ll, wo: (i === 0 ? 0.027 : 0.022) * LAM.vane, wi: (i === 0 ? 0.027 : 0.035) * LAM.vane, d: FS.lamD, vRect: FS.lamV, droop: -0.005 * Ll / len, seg: hi ? 9 : 6 });
+        if (i === 0) blob(L, I('tail'), [0.006, 0.001, 0.012], [0.014, 0.0065, 0.026], A.carbon, 0);   // tail mount (both servos sit in the pod)
+        return;
+      }
       feather(L, b, { L: len, wo: i === 0 ? 0.027 : 0.022, wi: i === 0 ? 0.027 : 0.035, d: FS.tailD, vRect: FS.tailV, droop: -0.005, col: 1 - 0.02 * i, seg: hi ? 9 : 6 });
     });
     if (!air) {
@@ -822,7 +921,7 @@ function makeEagleDrone(THREE) {
     const th = I('thighL'), ta = I('tarsusL');
     if (air) {
       tube(L, th, [v3(0, 0.01, 0), v3(0, -RIG.tibia, 0)], [0.007, 0.005], A.carbon, 0);
-      blob(L, ta, [0, 0, 0], [0.008, 0.008, 0.008], A.metal, 1);
+      blob(L, ta, [0, 0.002, 0], [0.0062, 0.0062, 0.0062], A.metal, 1);   // ankle joint, inside the disguise's ankle
       tube(L, ta, [v3(0, 0, 0), v3(0, -RIG.tarsus, 0)], [0.0055, 0.0045], A.carbon, 0);
     } else {
       // feathered thigh ("trousers"): full at the top, tapering to the ankle
@@ -834,6 +933,8 @@ function makeEagleDrone(THREE) {
       tube(L, th, pts, rad, A.legs, 0, 1, 1.1, false);
       // tarsus: feathered (hawk-eagle) or bare and scaled (serpent eagle)
       tube(L, ta, [v3(0, 0.004, 0), v3(0, -RIG.tarsus * 0.5, 0.002), v3(0, -RIG.tarsus + 0.004, 0)], serp ? [0.0085, 0.0075, 0.0075] : [0.0155, 0.0145, 0.012], A.tarsus, 0, 1, 1, false);
+      // ankle: closes the gap between the trousers and the tarsus when the leg folds
+      blob(L, ta, [0, 0.002, -0.001], serp ? [0.0097, 0.0097, 0.0097] : [0.0158, 0.0152, 0.0158], A.tarsus, 0, 1);
     }
     TOES.forEach((t, i) => {
       const a = I('toe' + i + 'aL'), b = I('toe' + i + 'bL'), r0 = i === 3 ? 0.0062 : 0.0058;
@@ -842,13 +943,14 @@ function makeEagleDrone(THREE) {
       tube(L, b, [v3(0, 0, -0.002), v3(0, 0, t[2])], [r0 * 0.85 * (air ? 0.7 : 1), r0 * 0.7 * (air ? 0.7 : 1)], rect, 0, 1, 0.8, false);
       // talon: a curved cone hooking down
       const tl = t[3];
-      tube(L, b, [v3(0, 0.001, t[2] - 0.002), v3(0, -tl * 0.18, t[2] + tl * 0.55), v3(0, -tl * 0.62, t[2] + tl * 0.9), v3(0, -tl, t[2] + tl * 0.95)], [0.0042, 0.0034, 0.002, 0.0006], air ? A.metal : A.talon, 1, 1, 0.85, true);
+      const tk = air ? 0.8 : 1;   // the airframe's claw is the core of the talon: same curve, thinner
+      tube(L, b, [v3(0, 0.001, t[2] - 0.002), v3(0, -tl * 0.18, t[2] + tl * 0.55), v3(0, -tl * 0.62, t[2] + tl * 0.9), v3(0, -tl * 0.97, t[2] + tl * 0.94)], [0.0042 * tk, 0.0034 * tk, 0.002 * tk, 0.0006 * tk], air ? A.metal : A.talon, 1, 1, 0.85, true);
     });
 
     // ===== shoulder linkage on the airframe (moves with the wing) =====
     if (air) {
-      tube(L, hum, [v3(-0.02, 0.006, 0.02), v3(0.06, 0.004, 0.02)], [0.004, 0.0035], A.metal, 1);
-      blob(L, hum, [-0.016, 0.006, 0.02], [0.0075, 0.0075, 0.0075], A.led, 2);
+      tube(L, hum, [v3(-0.02, 0.003, 0.012), v3(0.06, 0.002, 0.012)], [0.0035, 0.003], A.metal, 1);
+      blob(L, hum, [-0.016, 0.003, 0.012], [0.006, 0.006, 0.006], A.led, 2);
     }
 
     // ===== midline: body, neck, head =====
@@ -856,28 +958,23 @@ function makeEagleDrone(THREE) {
     const nb = bind[neck], hb = bind[head];
     const toLocal = (b, x, y, z) => { const m = new THREE.Matrix4().copy(bind[b]).invert ? new THREE.Matrix4().copy(bind[b]).invert() : new THREE.Matrix4().getInverse(bind[b]); return v3(x, y, z).applyMatrix4(m); };
     if (air) {
-      // carbon pod (body bone) from the tail to the nose ring, then the chrome nose cone
-      const st = [[-0.172, 0.012, 0.010, 0.010], [-0.15, 0.010, 0.022, 0.022], [-0.10, 0.006, 0.036, 0.034], [-0.04, 0.004, 0.048, 0.046], [0.02, 0.004, 0.054, 0.052],
-        [0.07, 0.006, 0.055, 0.053], [0.11, 0.008, 0.052, 0.050], [0.14, 0.010, 0.046, 0.044]];
-      loft(M, st.map(([z, y, rx, ry], i) => ({ b: body, c: [0, y, z], rx, ryT: ry * 0.95, ryB: ry, v: i / (st.length - 1) })), A.body, { capStart: true });
-      const cone = [[0.14, 0.010, 0.046], [0.17, 0.010, 0.043], [0.20, 0.010, 0.036], [0.23, 0.010, 0.026], [0.255, 0.010, 0.015], [0.272, 0.010, 0.006], [0.281, 0.010, 0.0012]];
-      loft(M, cone.map(([z, y, r], i) => ({ b: body, c: [0, y, z], rx: r, ryT: r, ryB: r, v: i / (cone.length - 1) })), A.metal, { slot: 1, capEnd: true });
-      // dorsal spine
-      tube(M, body, [v3(0, 0.058, 0.13), v3(0, 0.061, 0.0), v3(0, 0.047, -0.12), v3(0, 0.03, -0.17)], [0.0035, 0.004, 0.0035, 0.003], A.dark, 0, 1, 1, false);
-      // front cross-bar of the flapping mechanism, orange caps, rear warning light
-      tube(M, body, [v3(-0.062, 0.03, 0.075), v3(0.062, 0.03, 0.075)], [0.0045, 0.0045], A.metal, 1, 1, 1, false);
-      for (const sx of [-1, 1]) blob(M, body, [0.066 * sx, 0.03, 0.075], [0.006, 0.006, 0.006], A.led, 2);
-      blob(M, body, [0.03, 0.05, -0.02], [0.004, 0.004, 0.006], A.led, 2);
-      // camera window under the nose (pans with the head bone)
-      blob(M, head, [0, -0.02, 0.03], [0.012, 0.012, 0.012], A.dark, 1);
+      // carbon pod: the eagle's body less the disguise stack (contour feathers, skin, foam), so it fits inside both disguises
+      loft(M, POD_RINGS.map((r, i) => ({ b: body, c: [0, r.cy, r.z], rx: r.rx, ryT: r.ryT * 0.97, ryB: r.ryB, v: i / (POD_RINGS.length - 1) })), A.body, { capStart: true, capEnd: true });
+      // neck: carbon tube on the pan-tilt joint from the pod's front bulkhead into the head
+      tube(M, neck, [v3(0, -0.002, -0.02), v3(0, 0.001, 0.012), v3(0, 0.004, 0.038)], [0.0135, 0.0125, 0.012], A.carbon, 0, 1, 1, false);
+      // sensor head: chrome shell inside the eagle's head, so it turns and scans with the head
+      loft(M, SENSOR_HEAD_RINGS.map((r, i) => ({ b: head, c: [0, r.cy, r.z], rx: r.rx, ryT: r.ryT, ryB: r.ryB, v: i / (SENSOR_HEAD_RINGS.length - 1) })), A.metal, { slot: 1, capStart: true, capEnd: true });
+      blob(M, head, [0, 0.004, 0.0585], [0.0068, 0.0068, 0.003], A.dark, 1);   // thermal camera window, under the cere
+      blob(M, head, [0.0262, 0.0125, 0.0365], [0.0048, 0.0048, 0.0048], A.dark, 1);   // RGB camera lens, behind the left eye
+      // dorsal spine along the top of the pod
+      const sp = POD_RINGS.filter(r => r.z > -0.16 && r.z < 0.115);
+      tube(M, body, sp.map(r => v3(0, r.cy + r.ryT * 0.97 - 0.0008, r.z)), sp.map(() => 0.0026), A.dark, 0, 1, 1, false);
+      // flapping-mechanism cross-bar between the shoulder joints, orange caps (bench lights, off in the field)
+      tube(M, body, [v3(-0.045, RIG.shoulder[1], RIG.shoulder[2]), v3(0.045, RIG.shoulder[1], RIG.shoulder[2])], [0.004, 0.004], A.metal, 1, 1, 1, false);
+      for (const sx of [-1, 1]) blob(M, body, [0.048 * sx, RIG.shoulder[1], RIG.shoulder[2]], [0.0045, 0.0045, 0.0045], A.led, 2);
     } else {
       // feathered body from the tail coverts to the forehead, with the neck blended between body, neck and head bones
-      const st = [
-        // [bone, z (body frame), cy, rx, ryT, ryB]
-        [body, -0.172, 0.014, 0.020, 0.012, 0.012], [body, -0.15, 0.008, 0.038, 0.026, 0.028], [body, -0.115, 0.002, 0.054, 0.038, 0.048], [body, -0.07, -0.002, 0.068, 0.048, 0.062],
-        [body, -0.02, 0.000, 0.078, 0.055, 0.071], [body, 0.03, 0.004, 0.080, 0.057, 0.073], [body, 0.075, 0.008, 0.074, 0.055, 0.068], [body, 0.11, 0.013, 0.061, 0.048, 0.058],
-        [neck, 0.138, 0.020, 0.050, 0.043, 0.048], [neck, 0.158, 0.025, 0.043, 0.039, 0.042],
-      ];
+      const st = BODY_RINGS.map(([bn, ...r]) => [bn === 'neck' ? neck : body, ...r]);   // [bone, z (body frame), cy, rx, ryT, ryB]
       const rings = st.map(([b, z, cy, rx, ryT, ryB], i) => {
         const c = toLocal(b, 0, cy, z);
         const w1 = b === neck ? (i === st.length - 1 ? 0.55 : 0.0) : 0, b1 = b === neck ? head : b;
@@ -887,9 +984,7 @@ function makeEagleDrone(THREE) {
       // the first neck ring blends back into the body
       rings[st.length - 2].b1 = body; rings[st.length - 2].w1 = 0.35;
       // head rings (head-bone frame)
-      const hr = [[-0.002, 0.004, 0.036, 0.036, 0.034], [0.018, 0.009, 0.037, 0.039, 0.033], [0.036, 0.009, 0.034, 0.035, 0.029], [0.05, 0.006, 0.027, 0.028, 0.023],
-        [0.060, 0.003, 0.019, 0.019, 0.016], [0.067, 0.001, 0.010, 0.010, 0.009], [0.070, 0.000, 0.003, 0.003, 0.003]];
-      hr.forEach(([z, cy, rx, ryT, ryB], i) => rings.push({ b: head, c: [0, cy, z], rx, ryT, ryB, v: lerp(0.84, 1, i / (hr.length - 1)) }));
+      HEAD_RINGS.forEach(([z, cy, rx, ryT, ryB], i) => rings.push({ b: head, c: [0, cy, z], rx, ryT, ryB, v: lerp(0.84, 1, i / (HEAD_RINGS.length - 1)) }));
       loft(M, rings, A.body, { capStart: true, capEnd: true });
       // eyes and brow ridges
       for (const sx of [-1, 1]) {
@@ -927,7 +1022,73 @@ function makeEagleDrone(THREE) {
     return { geometry, materials, canvas, texture: tex };
   }
 
-  return { EagleDrone, SPEC, RIG, PRIM, SEC, LIVERIES, POSES, paintAtlas, version: '1.0' };
+  // ---------- parts list for the cutaway: every numbered callout, what it is, size, estimated mass, and where it points ----------
+  // basis: spec = maker's number; est. = estimate; placeholder = part not chosen yet; model = measured on this model.
+  // anchors: { part } = a part's centre, { bone, at } = a point in that bone's frame, { layer, z } = on that disguise layer's cut band
+  const BOM = [
+    { n: 1, g: 'Disguise', name: 'Contour feathers', line: 'Printed feather film on a fabric backing, the outer 9 mm', size: '9 mm deep', mass: 120, basis: 'est.', a: [{ layer: 'feathers', z: -0.03 }, { bone: 'body', at: [-0.045, -0.045, 0.06], on: 'disguise' }] },
+    { n: 2, g: 'Disguise', name: 'Stretch skin', line: 'Lycra sleeve under the feathers, zips along the belly', size: '1 mm', mass: 30, basis: 'est.', a: [{ layer: 'skin', z: -0.045 }] },
+    { n: 3, g: 'Disguise', name: 'Foam fairing', line: "EVA foam that gives the pod the eagle's shape", size: '5 mm', mass: 40, basis: 'est.', a: [{ layer: 'foam', z: -0.06 }] },
+    { n: 4, g: 'Disguise', name: 'Flight and tail feathers', line: 'Printed film bonded to each lamella and tail slat', size: '26 per wing, 12 in the tail', mass: 60, basis: 'est.', a: [{ bone: 'P7L', at: [0.26, 0.002, 0], on: 'disguise' }, { bone: 'T2R', at: [0.22, 0.001, 0], on: 'disguise' }] },
+    { n: 5, g: 'Disguise', name: 'Head shell, eyes and bill', line: 'Printed nylon shell, glass eyes, resin bill; the cere covers the IR window', size: 'head 74 mm wide (model)', mass: 35, basis: 'est.', a: [{ bone: 'head', at: [0, 0.006, 0.078], on: 'disguise' }] },
+    { n: 6, g: 'Disguise', name: 'Leg covers', line: 'Feathered trousers, scaled toe covers, resin talons over metal claws', size: 'tarsus 115 mm (model)', mass: 30, basis: 'est.', a: [{ bone: 'thighR', at: [-0.03, -0.05, -0.012], on: 'disguise' }, { bone: 'thighL', at: [0.03, -0.05, -0.012], on: 'disguise' }] },
+    { n: 7, g: 'Airframe', name: 'Carbon pod', line: '1.5 mm wall; the front bulkhead carries the neck joint', size: '130 × 100 × 294 mm (model)', mass: 160, basis: 'est.', a: [{ layer: 'pod', z: -0.075 }] },
+    { n: 8, g: 'Airframe', name: 'Sensor head and neck', line: 'Chrome shell on a carbon neck; pans and tilts to scan', size: '62 mm wide (model)', mass: 25, basis: 'est.', a: [{ bone: 'head', at: [-0.01, 0.026, 0.040], on: 'chrome' }, { bone: 'neck', at: [0.01, 0.004, 0.02], on: 'airframe' }] },
+    { n: 9, g: 'Airframe', name: 'Wing spars and joints', line: 'Carbon tubes in arm, forearm and hand; elbow and wrist fold', size: '0.45 m per wing (model)', mass: 140, basis: 'est.', a: [{ bone: 'foreL', at: [0.10, 0.004, 0.014], on: 'airframe' }, { bone: 'humL', at: [0.09, 0.004, 0.014], on: 'airframe' }] },
+    { n: 10, g: 'Airframe', name: 'Carbon lamellae', line: 'The core of every flight feather; they fold with the wing', size: '26 per wing', mass: 150, basis: 'est.', a: [{ bone: 'S5L', at: [0.15, 0.001, 0], on: 'airframe' }, { bone: 'P3L', at: [0.18, 0.001, 0], on: 'airframe' }] },
+    { n: 11, g: 'Airframe', name: 'Tail slats', line: '12 slats on the tail joints: fan in flight, close on the perch', size: '0.30–0.32 m (model)', mass: 30, basis: 'est.', a: [{ bone: 'T3L', at: [0.22, 0.001, 0], on: 'airframe' }, { bone: 'T1L', at: [0.20, 0.001, 0], on: 'airframe' }] },
+    { n: 12, g: 'Airframe', name: 'Legs and feet', line: 'Carbon tibia and tarsus, metal ankle and claw cores; passive grip lock', size: 'tarsus 112 mm (model)', mass: 70, basis: 'est.', a: [{ bone: 'tarsusL', at: [0, -0.05, 0], on: 'airframe' }, { bone: 'thighL', at: [0, -0.05, 0], on: 'airframe' }, { bone: 'toe1bL', at: [0, -0.012, 0.026], on: 'chrome' }] },
+    { n: 13, g: 'Airframe', name: 'Flapping linkage', line: 'Shoulder cross-bar and humerus horns; LEDs for bench tests only', size: '90 mm bar (model)', mass: 40, basis: 'est.', a: [{ bone: 'body', at: [0.02, 0.036, 0.064], on: 'chrome' }, { bone: 'humL', at: [-0.016, 0.003, 0.012], on: 'led' }] },
+    { n: 14, g: 'Drive', name: 'Motor and ESC', line: 'Brushless outrunner; ESC with a 5 V 5 A BEC for the Pi', size: 'Ø35 × 28 mm', mass: 110, basis: 'placeholder', a: [{ part: 'motor' }, { part: 'esc' }] },
+    { n: 15, g: 'Drive', name: 'Gearbox, crank, pushrods', line: 'Two spur stages, about 25:1, to a 3 Hz crank; one rod per wing', size: '44 × 36 × 22 mm', mass: 110, basis: 'placeholder', a: [{ part: 'gearbox' }, { part: 'pushrod' }] },
+    { n: 16, g: 'Drive', name: 'Servos (8)', line: 'Wing fold ×2, tail ×2, neck pan and tilt, grip release ×2', size: 'micro, 23 × 12 × 22–29 mm', mass: 70, basis: 'placeholder', a: [{ part: 'foldServo' }, { part: 'tailServo' }, { part: 'neckPan' }, { part: 'gripServo' }] },
+    { n: 17, g: 'Sensors', name: 'Thermal camera', line: 'HT-203U core, 256 × 192, 3.2 mm lens, looking out through the cere. The 68.6 × 45.7 × 12.7 mm phone housing does not fit the head', cap: 'HT-203U core, 256 × 192, looks out through the cere; its phone housing is too big for the head', size: 'core ≈ 22 × 20 × 22 mm', mass: 25, basis: 'est.', a: [{ part: 'thermal' }] },
+    { n: 18, g: 'Sensors', name: 'RGB camera', line: 'Small board camera behind the left eye. A Pi Camera 3 board (25 × 24 mm) is too big for the head', cap: 'Small board camera behind the left eye', size: '≈ 9 mm cube', mass: 4, basis: 'est.', a: [{ part: 'rgbCam' }] },
+    { n: 19, g: 'Sensors', name: 'Mic bar + XVF3800 core', line: 'reSpeaker Flex Linear-4: 4 mics 33 mm apart on a 110 mm bar across the pod; core board at the rear', cap: 'reSpeaker Linear-4: 4 mics, 33 mm apart, on a 110 mm bar across the pod', size: 'bar 110 mm (spec)', mass: 20, basis: 'est.', a: [{ part: 'micbar' }, { part: 'xvf' }] },
+    { n: 20, g: 'Compute', name: 'Raspberry Pi 5 + AI HAT+', line: 'Hailo-8 (26 TOPS) or 8L (13 TOPS); passive cooling, fan off while listening', size: '85 × 56 mm; HAT 65 × 56.5 mm (spec)', mass: 75, basis: 'est.', a: [{ part: 'pi5' }] },
+    { n: 21, g: 'Compute', name: 'Flight controller + GNSS', line: 'ArduPilot board with IMU; GNSS patch under the back feathers', size: '36 × 36 mm', mass: 20, basis: 'placeholder', a: [{ part: 'fc' }, { part: 'gnss' }] },
+    { n: 22, g: 'Comms', name: '915 MHz radio', line: 'Heltec WiFi LoRa 32 V3 (field) or Feather RFM69HCW (demo); 78 mm wire antenna in the central tail feather', cap: 'Heltec LoRa 32 V3 or Feather RFM69HCW; 78 mm wire antenna in the tail', size: '50.2 × 25.5 × 10.2 mm (spec)', mass: 15, basis: 'est.', a: [{ part: 'radio' }, { part: 'antenna' }] },
+    { n: 23, g: 'Comms', name: 'Iridium modem', line: 'RockBLOCK 9603N; patch antenna up, under the mantle feathers and outside the carbon', cap: 'RockBLOCK 9603N, antenna up under the mantle feathers', size: '45 × 45 × 15 mm, 36 g (spec)', mass: 36, basis: 'spec', a: [{ part: 'iridium' }] },
+    { n: 24, g: 'Power', name: 'Battery', line: '4S LiPo, 4000 mAh, 59 Wh, on the keel at the centre of gravity', size: '136 × 43 × 34 mm', mass: 430, basis: 'placeholder', a: [{ part: 'battery' }] },
+    { n: 25, g: 'Power', name: 'Wiring and connectors', line: 'Harness, USB-C to the Pi, servo leads', size: '', mass: 50, basis: 'est.', a: [] },
+  ];
+
+  // ---------- internal parts: rigid meshes on the bones, so they ride along in every pose ----------
+  function buildParts(bird) {
+    const mats = new Map(), list = [], byId = {};
+    const mat = (col, gloss) => { const k = col + '|' + (gloss ? 1 : 0); if (!mats.has(k)) { const c = new THREE.Color(col); if (c.convertSRGBToLinear) c.convertSRGBToLinear(); mats.set(k, new THREE.MeshStandardMaterial({ color: c, roughness: gloss ? 0.35 : 0.6, metalness: gloss ? 0.6 : 0.1 })); } return mats.get(k); };
+    const geom = s => {
+      if (s.shape === 'cyl') { const g = new THREE.CylinderGeometry(s.r, s.r, s.h, 24); if (s.axis === 'z') g.rotateX(Math.PI / 2); else if (s.axis === 'x') g.rotateZ(Math.PI / 2); return g; }
+      return new THREE.BoxGeometry(s.d[0], s.d[1], s.d[2]);
+    };
+    const place = (p, sx) => {
+      const bone = bird.rig.by[p.bone], m = new THREE.Mesh(geom(p), mat(p.col, /motor|crank|gearbox/.test(p.id)));
+      m.position.set(p.at[0] * sx, p.at[1], p.at[2]);
+      if (p.rot) m.rotation.set(p.rot[0] * DEG, p.rot[1] * DEG * sx, p.rot[2] * DEG * sx);
+      (p.sub || []).forEach(s => { const c = new THREE.Mesh(geom(s), mat(s.col, false)); c.position.set(s.at[0], s.at[1], s.at[2]); c.castShadow = true; m.add(c); });
+      m.castShadow = true; m.receiveShadow = true; m.name = 'part_' + p.id + (sx < 0 ? '_R' : ''); m.userData.part = p.id;
+      bone.add(m); list.push(m); (byId[p.id] = byId[p.id] || []).push(m);
+    };
+    PARTS.forEach(p => { place(p, 1); if (p.mirror) place(p, -1); });
+    // pushrods: crank pin to each humerus horn, re-aimed every pose
+    const rodMat = mat(0x9aa0a6, true), rods = [0, 1].map(() => { const m = new THREE.Mesh(new THREE.CylinderGeometry(0.0018, 0.0018, 1, 10), rodMat); m.castShadow = true; m.name = 'part_pushrod'; m.userData.part = 'pushrod'; bird.rig.by.body.add(m); list.push(m); return m; });
+    byId.pushrod = rods;
+    const pin = new THREE.Vector3(), horn = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0), inv = new THREE.Matrix4(), dir = new THREE.Vector3();
+    const crank = PARTS.find(p => p.id === 'crank');
+    function update() {
+      const body = bird.rig.by.body; bird.rig.root.updateMatrixWorld(true); inv.copy(body.matrixWorld).invert();
+      const a = bird.phase || 0;
+      pin.set(Math.sin(a) * 0.009, crank.at[1] + Math.cos(a) * 0.009, crank.at[2] + 0.004);
+      ['humL', 'humR'].forEach((hn, i) => {
+        horn.set(-0.016 * (i ? -1 : 1), 0.003, 0.012).applyMatrix4(bird.rig.by[hn].matrixWorld).applyMatrix4(inv);
+        const r = rods[i]; dir.subVectors(horn, pin); const len = dir.length();
+        r.position.copy(pin).addScaledVector(dir, 0.5); r.scale.set(1, len, 1); r.quaternion.setFromUnitVectors(up, dir.normalize());
+      });
+    }
+    return { list, byId, update };
+  }
+
+  return { EagleDrone, SPEC, RIG, PRIM, SEC, LIVERIES, POSES, PARTS, BOM, BODY_RINGS, HEAD_RINGS, STACK, POD_RINGS, SENSOR_HEAD_RINGS, LAM, paintAtlas, version: '1.1' };
 }
 
 if (typeof module !== 'undefined' && module.exports) module.exports = makeEagleDrone;

@@ -26,10 +26,18 @@ if (fs.existsSync(vsrcPath)) {
   // still renders of the model, shown if the browser will not give the page a 3D view
   const still = 'data:image/jpeg;base64,' + fs.readFileSync(path.join(dir, '../../docs/images/eagle-drone-model.jpg')).toString('base64');
   if (!vsrc.includes('@@MODELIMG@@')) throw new Error('eagle_viewer.src.html has no @@MODELIMG@@ marker');
-  const vbody = vsrc.replace('/*@@EAGLE@@*/', () => eagle).replace('@@REF@@', () => ref).replace('@@MODELIMG@@', () => still);
+  // the cutaway view (inlined) and where its button points: the repo page opens itself at #cutaway in a new tab,
+  // the published claude.ai page opens its own artifact link at #cutaway
+  const cut = fs.readFileSync(path.join(dir, 'cutaway.js'), 'utf8');
+  if (cut.includes('</script')) throw new Error('cutaway.js contains </script');
+  new Function(cut);   // syntax check: a broken cutaway script would also stop the flight view from starting
+  const ARTIFACT_URL = 'https://claude.ai/artifact/2YdCScNxSWJXALdtH1jRcE';
+  const fill = (src, href) => src.replace('/*@@EAGLE@@*/', () => eagle).replace('/*@@CUTAWAY_JS@@*/', () => cut).replace('@@REF@@', () => ref).replace('@@MODELIMG@@', () => still).replace('@@CUTAWAY_HREF@@', () => href);
+  for (const m of ['/*@@CUTAWAY_JS@@*/', '@@CUTAWAY_HREF@@']) if (!vsrc.includes(m)) throw new Error('eagle_viewer.src.html has no ' + m + ' marker');
+  const vbody = fill(vsrc, '#cutaway'), abody = fill(vsrc, ARTIFACT_URL + '#cutaway');
   const viewer = '<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n' +
     '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n</head>\n<body>\n' + vbody + '\n</body>\n</html>\n';
   fs.writeFileSync(path.join(dir, 'eagle_viewer.html'), viewer);
-  if (process.env.VIEWER_BODY) fs.writeFileSync(process.env.VIEWER_BODY, vbody);   // page body only, for publishing as a claude.ai artifact
+  if (process.env.VIEWER_BODY) fs.writeFileSync(process.env.VIEWER_BODY, abody);   // page body only, for publishing as a claude.ai artifact
   console.log(`built eagle_viewer.html (${(viewer.length / 1024).toFixed(0)} KB)`);
 }
