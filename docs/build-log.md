@@ -1,5 +1,13 @@
 # Build log
 
+## 2026-11-08 · README pitch, mission walkthrough and silent media
+
+Added a first-visit pitch above the existing README text, which is unchanged: product, niche, fit, relevance, a ten-step operator-down walkthrough, what runs today, and links to the branches that hold the Pi and simulator v2 work. The text follows the Fennec pitch deck, linked from the README.
+
+Media is in `docs/images/pitch/`. Every video was re-encoded with no audio stream and no source metadata, and the originals are not in the repository. README clips are GIFs because GitHub does not play repository video files inline; silent MP4s sit beside them. Two bystanders in the face-check screenshot are blurred. The concept film is rendered, not field footage.
+
+Verification: `ffprobe` reports zero audio streams on every clip; the README was rendered through GitHub's README API and all local links resolve. Numbers are labelled computed, modelled or design; no new measurements were made. Open: the deck's 98% perching figure is left out until it has a source.
+
 ## 2026-11-08 · Field prototype on the Raspberry Pi and the Operator Profile Recognition Card
 
 **Files:** [`eagle-kit/`](../eagle-kit/), [`pi/field/`](../pi/field/), [`fusion/`](../fusion/) · **Docs:** [field-prototype.md](field-prototype.md), [operator-profile-card.md](operator-profile-card.md)
