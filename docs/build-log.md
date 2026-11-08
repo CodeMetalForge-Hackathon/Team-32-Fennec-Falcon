@@ -4,6 +4,50 @@ Every build gets an entry here: what we built, why, how it works, what we decide
 
 ---
 
+## 2026-11-07 · Eagle Jungle Simulator v2: presenter, adaptive quality, remote GPU
+
+**Files:** [`simulator/v2/index.src.html`](../simulator/v2/index.src.html) (built into `index.html`), [`simulator/v2/serve.mjs`](../simulator/v2/serve.mjs), [`simulator/v2/tests/`](../simulator/v2/tests/) · **Docs:** [simulator-v2.md](simulator-v2.md#presenter-mode), [demo-runbook.md](demo-runbook.md)
+
+![Presenter, step 4: the thermal card with the Eagle cam](images/sim-v2-presenter-thermal.jpg)
+
+### What
+Three additions to simulator v2 for live demos. **Presenter mode** (**Present ▶** or **P**) hides the panels and walks through the story in ten cards, with camera moves, effects and a large visual where it helps; every number on the cards comes from the model at that moment. **Auto quality** starts from the GPU the browser reports and keeps the frame rate up by trading effects and render resolution. **Remote GPU** lets a computer with a strong graphics card draw the scene and stream it to a laptop on the same network, with the laptop still in control.
+
+### Why
+The v2 jungle lagged badly on the team's laptop, and judges need a guided story rather than a screen of panels. The model is unchanged.
+
+### How it works
+- Presenter: ten scripted steps of camera shots, effects and cards. The card text and numbers are functions of the current settings and model result, so changing a setting changes the story. Presentation clickers work (Page Up and Page Down).
+- Auto quality: three levels set shadow-map size and refresh rate, vegetation density, post effects and how often the Eagle cam is drawn. Every 1.5 s it measures the frame rate; below 40 fps it drops ambient occlusion and bloom, then lowers the render resolution down to half, then the level; above 55 fps it raises the resolution again.
+- Shadows and the Eagle cam are redrawn only as often as they need to be, and only when the Eagle cam is on screen.
+- Remote GPU: two WebRTC video tracks (scene and Eagle cam) come from the GPU computer; the laptop sends its camera pose about 60 times a second and every setting change back, and draws only the panels and labels. `serve.mjs` serves the page and passes the connection offer and answer over Server-Sent Events, with no packages. Inside claude.ai, whose sandbox blocks the video connection, the Remote GPU panel says so and points to `serve.mjs`.
+
+Full detail: [simulator-v2.md](simulator-v2.md) (Presenter mode, Remote GPU, Performance and quality, Automation hooks). Live demo run sheet: [demo-runbook.md](demo-runbook.md).
+
+### Key results
+- The model and its numbers are unchanged; the presenter shows them as computed (night: a burst from the perch heard 246 m away, 5.5 px and +6.6 °C on thermal, P 0.14 → 0.99 in 10 min, 10 m fix; 14:00: 108 h to search the circle). Modelled.
+- Remote GPU in a headless test on one machine: the host's camera followed the viewer's to within 1 cm. Frame rates on the team's laptops are not measured yet.
+
+### Decisions and trade-offs
+| Decision | Why | Cost |
+|---|---|---|
+| Presenter numbers computed live, not scripted | The story cannot drift from the model | The card text has to read well for any scenario |
+| Auto quality: effects first, then resolution, then level | Smooth on integrated graphics without anyone touching a setting | A softer image on weak laptops |
+| Remote GPU over WebRTC, with a small LAN server for signalling | No install beyond Node; the video goes straight between the two browsers | Needs one network (no TURN relay yet); does not run inside claude.ai |
+| The laptop keeps the camera and draws its own labels | Dragging feels local; labels stay sharp | Labels are delayed to match the video, by about half a round trip plus 90 ms |
+
+### Verification
+- `simulator/v2/tests/test_present.js` (headless Chromium, software WebGL): no console errors; all 10 presenter steps; 12 card numbers checked against the model; leaving restores the settings. Passed.
+- `simulator/v2/tests/test_remote.js lan` and `room`: 12 checks each, all passed, including the viewer stopping its own rendering, the host following the viewer's camera to within 1 cm, mirrored presets, sliders and missions, and the viewer drawing locally again when the host stops.
+- `index.html` rebuilt from the new `index.src.html` and the unchanged `model.js` exactly as `build.js` does.
+
+### Open issues / next
+- Measure frame rates on the demo laptop (with Chrome set to its discrete GPU) and on the desktop.
+- Remote GPU across two different networks needs a TURN relay; until then use one network (a phone hotspot works), or Chrome Remote Desktop.
+- Vendor three.js and the fonts so the simulator runs fully offline.
+
+---
+
 ## 2026-11-07 · Eagle Jungle Simulator v2: the person carries nothing
 
 **Files:** [`simulator/v2/`](../simulator/v2/) · **Docs:** [simulator-v2.md](simulator-v2.md), [simulator/v2/unreal/README.md](../simulator/v2/unreal/README.md)

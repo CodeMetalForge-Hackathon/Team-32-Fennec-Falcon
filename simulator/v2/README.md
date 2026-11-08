@@ -13,6 +13,14 @@ Open `index.html` in Chrome, Edge, Safari or Firefox (on GitHub: **Download raw 
 the download). It needs internet on first load for three.js r128 and fonts. Pick a scenario on the
 left, then press **Run mission**.
 
+**Present ▶** (or **P**) runs the judges' demo: ten cards with live numbers from the model; → next,
+← back, A auto-advance, Esc exit. Run sheet: [`docs/demo-runbook.md`](../../docs/demo-runbook.md).
+
+To draw on a computer with a stronger graphics card and show it on a laptop on the same network,
+run `node serve.mjs` on the GPU computer and open `http://localhost:8080/#host` there, then open
+the address it prints, ending in `#view`, on the laptop. Details and limits:
+[Remote GPU](../../docs/simulator-v2.md#remote-gpu).
+
 The model on its own, with Node 18 or newer:
 
 ```bash
@@ -34,6 +42,8 @@ console.log(r.processing.decision, r.output.chosen, r.timeToReport_s);    // TRA
 | `model.js` | Physics and decision model: no dependencies, Node or browser (`window.EagleModel`) |
 | `build.js` | `node build.js` inlines `model.js` into `index.src.html` and writes `index.html` |
 | `model_table.js` | Prints the model's numbers for every preset and what-if case |
+| `serve.mjs` | Serves the page on the local network and connects a GPU computer to a laptop (remote GPU) |
+| `tests/` | Headless browser checks for the presenter and remote GPU: `npm install`, `npx playwright install chromium`, then `npm test` |
 | `unreal/` | Places an exported scene in Unreal Engine 5 ([README](unreal/README.md)) |
 
 ## What the model covers

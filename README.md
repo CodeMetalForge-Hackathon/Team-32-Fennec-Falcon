@@ -46,6 +46,8 @@ node simulator/run-model.mjs night opDist_m=80  # change any setting
 
 Simulator v2, for a person who carries nothing, opens the same way: [`simulator/v2/index.html`](simulator/v2/index.html). Its model runs on its own with `node simulator/v2/model_table.js`. Reference: [`docs/simulator-v2.md`](docs/simulator-v2.md).
 
+**Demo for judges:** in simulator v2 press **Present ▶** (or **P**). Ten cards walk through the story with live numbers from the model: → next, ← back, A auto-advance, Esc exit. Run sheet: [`docs/demo-runbook.md`](docs/demo-runbook.md). To draw on a stronger computer and show it on a laptop on the same network, run `node simulator/v2/serve.mjs` on that computer ([Remote GPU](docs/simulator-v2.md#remote-gpu)).
+
 ## Run the Unreal demo
 
 A second demo flies the Eagle over real Taiwan terrain in Unreal Engine 5: a thermal search through canopy gaps, a confirm orbit, perching, a comms pellet and authentication, with each step appearing live on ATAK. It needs Unreal Engine 5.7 with the free Cesium for Unreal plugin and a free Cesium ion account. Setup, run of show and troubleshooting: [`unreal-sim/README.md`](unreal-sim/README.md).
@@ -113,12 +115,13 @@ Same place and perch. He is injured, carries nothing and taps the briefed code; 
 | [`simulator/index.html`](simulator/index.html) | Eagle Jungle Simulator: the whole app in one file (physics model, 3D scene, interface) |
 | [`simulator/run-model.mjs`](simulator/run-model.mjs) | Runs the simulator's physics model in Node, no browser needed |
 | [`unreal-sim/`](unreal-sim/) | Unreal Engine 5 demo: live thermal search over real Taiwan terrain, with ATAK markers ([setup](unreal-sim/README.md)) |
-| [`simulator/v2/`](simulator/v2/) | Eagle Jungle Simulator v2: the person carries nothing (heat and sound, evidence gate, four ways out), with an Unreal scene import |
+| [`simulator/v2/`](simulator/v2/) | Eagle Jungle Simulator v2: the person carries nothing (heat and sound, evidence gate, four ways out), with a presenter mode for demos, remote GPU and an Unreal scene import |
 | [`eagle-kit/`](eagle-kit/) | Eagle starter kit: perch and Nest software, encrypted LoRa messages, ATAK output, signs of life, radio firmware ([setup](eagle-kit/README.md)) |
 | [`thermal-probe/`](thermal-probe/) | Finds, views and streams a USB thermal camera |
 | [`docs/simulator.md`](docs/simulator.md) | Technical reference: architecture, every equation and constant with its source, message protocol, limitations |
 | [`docs/unreal-sim.md`](docs/unreal-sim.md) | Technical reference for the Unreal demo: architecture, detection model, thermal view, CoT messages, verification |
-| [`docs/simulator-v2.md`](docs/simulator-v2.md) | Technical reference for simulator v2: model, sources, results, export to Unreal, limitations |
+| [`docs/simulator-v2.md`](docs/simulator-v2.md) | Technical reference for simulator v2: model, sources, results, export to Unreal, presenter, remote GPU, performance, limitations |
+| [`docs/demo-runbook.md`](docs/demo-runbook.md) | Run sheet for a live demo of simulator v2: setup, the ten presenter steps, fallbacks, likely questions |
 | [`docs/eagle-kit.md`](docs/eagle-kit.md) | Technical reference for the kit: find loop, messages and keys, signs of life, verification |
 | [`docs/thermal-probe.md`](docs/thermal-probe.md) | Technical reference for the thermal camera probe |
 | [`docs/build-log.md`](docs/build-log.md) | Dated record of every build: what, why, decisions, verification, open issues |
@@ -133,13 +136,13 @@ Same place and perch. He is injured, carries nothing and taps the briefed code; 
 | Mission simulator | v1 working: 24 inputs, 4 scenarios, full mission playback |
 | Physics model | v1: acoustic, thermal, radar, RF, fix accuracy, LoRa airtime; sources cited, estimates labelled |
 | Unreal live thermal demo | v1: code complete and tested without Unreal (18 tests; every Unreal API name checked); first run in the editor next |
-| Mission simulator v2 (no tag) | Working: heat and sound, evidence gate, four ways out, search time; 5 presets; scene export to Unreal |
+| Mission simulator v2 (no tag) | Working: heat and sound, evidence gate, four ways out, search time; 5 presets; scene export to Unreal; presenter mode, adaptive quality, remote GPU on a local network |
 | Eagle starter kit | v2 in simulation: find loop, encrypted messages, ATAK output, signs of life for up to 10 people; 183 tests pass; not yet on hardware |
 | Thermal camera probe | v1 tested with a simulated camera; not yet run with the HTI imager |
 | Hardware (Eagle, tag, relay) | Not in this repo yet |
 | Field validation | Not started |
 
-Next: terrain masking in the RF model, the Eagle's own poll in the silence decision, detection probability and false alarms, fully offline build. See [build-log.md](docs/build-log.md).
+Next: terrain masking in the RF model, the Eagle's own poll in the silence decision, detection probability and false alarms, fully offline build, frame rates measured on the team's laptops, and a relay server so remote GPU works across networks. See [build-log.md](docs/build-log.md).
 
 ## Team
 

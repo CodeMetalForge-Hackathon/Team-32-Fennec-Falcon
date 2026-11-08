@@ -17,6 +17,8 @@ measured.
 | `model.js` | Physics and decision model. Plain JavaScript, no dependencies; runs in Node (`require`) or the browser (`window.EagleModel`) |
 | `build.js` | `node build.js` inlines `model.js` into `index.src.html` and writes `index.html` |
 | `model_table.js` | `node model_table.js` prints every preset and what-if case in the results below |
+| `serve.mjs` | `node serve.mjs` serves the page on the local network and passes the connection setup between a GPU computer and a laptop for [remote GPU](#remote-gpu). Node 18 or newer, no packages |
+| `tests/` | Headless browser checks: `test_present.js` (presenter, live numbers against the model) and `test_remote.js` (remote GPU). Run `npm install` in that folder first |
 | `unreal/` | `ue_import_scene.py` places an exported scene in an Unreal Engine 5 level; its test; `sample_scene.json` (the default scene) |
 
 ## Run it
@@ -26,6 +28,11 @@ measured.
    and fonts.
 2. Pick a scenario on the left; every panel updates at once. **Run mission** plays the timeline.
 3. **Cinematic** plays a five-shot flythrough. **Export to Unreal** gives the scene as JSON.
+4. **Present ▶** (or **P**) runs the judges' demo: ten cards with live numbers from the model
+   ([Presenter mode](#presenter-mode); run sheet in [demo-runbook.md](demo-runbook.md)).
+
+To draw the scene on a computer with a stronger graphics card and show it on a laptop, see
+[Remote GPU](#remote-gpu).
 
 Model only, with Node 18 or newer:
 
@@ -202,6 +209,128 @@ away from the sun (and leaves it alone when the sun is below the horizon), sets 
 the viewport camera. Setup: [`unreal/README.md`](../simulator/v2/unreal/README.md). This is separate
 from the [Unreal live thermal demo](unreal-sim.md), which builds its own scene over real terrain.
 
+## Presenter mode
+
+**Present ▶** in the header (or the **P** key) hides the panels and tells the story on one card,
+with a large visual where it helps. Every number on the cards is read from the model at that
+moment, so changing a setting changes the story.
+
+| # | Card | Scene | Large visual |
+|---|---|---|---|
+| 1 | Find a downed aviator who carries nothing | Overview of the valley | |
+| 2 | Anything that transmits gets found | Perch and patrol, with a pulsing red ring: how far a burst beside him carries (246 m) | |
+| 3 | Perch, motor off, listen | Close on the Eagle | |
+| 4 | Body heat through a gap in the leaves | The Eagle and its camera cone | Eagle cam, thermal |
+| 5 | 6 microphones hear his tap code | Close on him, with sound rings | |
+| 6 | It only talks when it is sure | Orbit | P(operator) over time |
+| 7 | Sending is the biggest giveaway | The mission plays: fly away, burst, relay, marker | |
+| 8 | A marker on ATAK, nothing on him | The fix circle | ATAK-style map |
+| 9 | Stress test: 14:00, the sun hides him from thermal | Switches to the 14:00 preset | Eagle cam, thermal |
+| 10 | Find him without a beacon | Back to night, slow orbit | |
+
+Keys: → / Space / Page Down next, ← / Page Up back (presentation clickers send these), 1–9 and 0
+jump, A auto-advance (loops, for a booth), Esc exit. Leaving restores the settings you had. Opening
+the page with `#present` at the end of the address starts it straight away. Run sheet for a live
+demo: [demo-runbook.md](demo-runbook.md).
+
+![Presenter, step 6: the decision gate, with P(operator) over time as the large visual](images/sim-v2-presenter-processing.jpg)
+
+![Presenter, step 8: the fix on the ATAK-style map](images/sim-v2-presenter-result.jpg)
+
+## Remote GPU
+
+A computer with a strong graphics card draws the scene while a weaker one (a laptop at a venue)
+shows it. The 3D view and the Eagle cam reach the laptop as video, and the laptop stops drawing the
+scene itself.
+
+```
+laptop (viewer)                                     GPU computer (host)
+camera pose ~60/s (unreliable channel)     ──────▶  draws the scene from that pose,
+settings, presets, Run, cinematic,                  at the laptop's window size (≤ 2.3 MP)
+presenter effects (reliable channel)       ──────▶  replays them
+3D view + Eagle cam                        ◀──────  two WebRTC video tracks (H.264 preferred,
+labels drawn locally, delayed to match the video     up to 14 Mbit/s and 60 fps for the scene)
+```
+
+The panels, chart, map and presenter cards stay on the laptop; they are light. The laptop draws its
+labels from the camera pose of about half a round trip plus 90 ms earlier, so they line up with
+the video. If no picture arrives for 3 s, or the connection fails, the laptop draws the scene
+itself again, so the demo never goes blank.
+
+How to run it (both computers on one network; Node 18 or newer on the GPU computer):
+
+1. On the GPU computer: `node simulator/v2/serve.mjs`. It prints its addresses. Allow Node through
+   the Windows firewall for private networks if asked.
+2. On the GPU computer open `http://localhost:8080/#host` (or open the page and choose
+   **Remote GPU → Render here**). Keep the window open and visible.
+3. On the laptop open `http://<GPU computer's address>:8080/#view` (or **Remote GPU → Show stream
+   here**). The badge shows frame rate, bit rate and round-trip time.
+
+Each computer remembers its role, so a reload reconnects. `serve.mjs` serves only the files in its
+own folder and passes the connection offer and answer between the two pages over Server-Sent
+Events; the video goes directly between the browsers.
+
+Limits:
+
+- **Not inside claude.ai.** The claude.ai artifact sandbox does not allow the video connection; the
+  panel says so and points here.
+- **One network.** It finds a direct path with public STUN servers and has no relay (TURN) server,
+  so between two different networks it works only where the routers allow it. Venue Wi-Fi often
+  isolates devices from each other; a phone hotspot or a travel router avoids that.
+- **Chrome pauses hidden pages.** The host window must stay open and visible and the screen
+  unlocked; while the host is paused, the laptop draws locally.
+- To show another computer's whole screen from anywhere, use Chrome Remote Desktop (installing its
+  host needs an administrator once on that computer).
+
+## Performance and quality
+
+The jungle is heavy: up to about 14,000 instanced plants with alpha-tested leaves, real-time
+shadows, ambient occlusion, bloom, god rays, and an Eagle cam that draws the scene again and reads
+the pixels back. Auto quality keeps it smooth on laptops:
+
+| Level | Pixel ratio | Shadows | Shadow refresh | Vegetation | Effects | Eagle cam |
+|---|---|---|---|---|---|---|
+| Low | 1.0 | Off | – | 45 % | None | 3 Hz |
+| Medium | 1.0 | 1024² | 8 Hz | 72 % | Bloom, god rays, grade, FXAA | 5 Hz |
+| High | up to 1.75 | 2048² | 20 Hz | 100 % | Ambient occlusion, bloom, god rays, grade, FXAA | 8 Hz |
+
+- **The starting level comes from the GPU the browser reports.** Software renderers and older
+  Intel graphics start low; Intel Iris, Apple and integrated Radeon medium; NVIDIA GeForce or RTX,
+  Radeon RX and Intel Arc high.
+- **It holds about 50 fps.** Every 1.5 s it measures the frame rate. Below 40 fps it drops ambient
+  occlusion, then bloom (high only), then lowers the render resolution in steps down to half, then
+  steps down a level. Above 55 fps for three checks in a row it raises the resolution again.
+  Settings → Display shows the state, for example `auto · med · 72% res`. Picking a level by hand
+  turns this off.
+- **Shadows** are redrawn a few times a second, and at once after any change, instead of every
+  frame: the plants' shadows have no wind, so only the few moving things need updates.
+- **The Eagle cam** is drawn only when it is on screen (the Input panel, the cinematic's thermal
+  shot, the presenter's thermal steps), a few times a second.
+- **Below high,** the frosted-glass panels become solid: blurring a live 3D view behind them every
+  frame costs integrated graphics a lot.
+
+On laptops with two GPUs, Windows often runs Chrome on the integrated one. Settings → System →
+Display → Graphics → Google Chrome → **High performance** gives it the discrete GPU.
+
+## Automation hooks
+
+`window.__sim`, for tests and scripted demos:
+
+| Member | Does |
+|---|---|
+| `S`, `R` | Current settings and the model result |
+| `apply({key: value})`, `preset(name)` | Change settings, load a preset |
+| `run()`, `cam(mode)`, `pip(mode)`, `quality(level)` | Run the mission; camera mode; Eagle cam mode; quality |
+| `exportScene()` | Scene JSON for Unreal |
+| `present.start()`, `.go(i)`, `.auto(on)`, `.stop()`, `.state` | Presenter |
+| `rg.host()`, `.view()`, `.stop()`, `.state` | Remote GPU: role, live, connection, stats |
+| `perf` | Level, mode, effects stage, resolution scale, pixel ratio, measured fps, GPU name |
+| `ready`, `frames`, `running`, `cine`, `pipStats`, `dbg()` | State for tests |
+
+Set before the page loads: `window.__EAGLE_BOOT_Q` (starting level), `__EAGLE_MAXFPS` (frame cap)
+and `__EAGLE_VEG` (vegetation multiplier; the tests use it to keep software rendering fast). URL
+hashes: `#present` starts the presenter; `#host` and `#view` start remote GPU.
+
 ## Verification
 
 - `node model_table.js` runs every preset and what-if case; all the numbers above come from that
@@ -216,8 +345,20 @@ from the [Unreal live thermal demo](unreal-sim.md), which builds its own scene o
 - The export from that page (`sample_scene.json`) passes `python unreal/test_ue_import.py`: all 25
   actors placed and tagged; axes, anchors, headings, sun, fog, camera and re-import checked
   against a stand-in for the `unreal` module.
-- **Not yet done:** frame rate on a real GPU, Safari and iOS, a run inside the Unreal Editor, and
-  any comparison with field recordings.
+- `tests/test_present.js` (headless Chromium, software WebGL): no console errors; all 10 presenter
+  steps; 12 card numbers checked against the model (for example 246 m, 5.5 px, +6.6 °C,
+  0.14 → 0.99, 3.0 km, 10 m and, at 14:00, 108 h); leaving restores the settings. Passed.
+- `tests/test_remote.js lan`, with signalling through `serve.mjs`: 12 checks, all passed. The viewer
+  goes live and stops drawing; video plays; the host draws at the viewer's size and follows a drag
+  on the viewer to within 1 cm; a preset, a slider, the Eagle cam mode and Run mission are
+  mirrored; the presenter's thermal step shows the streamed Eagle cam; when the host stops, the
+  viewer draws locally again. `room` mode runs the same checks through a stand-in for the claude.ai
+  room channel and also passes; that path is unused for now, since claude.ai blocks the video.
+- Auto quality in software WebGL: the controller stepped the render resolution down to its 50 %
+  floor, as designed.
+- **Not yet done:** frame rates measured on a real GPU (the demo laptop and the desktop), remote GPU
+  between two different networks, Safari and iOS, a run inside the Unreal Editor, and any
+  comparison with field recordings.
 
 ## Limitations
 
@@ -231,8 +372,11 @@ from the [Unreal live thermal demo](unreal-sim.md), which builds its own scene o
   the relay is drawn at most 140 m overhead (the model uses 300 m). A small clearing around the
   perch keeps the Eagle in view; the model's 34 % chance of a clear line is unchanged. The
   cinematic always plays in dawn light.
-- **Performance** was only checked with software rendering. The page lowers its own quality when
-  needed: ambient occlusion off, then bloom off, then medium, then low below 28 fps.
+- **Performance** has only been measured with software rendering. Auto quality trades effects and
+  render resolution for frame rate ([Performance and quality](#performance-and-quality)); frame
+  rates on the team's laptops are still to be measured.
+- **Remote GPU** needs both computers on one network and a visible window on the GPU computer, and
+  does not run inside claude.ai ([Remote GPU](#remote-gpu)).
 - Needs internet on first load for three.js and fonts.
 
 ## Sources

@@ -161,7 +161,60 @@ body.cine #cineBars{display:block}
 #cineThermal canvas{width:100%;height:100%;object-fit:contain;image-rendering:pixelated}
 #cineExit{position:fixed;right:max(16px,env(safe-area-inset-right,0px));top:calc(12px + env(safe-area-inset-top,0px));z-index:16;display:none}
 body.cine #cineExit{display:block}
-@media (max-width:1240px){#left{width:262px}#right{width:316px}#viewbar{left:calc(max(16px,env(safe-area-inset-left,0px)) + 274px)}.flow{grid-template-columns:minmax(0,1fr) 14px minmax(0,1.25fr) 14px 186px}}
+#exportDlg[hidden]{display:none}
+#presentBtn{flex:none;padding:6px 13px;font-size:12px}
+body.present #presentBtn{display:none}
+#rgBadge{cursor:pointer}
+/* weaker GPUs: frosted glass over a live WebGL canvas is re-blurred every frame, so the panels go solid */
+body.noblur .panel{-webkit-backdrop-filter:none;backdrop-filter:none;background:var(--panel-2)}
+/* presenter (judges' demo): the scene full screen, one story card, one large visual */
+body.present #left,body.present #right,body.present #bottom,body.present #viewbar,body.present #tabs,body.present #rgPanel{display:none}
+body.present{overflow:hidden}
+body.present #stage{position:fixed;inset:0;height:auto;min-height:0}
+#present{position:fixed;inset:0;pointer-events:none;z-index:12}
+#present[hidden]{display:none}
+.pcard{left:max(16px,env(safe-area-inset-left,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px));width:min(800px,calc(100% - 32px));padding:16px 18px 14px;display:flex;flex-direction:column;gap:9px;pointer-events:auto}
+.pkick{display:flex;align-items:center;gap:12px;font:600 12px var(--font-data);letter-spacing:.14em;text-transform:uppercase;color:var(--accent)}
+.pkick span:first-child{color:var(--muted);letter-spacing:.04em}
+.pcard h2{font:800 clamp(22px,2.5vw,34px)/1.08 var(--font-display);letter-spacing:.005em;text-transform:none;color:var(--fg)}
+.pcard p{margin:0;font:500 clamp(14.5px,1.25vw,17.5px)/1.45 var(--font-display);color:#cbd8d2;max-width:72ch}
+.pstats{display:flex;gap:10px;flex-wrap:wrap}
+.pstat{flex:1 1 160px;min-width:0;border:1px solid var(--line);border-radius:10px;padding:7px 11px 8px;background:rgba(255,255,255,.025)}
+.pstat b{display:block;font:600 clamp(19px,1.9vw,27px)/1.15 var(--font-data);color:var(--fg);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pstat b.ok{color:var(--ok)}.pstat b.bad{color:var(--bad)}.pstat b.warn{color:var(--warn)}.pstat b.friend{color:var(--friend)}
+.pstat span{display:block;font:500 11.5px/1.3 var(--font-data);color:var(--muted);margin-top:3px}
+.pnav{display:flex;align-items:center;gap:8px;margin-top:2px}
+.pbar{flex:1;height:4px;border-radius:2px;background:var(--line);overflow:hidden;min-width:40px}
+.pbar i{display:block;height:100%;width:0;background:var(--accent);transition:width .35s}
+.phint{font:500 11px var(--font-data);color:var(--dim);white-space:nowrap}
+.pvis{top:calc(76px + env(safe-area-inset-top,0px));right:max(16px,env(safe-area-inset-right,0px));width:min(44vw,640px);padding:8px;display:none;pointer-events:none}
+.pvis.show{display:block}
+.pvis.map{width:min(30vw,420px)}
+.pvis.chart{width:min(48vw,720px)}
+.pvis canvas{display:none;width:100%;height:auto;border-radius:8px;background:#000}
+.pvis.thermal #pvTh,.pvis.chart #pvChart,.pvis.map #pvMap{display:block}
+#pvTh{aspect-ratio:4/3;image-rendering:pixelated}
+#pvChart{aspect-ratio:840/320;background:rgba(0,0,0,.35)}
+#pvMap{aspect-ratio:1/1}
+.pvcap{font:600 11px/1.35 var(--font-data);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:7px 2px 1px}
+/* remote GPU: the other computer draws, this one plays its video (kept in layout, transparent until it plays) */
+#rgv,#rgp{position:absolute;left:0;top:0;pointer-events:none;opacity:0;background:#050a09}
+#rgv{width:100%;height:100%;object-fit:fill}
+#rgp{width:64px;height:48px}
+body.rglive #rgv{opacity:1}
+#rgPanel{top:calc(124px + env(safe-area-inset-top,0px));left:calc(max(16px,env(safe-area-inset-left,0px)) + 304px);width:min(410px,calc(100% - 32px));padding:12px 13px;z-index:14;display:flex;flex-direction:column;gap:9px}
+#rgPanel[hidden]{display:none}
+#rgPanel p{margin:0;font:500 12.5px/1.45 var(--font-display);color:var(--muted)}
+#rgPanel p b{color:var(--fg)}
+#rgPanel .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+#rgPanel label{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--muted)}
+#rgPanel .ghost.on{color:#06222b;background:var(--friend);border-color:var(--friend)}
+#rgPanel .ghost:disabled{opacity:.45;cursor:default}
+#rgStat{font:500 11.5px/1.45 var(--font-data);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:6px 8px;background:rgba(0,0,0,.2)}
+#rgHostBanner{left:50%;bottom:calc(36px + var(--dock) + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:13;padding:7px 12px;font:600 12px/1.4 var(--font-data);color:var(--fg);display:none;width:max-content;max-width:min(720px,calc(100% - 32px));text-align:center}
+body.rghost #rgHostBanner{display:block}
+body.nopanels #rgHostBanner{bottom:calc(16px + env(safe-area-inset-bottom,0px))}
+@media (max-width:1240px){#left{width:262px}#right{width:316px}#viewbar{left:calc(max(16px,env(safe-area-inset-left,0px)) + 274px)}#rgPanel{left:calc(max(16px,env(safe-area-inset-left,0px)) + 274px)}.flow{grid-template-columns:minmax(0,1fr) 14px minmax(0,1.25fr) 14px 186px}}
 @media (max-width:1099px){
   body{overflow:auto}
   #stage{position:relative;height:58vh;min-height:320px}
@@ -173,7 +226,7 @@ body.cine #cineExit{display:block}
   .find{margin-left:0;max-width:100%;flex-wrap:wrap}
   #steps{flex:1 1 100%;order:2}
   #ticker{order:3;flex:1 1 100%;max-width:100%;white-space:normal}
-  .panel:not(#top):not(#viewbar){position:static;width:auto;height:auto;margin:10px max(16px,env(safe-area-inset-right,0px)) 0 max(16px,env(safe-area-inset-left,0px));-webkit-backdrop-filter:none;backdrop-filter:none;background:var(--panel-2)}
+  .panel:not(#top):not(#viewbar):not(.float){position:static;width:auto;height:auto;margin:10px max(16px,env(safe-area-inset-right,0px)) 0 max(16px,env(safe-area-inset-left,0px));-webkit-backdrop-filter:none;backdrop-filter:none;background:var(--panel-2)}
   #tabs{display:flex;gap:6px;padding:10px max(16px,env(safe-area-inset-right,0px)) 8px max(16px,env(safe-area-inset-left,0px));position:sticky;top:env(safe-area-inset-top,0px);background:var(--bg);z-index:5}
   #tabs button{flex:1;background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:8px 4px;font-weight:700;font-size:12.5px;color:var(--muted)}
   #tabs button.on{color:#06222b;background:var(--friend);border-color:var(--friend)}
@@ -185,21 +238,47 @@ body.cine #cineExit{display:block}
   #map{max-width:420px;max-height:none}
   #ticker{max-width:100%}
   .mhead{flex-wrap:wrap}
+  #rgPanel{left:16px;right:16px;top:auto;bottom:16px;width:auto}
+  .pvis,.pvis.map,.pvis.chart{left:16px;right:16px;width:auto;max-width:520px;margin:0 auto;top:calc(56px + env(safe-area-inset-top,0px))}
+  .pcard{padding:12px 13px;gap:7px}
+  .pnav .phint{display:none}
+  #rgHostBanner,body.nopanels #rgHostBanner{bottom:16px}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 
 <div id="stage">
   <canvas id="gl" aria-label="3D view of the jungle scenario"></canvas>
+  <video id="rgv" muted playsinline aria-label="3D view drawn by the GPU computer"></video><video id="rgp" muted playsinline aria-hidden="true"></video>
   <div id="labels" aria-hidden="true"></div>
   <div id="loading">Growing the jungle…</div>
 </div>
 <div id="cineBars" aria-hidden="true"><div id="cineThermal"><canvas id="cineCv" width="640" height="480"></canvas></div><div id="cineCap"></div></div>
 <button id="cineExit" class="ghost" type="button">Exit cinematic (Esc)</button>
+<div id="present" hidden>
+  <div class="pvis panel float" id="pvis"><canvas id="pvTh" width="1280" height="960" aria-label="Eagle cam, thermal"></canvas><canvas id="pvChart" width="840" height="320" aria-label="P(operator) over time"></canvas><canvas id="pvMap" width="840" height="840" aria-label="ATAK-style map"></canvas><div class="pvcap" id="pvCap"></div></div>
+  <section class="pcard panel float" aria-live="polite" aria-label="Presentation">
+    <div class="pkick"><span id="pStep"></span><span id="pKick"></span></div>
+    <h2 id="pTitle"></h2>
+    <p id="pBody"></p>
+    <div class="pstats" id="pStats"></div>
+    <div class="pnav"><button class="ghost" id="pPrev" type="button">◀ Back</button><div class="pbar" aria-hidden="true"><i id="pBar"></i></div><span class="phint">→ next · ← back · A auto · Esc exit</span><button class="ghost" id="pAuto" type="button" aria-pressed="false">Auto</button><button class="ghost" id="pExit" type="button">Exit</button><button class="primary" id="pNext" type="button">Next ▶</button></div>
+  </section>
+</div>
+<div id="rgPanel" class="panel float" hidden role="dialog" aria-labelledby="rgT">
+  <h2 id="rgT"><b>Remote GPU</b> · draw on another computer</h2>
+  <p>Open this simulator on both computers. On the one with the strong graphics card choose <b>Render here</b>. On this one choose <b>Show stream here</b>: this screen stops drawing the 3D view itself, plays the other computer's video, and sends your clicks, settings and camera moves back.</p>
+  <div class="row"><button class="ghost" id="rgHost" type="button">Render here (GPU)</button><button class="ghost" id="rgView" type="button">Show stream here</button><button class="ghost" id="rgStop" type="button">Stop</button></div>
+  <label><input type="checkbox" id="rgRemember" checked> Remember this choice on this computer</label>
+  <div id="rgStat">Off.</div>
+  <div class="phint" id="rgPeers" style="white-space:normal"></div>
+</div>
+<div id="rgHostBanner" class="panel float" role="status"></div>
 
 <header id="top" class="panel">
   <div class="brand"><span class="mark" aria-hidden="true"></span><div style="min-width:0"><h1>Eagle · Jungle find</h1><p id="envline">Central Mountain Range, Taiwan</p></div></div>
   <div class="find" id="findPill"></div>
+  <button id="presentBtn" class="primary" type="button" title="Judges' demo: a guided story with live numbers (P)">Present ▶</button>
 </header>
 <div id="viewbar" class="panel">
   <div class="seg viewbtns" role="group" aria-label="Camera">
@@ -207,6 +286,7 @@ body.cine #cineExit{display:block}
   </div>
   <button id="hidePanels" class="ghost" title="Hide panels (H)">Hide panels</button>
   <button id="exportBtn" class="ghost" title="Export the scene as JSON for Unreal Engine">Export to Unreal</button>
+  <button id="rgBtn" class="ghost" type="button" title="Draw the 3D view on another computer and stream it here">Remote GPU</button><span id="rgBadge" class="chip dim" hidden title=""></span>
 </div>
 
 <nav id="tabs" aria-label="Panels">
@@ -919,11 +999,11 @@ const fxPool = []; function fxRing(hex, cx, cz, r0, r1, dur, delay = 0) { let f 
 const LBL = [];
 function label(text, cls, posFn, visFn) { const el = document.createElement('div'); el.className = 'lbl ' + (cls || ''); el.textContent = text; $('#labels').appendChild(el); const o = { el, posFn, visFn: visFn || (() => true) }; LBL.push(o); return o; }
 const _v = new THREE.Vector3();
-function updateLabels() {
+function updateLabels(cam = camera) {
   const on = $('#ov-lbl').checked && camMode !== 'cine', w = canvas.clientWidth, h = canvas.clientHeight;
   for (const L of LBL) {
     if (!on || !L.visFn()) { L.el.style.transform = 'translate(-9999px,0)'; continue; }
-    L.posFn(_v); _v.project(camera); if (_v.z > 1 || _v.z < -1) { L.el.style.transform = 'translate(-9999px,0)'; continue; }
+    L.posFn(_v); _v.project(cam); if (_v.z > 1 || _v.z < -1) { L.el.style.transform = 'translate(-9999px,0)'; continue; }
     const x = (_v.x * 0.5 + 0.5) * w, y = (-_v.y * 0.5 + 0.5) * h; L.el.style.transform = `translate(${(x - L.el.offsetWidth / 2) | 0}px,${(y - L.el.offsetHeight - 12) | 0}px)`;
   }
 }
@@ -935,9 +1015,14 @@ let R = M.evaluate(S), activePreset = 'night';
 const W = { eagle: new THREE.Vector3(), eagleBase: new THREE.Vector3(), op: new THREE.Vector3(), opEst: new THREE.Vector3(), patrolAnchor: new THREE.Vector3(), patrolDir: new THREE.Vector3(1, 0, 0), patrolB: new THREE.Vector3(), relayC: new THREE.Vector3(), relayOff: false, relayR: 120 };
 const OP_DIR = new THREE.Vector2(55, 82).normalize();
 const quality = { mode: 'auto', level: 'high', stage: 0 };
-const QL = { low: { pr: 1, shadow: 0, veg: 0.45, post: false }, med: { pr: 1.25, shadow: 1024, veg: 0.72, post: true }, high: { pr: Math.min(devicePixelRatio || 1, 1.75), shadow: 2048, veg: 1, post: true } };
+// shadowHz: how often the shadow map is redrawn for moving actors; pipHz: Eagle cam refresh (each one stalls the GPU on read-back)
+const QL = { low: { pr: 1, shadow: 0, shadowHz: 6, veg: 0.45, post: false, pipHz: 3 }, med: { pr: 1, shadow: 1024, shadowHz: 8, veg: 0.72, post: true, pipHz: 5 }, high: { pr: Math.min(devicePixelRatio || 1, 1.75), shadow: 2048, shadowHz: 20, veg: 1, post: true, pipHz: 8 } };
 const running = { on: false, step: -1, showFix: true, token: 0 };
 let camMode = 'orbit';
+// remote GPU state (the remote-GPU section fills in the rest); defined here because resize() and the quality code read it
+const RG = { role: null, live: false, hostSize: null, send() {}, syncState() {} };
+const dyn = { scale: 1, min: 0.5 };   // auto quality: the render-resolution scale it trades for frame rate
+let shadowT = 0, shadowDirty = true;
 
 // ---------- environment ----------
 const sunDir = new THREE.Vector3();
@@ -1065,7 +1150,7 @@ function updateFrustum() {
 
 // ---------- Eagle cam: thermal / visible / ID (all respect leaf alpha) ----------
 const pipCam = new THREE.PerspectiveCamera(45, 4 / 3, 0.2, 3000);
-let pipMode = 'thermal', pipYaw = 0, pipPitch = 0, rtT = null, rtI = null, rtV = null, pipW = 0, pipH = 0, pipDirty = true;
+let pipMode = 'thermal', pipYaw = 0, pipPitch = 0, rtT = null, rtI = null, rtV = null, pipW = 0, pipH = 0, pipDirty = true, pipFresh = false;
 const pipBuf = {}, pipStats = { opPx: 0, counts: {}, boxes: {}, at: 0 };
 const TH_U = { uAmb: { value: 25 }, uBeta: { value: 0.8 }, uLo: { value: -10 }, uHi: { value: 60 }, uSunDir: { value: sunDir } };
 const NOISE_GLSL = `
@@ -1319,8 +1404,8 @@ function buildMapBase() {
   }
   x.putImageData(im, 0, 0);
 }
-function drawMap() {
-  const x = mapCtx, Wc = mapCv.width, s = Wc / WORLD, m = (wx, wz) => [(wx + HALF) * s, (wz + HALF) * s], lw = Wc / 178;
+function drawMap(cv = mapCv) {
+  const x = cv === mapCv ? mapCtx : cv.getContext('2d'), Wc = cv.width, s = Wc / WORLD, m = (wx, wz) => [(wx + HALF) * s, (wz + HALF) * s], lw = Wc / 178;
   x.clearRect(0, 0, Wc, Wc); x.imageSmoothingEnabled = true; x.drawImage(mapBase, 0, 0, Wc, Wc);
   x.strokeStyle = 'rgba(255,255,255,.12)'; x.lineWidth = 1; x.font = `500 ${Math.round(Wc / 30)}px "IBM Plex Mono", monospace`; x.fillStyle = 'rgba(255,255,255,.55)';
   for (let k = 100; k < 800; k += 100) { const p = k * s; x.beginPath(); x.moveTo(p, 0); x.lineTo(p, Wc); x.moveTo(0, p); x.lineTo(Wc, p); x.stroke(); }
@@ -1461,9 +1546,9 @@ function renderProcessing() {
   drawChart();
 }
 const EV_SHORT = { shape: 'shape', alone: 'alone', location: 'off-trail', still30: 'still 30 min', still120: 'still 2 h', code: 'code', cough: 'cough', breathing: 'breathing' };
-function drawChart() {
-  const cv = $('#chart'), r = cv.getBoundingClientRect(), dpr = Math.min(devicePixelRatio || 1, 2); if (r.width > 10) { const w = Math.round(r.width * dpr), h = Math.round(r.height * dpr); if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; } }
-  const x = cv.getContext('2d'), Wc = cv.width, Hc = cv.height, k = r.width > 10 ? dpr : Wc / 420; x.clearRect(0, 0, Wc, Hc);
+function drawChart(cv = $('#chart'), zoom = 1) {
+  const r = cv.getBoundingClientRect(), dpr = Math.min(devicePixelRatio || 1, 2); if (r.width > 10) { const w = Math.round(r.width * dpr), h = Math.round(r.height * dpr); if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; } }
+  const x = cv.getContext('2d'), Wc = cv.width, Hc = cv.height, k = (r.width > 10 ? dpr : Wc / 420) * zoom; x.clearRect(0, 0, Wc, Hc);
   const pr = R.processing || {}, post = pr.posterior || [], ev = pr.evidence || [], thr = pr.threshold != null ? pr.threshold : S.decisionP;
   const tMax = Math.max(120, ...post.map(q => q.t_min || 0)) + 6, L = 28 * k, Rr = 8 * k, T = 8 * k, B = 16 * k, X = t => L + (Wc - L - Rr) * t / tMax, Y = p => T + (Hc - T - B) * (1 - p);
   x.font = `500 ${Math.round(10 * k)}px "IBM Plex Mono", monospace`; x.textBaseline = 'alphabetic'; x.strokeStyle = 'rgba(150,196,184,.14)'; x.lineWidth = 1;
@@ -1499,13 +1584,14 @@ function update() {
   layoutIfNeeded(); setVegCounts(); updateEnvironment(); placeActors(); updateOverlays(); setThermalTemps();
   renderTop(); renderInput(); renderProcessing(); renderOutput(); renderSteps(running.on ? running.step : -1);
   if (!running.on) $('#ticker').textContent = R.timeToReport_s != null ? `report ${fmtT(R.timeToReport_s)} · ${g(R, 'output.chosen', '')}` : 'no report: keep watching';
-  drawMap(); pipDirty = true;
+  drawMap(); pipDirty = true; shadowDirty = true;
   window.__sim.R = R; window.__sim.S = S;
+  RG.syncState();
 }
 let lastCanopy = -1, lastBoost = -1;
 function layoutIfNeeded() { crownBoost = Math.min(1.22, 1 / Math.sqrt(QL[quality.level].veg)); if (S.canopyH_m !== lastCanopy || crownBoost !== lastBoost) { lastCanopy = S.canopyH_m; lastBoost = crownBoost; layoutVegetation(S.canopyH_m); } }
 function setVegCounts() {
-  const q = QL[quality.level].veg, lai = clamp((S.LAI - 1) / 5, 0.25, 1), us = clamp(20 / (S.understoryVis_m || 20), 0.35, 1.6) / 1.6;
+  const q = QL[quality.level].veg * (+window.__EAGLE_VEG || 1), lai = clamp((S.LAI - 1) / 5, 0.25, 1), us = clamp(20 / (S.understoryVis_m || 20), 0.35, 1.6) / 1.6;
   const nt = Math.round(trees.length * lai * q); veg.trunks.count = nt; veg.crowns.count = nt * 3; veg.cores.count = nt * 3;
   veg.shrubs.count = Math.round(shrubs.length * us * q); veg.gferns.count = Math.round(gferns.length * q); veg.fernT.count = veg.fernC.count = Math.round(ferns.length * Math.min(1, q * 1.1)); veg.bamboo.count = Math.round(bamboos.length * q);
   veg.palmT.count = veg.palmC.count = palms.length; veg.logs.count = logs.length; veg.rocks.count = rocks.length;
@@ -1530,11 +1616,11 @@ const dotFlight = { pts: null, t0: 0, dur: 1 };
 function flyDot(pts, dur, hex = 0x80e0ff) { dotFlight.pts = pts; dotFlight.t0 = performance.now(); dotFlight.dur = dur; dot.material.color.copy(C(hex)); dot.visible = true; }
 
 // ---------- mission player ----------
-function stopMission() { running.on = false; running.token++; running.step = -1; running.showFix = true; running.chartT = null; $('#run').disabled = false; $('#run').textContent = 'Run mission'; dot.visible = false; beam.visible = false; whisperBeam.visible = false; dfLine.visible = false; arrowLine.visible = false; resetEagle(); }
+function stopMission() { running.on = false; running.token++; running.step = -1; running.showFix = true; running.chartT = null; $('#run').disabled = false; $('#run').textContent = 'Run mission'; dot.visible = false; beam.visible = false; whisperBeam.visible = false; dfLine.visible = false; arrowLine.visible = false; resetEagle(); RG.send({ t: 'stop' }); }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 function tick(s) { $('#ticker').textContent = s; }
 async function runMission() {
-  if (running.on) return; stopMission(); running.on = true; const tok = running.token; running.showFix = false; updateOverlays(); drawMap();
+  if (running.on) return; stopMission(); running.on = true; const tok = running.token; RG.send({ t: 'run' }); running.showFix = false; updateOverlays(); drawMap();
   $('#run').disabled = true; $('#run').textContent = 'Running…';
   const tl = R.timeline || [], ch = g(R, 'output.chosen', null), opt = (g(R, 'output.options', []) || []).find(o => o.key === ch) || {};
   const D = RM ? 900 : 2300, fly = (pts, dur) => new Promise(res => flyEagle(pts, RM ? 900 : dur, res)), up = (v, h) => v.clone().add(new THREE.Vector3(0, h, 0));
@@ -1582,6 +1668,7 @@ function setCamMode(m) {
   camMode = m; $$('.viewbtns button').forEach(b => b.classList.toggle('on', b.dataset.cam === m)); controls.enabled = m === 'orbit' || m === 'top'; updateOverlays();
   if (m === 'orbit') camGoal('orbit');
   if (m === 'top') { const c = W.eagleBase.clone().lerp(W.op, 0.5); flyCam(new THREE.Vector3(c.x, 620, c.z + 1), new THREE.Vector3(c.x, 0, c.z)); }
+  RG.syncState();
 }
 function flyCam(p, t, dur = RM ? 1 : 1600) { camAnim = { p0: camera.position.clone(), t0: controls.target.clone(), p1: p, t1: t, s: performance.now(), d: dur }; }
 function camGoal(kind) {
@@ -1612,13 +1699,13 @@ function cineShots() {
   return shots;
 }
 function startCine() {
-  stopMission(); camMode = 'cine'; cine.on = true; cine.i = 0; document.body.classList.add('cine'); controls.enabled = false; idleT = 0;
+  stopMission(); RG.send({ t: 'cine', on: true }); camMode = 'cine'; cine.on = true; cine.i = 0; document.body.classList.add('cine'); controls.enabled = false; idleT = 0;
   envHourOverride = 5.75; updateEnvironment(); cine.shots = cineShots(); resize(); frustum.visible = false; bearing.visible = false;
   $$('.viewbtns button').forEach(b => b.classList.toggle('on', b.dataset.cam === 'cine')); updateOverlays(); startShot();
 }
 function startShot() {
   const sh = cine.shots[cine.i], pv = $('#pip'); $('#cineCap').textContent = `${cine.i + 1}/${cine.shots.length} · ${sh.cap}`; $('#cineThermal').style.display = sh.thermal ? 'block' : 'none';
-  if (sh.thermal) { cine.pipSize = [pv.width, pv.height]; pv.width = 1280; pv.height = 960; pipMode = 'thermal'; pipDirty = true; }
+  if (sh.thermal) { cine.pipSize = [pv.width, pv.height]; pv.width = 1280; pv.height = 960; pipMode = 'thermal'; pipDirty = true; RG.syncState(); }
   if (sh.release) { const ch = g(R, 'output.chosen', null), dest = ch === 'courier' ? new THREE.Vector3(-395, W.eagle.y + 70, W.eagle.z + 60) : W.away.clone(); flyEagle([W.eagle.clone(), W.eagle.clone().add(new THREE.Vector3(0, 22, 0)), dest], sh.dur * 0.85, () => { if (ch !== 'courier') { const ir = Math.min(g(R, 'output.options', []).find(o => o.key === 'moveAway')?.interceptRadius_m || 200, 400); fxRing(0xff8080, dest.x, dest.z, 2, ir, 1.4); fxRing(0xff8080, dest.x, dest.z, 2, ir, 1.4, 0.5); } }); }
   cine.t0 = performance.now();
 }
@@ -1626,14 +1713,439 @@ function stepCine(now) {
   if (!cine.on) return; const sh = cine.shots[cine.i], k = clamp((now - cine.t0) / sh.dur, 0, 1), e = k * k * (3 - 2 * k), v = sh.f(e);
   camera.position.copy(v.p); camera.lookAt(v.t); if (camera.fov !== 42) { camera.fov = 42; camera.updateProjectionMatrix(); }
   if (sh.thermal) { const src = $('#pip'), dst = $('#cineCv'), cx = dst.getContext('2d'); if (dst.width !== src.width || dst.height !== src.height) { dst.width = src.width; dst.height = src.height; } cx.drawImage(src, 0, 0); }
-  if (k >= 1) { if (sh.thermal && cine.pipSize) { $('#pip').width = cine.pipSize[0]; $('#pip').height = cine.pipSize[1]; cine.pipSize = null; } cine.i++; if (cine.i >= cine.shots.length) { stopCine(); return; } startShot(); }
+  if (k >= 1) { if (sh.thermal && cine.pipSize) { $('#pip').width = cine.pipSize[0]; $('#pip').height = cine.pipSize[1]; cine.pipSize = null; RG.syncState(); } cine.i++; if (cine.i >= cine.shots.length) { stopCine(); return; } startShot(); }
 }
 function stopCine(silent) {
   if (!cine.on && !document.body.classList.contains('cine')) return;
+  RG.send({ t: 'cine', on: false, silent: !!silent });
   cine.on = false; document.body.classList.remove('cine'); $('#cineThermal').style.display = 'none'; if (cine.pipSize) { $('#pip').width = cine.pipSize[0]; $('#pip').height = cine.pipSize[1]; cine.pipSize = null; }
   resetEagle(); envHourOverride = null; updateEnvironment(); camera.fov = 48; camera.updateProjectionMatrix(); resize(); pipDirty = true;
   if (!silent) { camMode = 'orbit'; $$('.viewbtns button').forEach(b => b.classList.toggle('on', b.dataset.cam === 'orbit')); controls.enabled = true; updateOverlays(); camGoal('orbit'); }
 }
+
+// ---------- presenter: the judges' demo (a guided story; every number on the cards is the model, live) ----------
+const present = { on: false, i: 0, auto: false, timer: 0, pulse: 0, vis: null, drawT: 0, pipSize: null, saved: null };
+const pct = v => Math.round((v || 0) * 100) + '%';
+const optOf = key => (g(R, 'output.options', []) || []).find(o => o.key === key) || {};
+const othersN = () => lab('ai.others.' + S.enemy, 0) + (S.locals ? lab('ai.others.locals', 2) : 0);
+const fmtSpan = s => s == null ? '—' : fmtT(s).replace('t+', '');
+const nightRef = (() => { let r = null; return () => r || (r = M.evaluate(Object.assign({}, M.defaults(), stripLabel(M.presets.night || {})))); })();
+const FX = {   // effects the presenter fires; a GPU host replays them so they show in the stream
+  sound() {
+    const r = Math.max(20, Math.min(g(R, 'input.acoustic.signalRange_m', 40) || 40, 300));
+    if (g(R, 'input.acoustic.codeDetected', false)) {
+      for (let k = 0; k < 3; k++) fxRing(0xffb347, W.op.x, W.op.z, 0.5, Math.max(15, Math.min(r, 160)), 1.1, k * 0.45);
+      operator.userData.signalT = 2.6; bearing.visible = true; setLine(bearing, [W.eagle, W.op.clone().add(new THREE.Vector3(0, 0.4, 0))]);
+    }
+    fxRing(0xffb347, W.eagleBase.x, W.eagleBase.z, 2, r, 1.8, 1.2);
+  },
+  thermal() { fxRing(0xff6a3d, W.eagleBase.x, W.eagleBase.z, 2, Math.max(10, g(R, 'input.thermal.effectiveRange_m', 20) || 20), 1.8); },
+  threat() { const ir = Math.min(optOf('perch').interceptRadius_m || 0, 600); if (ir) { fxRing(0xff8080, W.eagle.x, W.eagle.z, 2, ir, 1.8); fxRing(0xff8080, W.eagle.x, W.eagle.z, 2, ir, 1.8, 0.7); } },
+};
+function fxNow(name) { if (FX[name]) FX[name](); RG.send({ t: 'fx', name }); }
+function presentPulse(name, ms) { clearInterval(present.pulse); fxNow(name); present.pulse = setInterval(() => { if (present.on) fxNow(name); }, ms); }
+function presetIf(k) { if (M.presets[k] && activePreset !== k) applyPreset(k); }
+function setPip(m) { pipMode = m; $$('#pipMode button').forEach(x => x.classList.toggle('on', x.dataset.pip === m)); pipDirty = true; RG.syncState(); }
+function camShot(kind) {
+  if (camMode !== 'orbit') setCamMode('orbit');
+  if (kind === 'overview') { const c = new THREE.Vector3((W.eagleBase.x * 2 + OUTPOST.x) / 3, 0, (W.eagleBase.z * 2 + OUTPOST.z) / 3); c.y = H(c.x, c.z) + 10; flyCam(c.clone().add(new THREE.Vector3(-330, 300, 250)), c, RM ? 1 : 2600); }
+  else if (kind === 'threat') { const c = W.eagleBase.clone().lerp(W.patrolAnchor, 0.45); c.y = H(c.x, c.z); flyCam(c.clone().add(new THREE.Vector3(-250, 330, -230)), c, RM ? 1 : 2600); }
+  else if (kind === 'eagle') camGoal('eagle-wide');
+  else camGoal(kind);
+}
+const PSTEPS = [
+  { kick: 'Eagle · jungle find', title: () => 'Find a downed aviator who carries nothing',
+    body: () => `${hhmm(S.hour)} in Taiwan's Central Mountain Range. He is hiding with no radio, beacon or phone, because anything that transmits can be located. A bird-sized drone has to find him and report where he is without giving him away.`,
+    stats: () => [['0', 'radios or beacons on him', 'ok'], [fmtDist((S.lklRadius_km || 1) * 1000), 'search radius around his parachute'], [S.enemy === 'none' ? 'none' : fmtDist(S.enemyDist_m), 'to the nearest enemy patrol', S.enemy === 'none' ? 'ok' : 'bad']],
+    enter() { presetIf('night'); setPip('thermal'); camShot('overview'); }, dur: 12000 },
+  { kick: 'The threat', title: () => 'Anything that transmits gets found',
+    body: () => { const p = optOf('perch'); return `A patrol walks the trail ${fmtDist(S.enemyDist_m)} from him and a direction-finding mast watches the valley from the ridge. One radio burst from beside him would be heard ${fmtDist(p.interceptRadius_m)} away${p.enemyHears ? ', and the patrol is inside that' : ''}.`; },
+    stats: () => { const p = optOf('perch'); return [[fmtDist(p.interceptRadius_m), 'a burst beside him carries', 'bad'], [p.enemyHears ? 'yes' : 'no', 'the patrol would hear it', p.enemyHears ? 'bad' : 'ok'], ['DF mast', 'on the ridge, takes a bearing on any emitter', 'bad']]; },
+    enter() { camShot('threat'); presentPulse('threat', 3200); }, dur: 11000 },
+  { kick: 'The Eagle', title: () => 'Perch, motor off, listen',
+    body: () => `A drone the size of a hawk-eagle, painted like a Crested Serpent Eagle, lands on a branch ${PERCH_H[S.perch]} m up and switches its motor off. From here it only looks and listens. Nothing leaves it until it is sure.`,
+    stats: () => [[PERCH_H[S.perch] + ' m', S.perch === 'snag' ? 'up a dead tree on the ridge' : 'up a tree, under the canopy'], ['0 W', 'radio power while it listens', 'ok'], [(CAMS[S.camera] || {}).short || '', `thermal camera + ${S.mics} microphones`]],
+    enter() { camShot('eagle'); }, dur: 11000 },
+  { kick: 'Input · thermal', vis: 'thermal', title: () => 'Body heat through a gap in the leaves',
+    body: () => { const th = g(R, 'input.thermal', {}); return th.detected ? `${num(th.pxAtOp, 1)} pixels fall across him at ${S.opDist_m} m, and he is ${num(th.contrastAppC, 1)} °C warmer than the leaves around him. The canopy leaves a ${pct(th.pLOS)} chance of a clear line, so the bird waits for a gap.` : `Thermal cannot pick him out right now: ${String(th.note || '').replace(/\.$/, '')}.`; },
+    stats: () => { const th = g(R, 'input.thermal', {}), c = th.contrastAppC || 0; return [[num(th.pxAtOp, 1) + ' px', 'across his torso (needs 3)', th.pxAtOp >= 3 ? 'ok' : 'bad'], [(c > 0 ? '+' : '') + num(c, 1) + ' °C', `against the leaves (needs ${num(th.thresholdC, 1)})`, th.detected ? 'ok' : 'bad'], [fmtDist(th.effectiveRange_m), 'thermal detection range now']]; },
+    enter() { setPip('thermal'); camShot('eagle'); presentPulse('thermal', 3500); }, dur: 12000 },
+  { kick: 'Input · sound', title: () => `${S.mics} microphones hear his tap code`,
+    body: () => { const ac = g(R, 'input.acoustic', {}), e = R.env || {}; return ac.codeDetected ? `He taps a briefed code (3-3-1) on a tree trunk. Over ${num(e.noiseDbA, 0)} dBA of ${e.isDay ? 'cicadas' : 'night insects'} the array hears it ${num(ac.snrAtOp_dB, 0)} dB above the noise and takes a bearing on him. The code carries ${fmtDist(ac.signalRange_m)}.` : `His signal is lost in ${num(e.noiseDbA, 0)} dBA of jungle noise.`; },
+    stats: () => { const ac = g(R, 'input.acoustic', {}), e = R.env || {}; return [[num(ac.snrAtOp_dB, 0) + ' dB', 'above the noise (needs 6)', ac.codeDetected ? 'ok' : 'bad'], [fmtDist(ac.signalRange_m), 'his tap code carries'], [num(e.noiseDbA, 0) + ' dBA', e.isDay ? 'cicada chorus' : e.wet ? 'rain on the canopy' : 'night insects and frogs']]; },
+    enter() { camShot('op'); presentPulse('sound', 4200); }, dur: 12000 },
+  { kick: 'Processing · on-board AI', vis: 'chart', title: () => 'It only talks when it is sure',
+    body: () => { const pr = R.processing || {}; return `Each clue multiplies the odds that this warm body is him and not one of ${othersN()} other people who could wander past: his shape, lying still, being off the trail, and above all the code only he knows. It transmits only when P(operator) passes ${num(pr.threshold, 2)}${pr.decisionAt_min != null ? `, here after ${pr.decisionAt_min} min` : `; it is at ${num(pr.finalP, 2)}, so it keeps watching`}.`; },
+    stats: () => { const pr = R.processing || {}, dec = pr.decisionAt_min != null; return [[num(pr.prior, 2), 'odds before any clue'], [num(dec ? pr.pAtDecision : pr.finalP, 2), dec ? 'when it decides to send' : 'so far: keep watching', dec ? 'ok' : 'warn'], [pr.falseAlarm || '—', 'false-alarm risk', pr.falseAlarm === 'LOW' ? 'ok' : pr.falseAlarm === 'HIGH' ? 'bad' : 'warn']]; },
+    enter() { camShot('orbit'); }, dur: 13000 },
+  { kick: 'Output · the report', title: () => 'Sending is the biggest giveaway',
+    body: () => { const o = R.output || {}, ch = optOf(o.chosen), p = optOf('perch'); return o.chosen ? `A burst from the perch would carry ${fmtDist(p.interceptRadius_m)}${p.enemyHears ? ', and the patrol is inside that' : ''}. So the Eagle picks the least detectable option that still meets the ${S.opState !== 'conscious' ? '15-minute' : '2-hour'} deadline: ${String(ch.label || '').toLowerCase()}. One ${g(R, 'output.message.bytes', 48)}-byte report, ${num(g(R, 'output.message.airtime_ms', 0), 0)} ms on air.` : 'Nothing is sent until the AI is sure.'; },
+    stats: () => { const o = R.output || {}, ch = optOf(o.chosen); return [[ch.emitDistFromOp_m == null ? (o.chosen ? 'no radio' : '—') : fmtDist(ch.emitDistFromOp_m), 'from him when it transmits', 'ok'], [fmtLat(ch.latency_s), 'from decision to report'], [ch.enemyHears ? 'yes' : 'no', 'the enemy hears it', ch.enemyHears ? 'bad' : 'ok']]; },
+    enter() { runMission(); }, dur: 25000 },
+  { kick: 'Result', vis: 'map', title: () => 'A marker on ATAK, nothing on him',
+    body: () => { const acc = g(R, 'output.accuracy', {}), s = R.search || {}, oneNight = s.hoursToCover != null && s.hoursToCover <= lab('search.nightHours', 10); return `The rescue cell sees his position to within ${num(acc.ce_m, 0)} m, ${fmtSpan(R.timeToReport_s)} after he first came into view. ${S.birds} birds can search the whole ${num(S.lklRadius_km, 1)} km circle in ${num(s.hoursToCover, 1)} h${oneNight ? ', inside one night' : ''}.`; },
+    stats: () => { const acc = g(R, 'output.accuracy', {}), s = R.search || {}; return [[num(acc.ce_m, 0) + ' m', 'position error (needs 30 m)', acc.meets30m ? 'ok' : 'bad'], [fmtSpan(R.timeToReport_s), 'first sight to ATAK marker'], [num(s.hoursToCover, 1) + ' h', `for ${S.birds} birds to search the circle`]]; },
+    enter() { camShot('fix'); mapPulse = performance.now(); }, dur: 12000 },
+  { kick: 'Stress test · same model', vis: 'thermal', title: () => `${hhmm(S.hour)}: the sun hides him from thermal`,
+    body: () => { const th = g(R, 'input.thermal', {}), ac = g(R, 'input.acoustic', {}), s = R.search || {}, n0 = nightRef().search || {}; return `The afternoon sun warms the leaves to his temperature: ${num(th.contrastAppC, 1)} °C of contrast against a ${num(th.thresholdC, 1)} °C threshold, so thermal loses him. ${ac.codeDetected ? `His tap code still gets through, but the cicadas cut its range to ${fmtDist(ac.signalRange_m)}` : 'The cicada chorus drowns his tap code as well'}. Searching the circle takes ${num(s.hoursToCover, 0)} h instead of ${num(n0.hoursToCover, 1)} h at night.`; },
+    stats: () => { const th = g(R, 'input.thermal', {}), ac = g(R, 'input.acoustic', {}), s = R.search || {}; return [[num(th.contrastAppC, 1) + ' °C', `against the leaves (needs ${num(th.thresholdC, 1)})`, th.detected ? 'ok' : 'bad'], [fmtDist(ac.signalRange_m), 'his tap code carries', ac.codeDetected ? 'warn' : 'bad'], [num(s.hoursToCover, 0) + ' h', 'to search the circle', 'bad']]; },
+    enter() { presetIf('cicadaDay'); setPip('thermal'); camShot('eagle'); }, dur: 13000 },
+  { kick: 'Eagle', title: () => 'Find him without a beacon',
+    body: () => 'It perches, listens, decides, and reports from far away. He carries nothing that can be found, and the bird transmits only when the odds are worth the risk. Every number on these cards comes from the model running live in this page.',
+    stats: () => { const r = nightRef(); return [[num(g(r, 'output.accuracy.ce_m', 0), 0) + ' m', 'position error at night'], [g(r, 'output.message.bytes', 48) + ' B', 'one report, sent once'], ['0', 'emitters on him', 'ok']]; },
+    enter() { presetIf('night'); camShot('orbit'); }, dur: 12000 },
+];
+function fitCanvas(cv, maxDpr = 2) { const r = cv.getBoundingClientRect(); if (r.width < 10) return false; const d = Math.min(devicePixelRatio || 1, maxDpr), w = Math.round(r.width * d), h = Math.round(r.height * d); if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; } return true; }
+function presentRender() {
+  const st = PSTEPS[present.i], last = present.i === PSTEPS.length - 1;
+  $('#pStep').textContent = `${present.i + 1} / ${PSTEPS.length}`; $('#pKick').textContent = st.kick; $('#pTitle').textContent = st.title(); $('#pBody').textContent = st.body();
+  $('#pStats').innerHTML = (st.stats ? st.stats() : []).map(([v, l, c]) => `<div class="pstat"><b class="${esc(c || '')}">${esc(v)}</b><span>${esc(l)}</span></div>`).join('');
+  $('#pBar').style.width = ((present.i + 1) / PSTEPS.length * 100).toFixed(1) + '%';
+  $('#pNext').textContent = last ? 'Done ✓' : 'Next ▶'; $('#pPrev').disabled = present.i === 0;
+  $('#pAuto').textContent = present.auto ? 'Pause' : 'Auto'; $('#pAuto').setAttribute('aria-pressed', String(present.auto));
+  present.vis = st.vis || null; $('#pvis').className = 'pvis panel float' + (present.vis ? ' show ' + present.vis : '');
+  $('#pvCap').textContent = present.vis === 'thermal' ? 'Eagle cam · thermal · boxes are warm bodies, P = odds it is him' : present.vis === 'chart' ? 'P(operator) over time · dashed line = transmit threshold' : present.vis === 'map' ? 'ATAK view at the rescue cell' : '';
+  if (present.vis === 'thermal') { const pv = $('#pip'); if (pv.width !== 1280 || pv.height !== 960) { pv.width = 1280; pv.height = 960; pipDirty = true; RG.syncState(); } }
+  present.drawT = 0;
+}
+function presentArm() { clearTimeout(present.timer); if (present.on && present.auto) present.timer = setTimeout(() => presentGo(present.i + 1 < PSTEPS.length ? present.i + 1 : 0), PSTEPS[present.i].dur || 12000); }
+function presentGo(i) {
+  if (!present.on) return; present.i = clamp(i, 0, PSTEPS.length - 1); idleT = 0; clearInterval(present.pulse);
+  stopMission(); PSTEPS[present.i].enter(); presentRender(); presentArm();
+}
+function presentAuto(on) { present.auto = !!on; presentRender(); presentArm(); }
+function presentStart() {
+  if (present.on) return; if (cine.on) stopCine(); if (!$('#exportDlg').hidden) $('#exportDlg').hidden = true;
+  present.on = true; present.saved = { S: Object.assign({}, S), preset: activePreset }; present.pipSize = [$('#pip').width, $('#pip').height];
+  document.body.classList.add('present'); $('#present').hidden = false; $('#rgPanel').hidden = true; resize();
+  present.i = 0; presentGo(0); $('#pNext').focus();
+}
+function presentStop() {
+  if (!present.on) return; clearTimeout(present.timer); clearInterval(present.pulse); present.auto = false; present.on = false; present.vis = null; stopMission();
+  document.body.classList.remove('present'); $('#present').hidden = true;
+  if (present.saved) { S = Object.assign({}, present.saved.S); activePreset = present.saved.preset; present.saved = null; syncControls(); update(); }
+  if (present.pipSize) { $('#pip').width = present.pipSize[0]; $('#pip').height = present.pipSize[1]; present.pipSize = null; }
+  resize(); drawMap(); drawChart(); pipDirty = true; camGoal('orbit'); RG.syncState(); $('#presentBtn').focus();
+}
+function presentFrame(now) {
+  if (present.vis === 'thermal' && pipFresh) { pipFresh = false; const s = $('#pip'), d = $('#pvTh'); if (d.width !== s.width || d.height !== s.height) { d.width = s.width; d.height = s.height; } d.getContext('2d').drawImage(s, 0, 0); }
+  if (present.vis === 'chart' && now - present.drawT > 250) { present.drawT = now; drawChart($('#pvChart'), 1.45); }
+  if (present.vis === 'map' && (now - present.drawT > 250 || now - mapPulse < 2500)) { present.drawT = now; if (fitCanvas($('#pvMap'))) drawMap($('#pvMap')); }
+}
+$('#presentBtn').addEventListener('click', () => presentStart());
+$('#pNext').addEventListener('click', () => { if (present.i >= PSTEPS.length - 1) presentStop(); else presentGo(present.i + 1); });
+$('#pPrev').addEventListener('click', () => presentGo(present.i - 1));
+$('#pAuto').addEventListener('click', () => presentAuto(!present.auto));
+$('#pExit').addEventListener('click', () => presentStop());
+addEventListener('keydown', e => {
+  const typing = /INPUT|SELECT|TEXTAREA/.test(document.activeElement && document.activeElement.tagName);
+  if (!present.on) { if ((e.key === 'p' || e.key === 'P') && !typing && !e.metaKey && !e.ctrlKey && !e.altKey && $('#exportDlg').hidden) { e.preventDefault(); presentStart(); } return; }
+  const k = e.key; if ((k === ' ' || k === 'Enter') && e.target && e.target.tagName === 'BUTTON') return;   // the focused button handles it
+  if (k === 'ArrowRight' || k === 'PageDown' || k === ' ' || k === 'Enter') { e.preventDefault(); if (present.i < PSTEPS.length - 1) presentGo(present.i + 1); }
+  else if (k === 'ArrowLeft' || k === 'PageUp' || k === 'Backspace') { e.preventDefault(); presentGo(present.i - 1); }
+  else if (k === 'Home') presentGo(0); else if (k === 'End') presentGo(PSTEPS.length - 1);
+  else if (k === 'a' || k === 'A') presentAuto(!present.auto);
+  else if (k === 'Escape') presentStop();
+  else if (/^[1-9]$/.test(k)) presentGo(+k - 1); else if (k === '0') presentGo(9);
+});
+
+// ---------- remote GPU: another computer draws the 3D view and the Eagle cam; this one plays them as video ----------
+// Signalling (the connection offer, including network addresses) goes through the artifact's live room on claude.ai, with
+// both pages open and signed in as the artifact's owner, or through simulator/serve.mjs when that serves the page on a LAN.
+// Media is WebRTC, browser to browser: two video tracks from the host (scene, Eagle cam). This page sends back its camera
+// pose (~60/s, unreliable channel) and every change it makes (reliable channel), so the host draws what this page would.
+const RG_ICE = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }, { urls: 'stun:stun.cloudflare.com:3478' }];
+const RG_OK = typeof RTCPeerConnection === 'function' && typeof HTMLCanvasElement.prototype.captureStream === 'function';
+// claude.ai frames its pages in a sandbox that does not allow direct video connections, so there the panel says how to do it instead
+const RG_WHY = window.claude ? 'Streaming cannot run inside claude.ai: the page is not allowed to open a direct video connection here. Use the copy in the Team-32 repo: run node simulator/serve.mjs on the GPU computer and open the address it prints on this one (same network). From anywhere, Chrome Remote Desktop shows the GPU computer\'s whole screen in a browser tab.' : 'This browser cannot stream (WebRTC or canvas capture is missing).';
+const RG_CAMS = ['orbit', 'eagle', 'operator', 'top'], RG_PIPS = ['thermal', 'visible', 'id'], RG_Q = ['auto', 'low', 'med', 'high'];
+Object.assign(RG, { transport: null, peers: [], peerOf: null, hostPeer: null, gpu: '', sid: null, pc: null, ctl: null, camCh: null, req: null, answered: false, offerPkg: null, inbox: {}, timers: {}, status: 'Off.', camPose: null, poseHist: [], lag: 150, lastPose: '', lastPoseT: 0, frames: 0, lastFrameT: 0, stats: {}, mainTrack: null, pipTrack: null, wake: null, retryT: 0, sizeT: 0, prevStat: null, hsPrev: null, hostHidden: false });
+RG.send = m => { if (RG.role === 'viewer' && RG.ctl && RG.ctl.readyState === 'open') { try { RG.ctl.send(JSON.stringify(m)); } catch (err) { /* channel closing */ } } };
+RG.syncState = () => {
+  if (RG.role !== 'viewer' || !RG.ctl || RG.ctl.readyState !== 'open') return;
+  const ov = {}; $$('#overlays input').forEach(c => { ov[c.id] = c.checked; }); const pv = $('#pip');
+  RG.send({ t: 'state', S, ap: activePreset, cam: camMode, pip: pipMode, pipAim: [+pipYaw.toFixed(4), +pipPitch.toFixed(4)], pipSize: [pv.width, pv.height], ov, q: quality.mode });
+};
+const rgTimer = (k, fn, ms) => { clearInterval(RG.timers[k]); RG.timers[k] = fn ? setInterval(fn, ms) : 0; };
+function rgGpuShort() { const n = gpuName(), m = /ANGLE \([^,]*,\s*([^,(]+)/.exec(n); return (m ? m[1] : n).replace(/\s+/g, ' ').trim().slice(0, 80); }
+function rgStatus(s) { RG.status = s; $('#rgStat').textContent = s; rgBadge(); }
+function rgBadge() {
+  const b = $('#rgBadge'), hb = $('#rgHostBanner'), st = RG.stats || {};
+  document.body.classList.toggle('rghost', RG.role === 'host');
+  if (!RG.role) { b.hidden = true; return; }
+  b.hidden = false; b.title = RG.status;
+  if (RG.role === 'host') {
+    const on = !!(RG.pc && RG.pc.connectionState === 'connected');
+    b.className = 'chip ' + (on ? 'ok' : 'dim'); b.textContent = on ? `GPU · streaming ${st.w || 0}×${st.h || 0}` : 'GPU · waiting';
+    hb.textContent = on ? `This computer is drawing the simulator for another screen (${st.w}×${st.h}, ${Math.round(st.fps || 0)} fps). Keep this window open and visible: Chrome pauses hidden windows.` : 'This computer is ready to draw for another screen. Open the simulator there and choose Remote GPU → Show stream here. Keep this window open.';
+  } else {
+    b.className = 'chip ' + (RG.live ? 'ok' : 'warn');
+    b.textContent = RG.live ? `Stream · ${Math.round(st.fps || 0)} fps · ${num((st.kbps || 0) / 1000, 1)} Mbit/s · ${Math.round(st.rtt || 0)} ms` : 'Stream · drawing here';
+  }
+}
+function rgRenderPanel() {
+  $('#rgHost').classList.toggle('on', RG.role === 'host'); $('#rgView').classList.toggle('on', RG.role === 'viewer'); $('#rgStop').disabled = !RG.role;
+  $('#rgHost').disabled = $('#rgView').disabled = !RG_OK;
+  const list = (RG.peers || []).filter(p => !p.me && p.presence && (p.presence.rg === 'host' || p.presence.rg === 'viewer'));
+  $('#rgPeers').textContent = !RG.transport ? '' : list.length ? 'Also here: ' + list.map(p => (p.presence.rg === 'host' ? 'GPU computer' : 'a screen') + (p.presence.gpu ? ' (' + String(p.presence.gpu).slice(0, 80) + ')' : '') + (p.presence.busy ? ', streaming' : '')).join('; ') : 'No other computer has this page open in Remote GPU mode yet.';
+  $('#rgStat').textContent = RG_OK ? RG.status : RG_WHY;
+}
+// --- signalling transports: the claude.ai room, or the LAN relay in simulator/serve.mjs ---
+async function rgRoomTransport() {
+  try {
+    if (!window.claude || typeof window.claude.use !== 'function') return null;
+    const room = await window.claude.use('room'); if (!room) return null;
+    const t = { kind: 'room', me: null };
+    t.emit = (topic, data) => room.emit(topic, data).catch(err => console.warn('room emit', err && err.code));
+    t.on = (topic, fn) => room.on(topic, m => fn({ from: m.peer, mine: !!m.sameTab, data: m.data }));
+    t.presence = p => room.presence(p).catch(() => {});
+    t.onPeers = fn => room.onPeers(ch => { const list = ch.peers.map(p => ({ id: p.peer, me: !!p.sameTab, presence: p.presence || {} })); const me = list.find(p => p.me); if (me) t.me = me.id; fn(list); });
+    return t;
+  } catch (err) { return null; }
+}
+async function rgHttpTransport() {
+  try { const r = await fetch('rgpu/hello', { cache: 'no-store' }); if (!r.ok) return null; const j = await r.json(); if (!j || !j.rgpu) return null; } catch (err) { return null; }
+  const me = Math.random().toString(36).slice(2, 12), subs = {}, peerFns = []; let peers = [], pres = {};
+  const post = (path, body) => fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }).catch(() => {});
+  const es = new EventSource('rgpu/events?peer=' + me);
+  es.addEventListener('open', () => { if (Object.keys(pres).length) post('rgpu/presence', { id: me, presence: pres }); });   // (re)connected: say who we are again
+  es.addEventListener('msg', ev => { let m; try { m = JSON.parse(ev.data); } catch (err) { return; } (subs[m.topic] || []).forEach(fn => fn({ from: m.from, mine: m.from === me, data: m.data })); });
+  es.addEventListener('peers', ev => { try { peers = JSON.parse(ev.data).map(p => ({ id: p.id, me: p.id === me, presence: p.presence || {} })); } catch (err) { return; } peerFns.forEach(fn => fn(peers)); });
+  return { kind: 'lan', me, emit: (topic, data) => post('rgpu/emit', { from: me, topic, data }), on: (topic, fn) => { (subs[topic] = subs[topic] || []).push(fn); }, presence: p => { pres = Object.assign({}, pres, p); return post('rgpu/presence', { id: me, presence: pres }); }, onPeers: fn => { peerFns.push(fn); if (peers.length) fn(peers); } };
+}
+async function rgEnsure() {
+  if (RG.transport) return true;
+  if (!RG_OK) { rgStatus(RG_WHY); return false; }
+  rgStatus('Connecting…');
+  const t = await rgRoomTransport() || await rgHttpTransport();
+  if (!t) { rgStatus('Remote GPU needs the page opened on claude.ai, signed in as its owner on both computers, or served on your network by simulator/serve.mjs.'); return false; }
+  RG.transport = t;
+  t.onPeers(rgOnPeers); t.on('rg.req', rgOnReq); t.on('rg.offer', m => rgOnSdp('offer', m)); t.on('rg.answer', m => rgOnSdp('answer', m)); t.on('rg.bye', rgOnBye);
+  return true;
+}
+function rgForMe(d) { const t = RG.transport; if (!t || !d || typeof d.to !== 'string') return false; if (!t.me) t.me = d.to; return d.to === t.me; }
+function rgPresence() { if (RG.transport) RG.transport.presence({ rg: RG.role || null, gpu: RG.role === 'host' ? rgGpuShort() : null, busy: RG.role === 'host' && RG.peerOf ? RG.peerOf : null }); }
+function rgOnPeers(list) {
+  RG.peers = list;
+  if (RG.role === 'viewer') { if (RG.hostPeer && !list.some(p => p.id === RG.hostPeer)) rgDrop('The GPU computer closed the page.'); else if (!RG.pc) rgFindHost(); }
+  if (RG.role === 'host' && RG.peerOf && !list.some(p => p.id === RG.peerOf)) { rgCloseSession(); rgStatus('The other screen closed the page. Waiting for the next one.'); }
+  rgRenderPanel();
+}
+// --- packing: SDP is deflated, base64'd and cut into chunks under the room's 4 KiB message limit ---
+async function rgPack(obj) { const s = JSON.stringify(obj); try { const z = new Uint8Array(await new Response(new Blob([s]).stream().pipeThrough(new CompressionStream('deflate-raw'))).arrayBuffer()); let b = ''; for (let i = 0; i < z.length; i += 8192) b += String.fromCharCode.apply(null, z.subarray(i, i + 8192)); return 'z' + btoa(b); } catch (err) { return 'j' + s; } }
+async function rgUnpack(str) { if (str[0] === 'j') return JSON.parse(str.slice(1)); const bin = atob(str.slice(1)), z = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) z[i] = bin.charCodeAt(i); return JSON.parse(await new Response(new Blob([z]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text()); }
+const rgChunks = (s, n = 2600) => { const out = []; for (let i = 0; i < s.length; i += n) out.push(s.slice(i, i + n)); return out; };
+function rgSendSdp(topic, to, pkg) { const parts = rgChunks(pkg); parts.forEach((z, i) => RG.transport.emit(topic, { to, sid: RG.sid, i, n: parts.length, z })); }
+function rgGathered(pc, ms = 3500) { return new Promise(res => { if (pc.iceGatheringState === 'complete') return res(); const t = setTimeout(res, ms); pc.addEventListener('icegatheringstatechange', () => { if (pc.iceGatheringState === 'complete') { clearTimeout(t); res(); } }); }); }
+async function rgOnSdp(kind, m) {
+  const d = m.data || {}; if (m.mine || !rgForMe(d) || d.sid !== RG.sid) return;
+  const box = RG.inbox[kind + d.sid] || (RG.inbox[kind + d.sid] = { parts: [], got: 0, done: false });
+  if (box.done || typeof d.z !== 'string' || !(d.n > 0 && d.n < 40) || !(d.i >= 0 && d.i < d.n)) return;
+  if (box.parts[d.i] == null) { box.parts[d.i] = d.z; box.got++; }
+  if (box.got < d.n) return; box.done = true;
+  let desc; try { desc = await rgUnpack(box.parts.join('')); } catch (err) { Object.assign(box, { parts: [], got: 0, done: false }); return; }
+  if (!desc || desc.type !== kind || typeof desc.sdp !== 'string') return;
+  if (kind === 'answer' && RG.role === 'host' && RG.pc && !RG.answered) { RG.answered = true; rgTimer('offer', null); RG.pc.setRemoteDescription(desc).catch(err => { console.warn(err); RG.answered = false; }); }
+  if (kind === 'offer' && RG.role === 'viewer' && !RG.pc) rgViewerAnswer(m.from, desc).catch(err => { console.warn(err); rgDrop('Could not open the stream. Drawing here instead.'); });
+}
+function rgOnBye(m) { const d = m.data || {}; if (m.mine || !rgForMe(d) || d.sid !== RG.sid) return; if (RG.role === 'host') { rgCloseSession(); rgStatus('The other screen stopped. Waiting for the next one.'); } else if (RG.role === 'viewer') rgDrop('The GPU computer stopped streaming. Drawing here instead.'); }
+// --- host: draws for the other screen ---
+function rgPrefer(tr) {   // hardware H.264 first where both ends have it (the video then costs the GPUs, not the CPUs)
+  if (!tr.setCodecPreferences) return;
+  const rank = c => /h264/i.test(c.mimeType) ? 0 : /vp8/i.test(c.mimeType) ? 1 : /vp9/i.test(c.mimeType) ? 2 : /av1/i.test(c.mimeType) ? 3 : 4;
+  for (const src of [window.RTCRtpSender, window.RTCRtpReceiver]) { try { const caps = src && src.getCapabilities && src.getCapabilities('video'); if (caps) { tr.setCodecPreferences(caps.codecs.slice().sort((a, b) => rank(a) - rank(b))); return; } } catch (err) { /* try the other list */ } }
+}
+function rgTune() {
+  if (!RG.pc) return;
+  RG.pc.getSenders().forEach(s => { if (!s.track) return; const main = s.track === RG.mainTrack; try { const p = s.getParameters(); if (!p.encodings || !p.encodings.length) p.encodings = [{}]; p.encodings[0].maxBitrate = main ? 14e6 : 1.5e6; p.encodings[0].maxFramerate = main ? 60 : 20; if (main) p.degradationPreference = 'maintain-framerate'; s.setParameters(p).catch(() => {}); } catch (err) { /* keep defaults */ } });
+}
+function rgHostResize(m) {
+  const w = clamp(Math.round(+m.w || 1280), 160, 3840), h = clamp(Math.round(+m.h || 720), 120, 2160);
+  RG.hostSize = { w, h, pr: clamp(Math.min(+m.dpr || 1, 1.5, Math.sqrt(2.3e6 / (w * h))), 0.5, 2) };
+  if (+m.pw > 0 && +m.ph > 0) { const pv = $('#pip'), pw = clamp(Math.round(+m.pw), 64, 1600), ph = clamp(Math.round(+m.ph), 48, 1200); if (pv.width !== pw || pv.height !== ph) { pv.width = pw; pv.height = ph; } }
+  renderer.setPixelRatio(effectivePr()); resize(); pipDirty = true; shadowDirty = true;
+}
+function rgOnReq(m) {
+  const d = m.data || {}; if (RG.role !== 'host' || m.mine || !rgForMe(d) || typeof d.sid !== 'string') return;
+  if (RG.peerOf && RG.peerOf !== m.from && RG.pc && RG.pc.connectionState === 'connected') return;   // busy with another screen
+  if (RG.sid === d.sid && RG.pc) { if (RG.offerPkg && !RG.answered) rgSendSdp('rg.offer', RG.peerOf, RG.offerPkg); return; }
+  rgHostSession(m.from, d).catch(err => { console.warn(err); rgCloseSession(); rgStatus('Could not start the stream: ' + (err && err.message || err)); });
+}
+async function rgHostSession(viewer, d) {
+  rgCloseSession();
+  RG.sid = d.sid.slice(0, 24); RG.peerOf = viewer; RG.answered = false; RG.inbox = {};
+  rgHostResize(d); rgPresence(); controls.enabled = false;
+  const pc = RG.pc = new RTCPeerConnection({ iceServers: RG_ICE });
+  const main = canvas.captureStream(60).getVideoTracks()[0], pipTrack = $('#pip').captureStream(20).getVideoTracks()[0];
+  try { main.contentHint = 'motion'; pipTrack.contentHint = 'detail'; } catch (err) { /* optional */ }
+  RG.mainTrack = main; RG.pipTrack = pipTrack;
+  rgPrefer(pc.addTransceiver(main, { direction: 'sendonly', streams: [new MediaStream([main])] }));
+  rgPrefer(pc.addTransceiver(pipTrack, { direction: 'sendonly', streams: [new MediaStream([pipTrack])] }));
+  RG.ctl = pc.createDataChannel('ctl', { ordered: true }); RG.camCh = pc.createDataChannel('cam', { ordered: false, maxRetransmits: 0 });
+  RG.ctl.onmessage = e => rgOnCtl(e.data); RG.camCh.onmessage = e => { try { RG.camPose = JSON.parse(e.data); } catch (err) { /* ignore */ } };
+  RG.ctl.onopen = () => rgTimer('hs', rgHostStats, 500);
+  pc.onconnectionstatechange = () => {
+    if (RG.pc !== pc) return; const s = pc.connectionState;
+    if (s === 'connected') { rgTune(); rgStatus('Streaming to the other screen.'); rgPresence(); }
+    else if (s === 'failed' || s === 'closed') { rgCloseSession(); rgStatus('The stream ended. Waiting for a screen to connect.'); }
+    else if (s === 'disconnected') setTimeout(() => { if (RG.pc === pc && pc.connectionState === 'disconnected') { rgCloseSession(); rgStatus('Lost the other screen. Waiting for it to reconnect.'); } }, 6000);
+    rgBadge();
+  };
+  await pc.setLocalDescription(await pc.createOffer()); await rgGathered(pc); if (RG.pc !== pc) return;
+  RG.offerPkg = await rgPack({ type: pc.localDescription.type, sdp: pc.localDescription.sdp });
+  rgSendSdp('rg.offer', viewer, RG.offerPkg); rgTimer('offer', () => { if (RG.pc === pc && !RG.answered) rgSendSdp('rg.offer', viewer, RG.offerPkg); }, 2500);
+  rgStatus('Connecting to the other screen…');
+}
+function rgHostStats() {
+  if (!RG.ctl || RG.ctl.readyState !== 'open') return;
+  const now = performance.now(), prev = RG.hsPrev || { f: frameNo, t: now - 500 }; RG.hsPrev = { f: frameNo, t: now };
+  Object.assign(RG.stats, { fps: (frameNo - prev.f) * 1000 / Math.max(1, now - prev.t), w: canvas.width, h: canvas.height });
+  try { RG.ctl.send(JSON.stringify({ t: 'hs', fps: Math.round(RG.stats.fps), w: canvas.width, h: canvas.height, gpu: rgGpuShort(), opPx: pipStats.opPx, hidden: document.hidden })); } catch (err) { /* closing */ }
+  rgBadge();
+}
+function rgCleanS(src) {
+  const d = M.defaults(), out = {}; if (!src || typeof src !== 'object') return Object.assign({}, S);
+  Object.keys(d).forEach(k => { const v = src[k], t = typeof d[k]; if (t === 'number' && typeof v === 'number' && isFinite(v)) out[k] = v; else if (t === 'string' && typeof v === 'string' && /^[A-Za-z0-9_.-]{1,24}$/.test(v)) out[k] = v; else if (t === 'boolean' && typeof v === 'boolean') out[k] = v; });
+  return Object.assign(d, out);
+}
+function rgApplyState(m) {
+  const next = rgCleanS(m.S);
+  if (JSON.stringify(next) !== JSON.stringify(S)) { S = next; activePreset = typeof m.ap === 'string' && M.presets[m.ap] ? m.ap : ''; syncControls(); stopMission(); update(); }
+  if (RG_CAMS.includes(m.cam) && m.cam !== camMode) { camMode = m.cam; $$('.viewbtns button').forEach(b => b.classList.toggle('on', b.dataset.cam === camMode)); }
+  if (RG_PIPS.includes(m.pip) && m.pip !== pipMode) { pipMode = m.pip; $$('#pipMode button').forEach(x => x.classList.toggle('on', x.dataset.pip === pipMode)); pipDirty = true; }
+  if (Array.isArray(m.pipAim) && m.pipAim.every(v => typeof v === 'number' && isFinite(v))) { pipYaw = m.pipAim[0]; pipPitch = clamp(m.pipAim[1], -1.3, 1.3); pipDirty = true; }
+  if (Array.isArray(m.pipSize)) rgHostResize(Object.assign({}, RG.hostSize, { pw: m.pipSize[0], ph: m.pipSize[1], dpr: RG.hostSize ? RG.hostSize.pr : 1 }));
+  if (m.ov && typeof m.ov === 'object') $$('#overlays input').forEach(c => { if (typeof m.ov[c.id] === 'boolean') c.checked = m.ov[c.id]; });
+  if (RG_Q.includes(m.q) && m.q !== quality.mode) { quality.mode = m.q; quality.stage = 0; dyn.scale = 1; $$('#quality button').forEach(x => x.classList.toggle('on', x.dataset.q === m.q)); applyQuality(m.q === 'auto' ? bootTier() : m.q); }
+  controls.enabled = false; updateOverlays();
+}
+function rgApplyPose() {
+  const a = RG.camPose; if (!Array.isArray(a) || a.length < 8 || !a.every(v => typeof v === 'number' && isFinite(v))) return;
+  camera.position.set(a[0], a[1], a[2]); camera.quaternion.set(a[3], a[4], a[5], a[6]).normalize();
+  if (Math.abs(camera.fov - a[7]) > 1e-3) { camera.fov = clamp(a[7], 10, 120); camera.updateProjectionMatrix(); } camera.updateMatrixWorld();
+}
+function rgOnCtl(raw) {
+  let m; try { m = JSON.parse(raw); } catch (err) { return; } if (!m || typeof m !== 'object') return;
+  if (RG.role === 'host') {
+    if (m.t === 'state') rgApplyState(m);
+    else if (m.t === 'size') rgHostResize(m);
+    else if (m.t === 'run') runMission();
+    else if (m.t === 'stop') stopMission();
+    else if (m.t === 'cine') { if (m.on) startCine(); else stopCine(!!m.silent); }
+    else if (m.t === 'fx' && Object.prototype.hasOwnProperty.call(FX, m.name)) FX[m.name]();
+  } else if (RG.role === 'viewer' && m.t === 'hs') {
+    RG.gpu = String(m.gpu || RG.gpu || '').slice(0, 80); if (typeof m.opPx === 'number') pipStats.opPx = m.opPx; RG.hostHidden = !!m.hidden; throttled(); rgBadge();
+  }
+}
+// --- viewer: plays the host's video, sends camera and changes back ---
+function rgViewSize() { const r = canvas.getBoundingClientRect(), pv = $('#pip'); return { w: Math.round(r.width), h: Math.round(r.height), dpr: +(devicePixelRatio || 1).toFixed(2), pw: pv.width, ph: pv.height }; }
+function rgSendSize(now) { clearTimeout(RG.sizeT); const go = () => RG.send(Object.assign({ t: 'size' }, rgViewSize())); if (now) go(); else RG.sizeT = setTimeout(go, 250); }
+function rgFindHost() {
+  if (RG.role !== 'viewer' || !RG.transport || RG.pc) return;
+  const me = RG.transport.me, hosts = RG.peers.filter(p => !p.me && p.presence && p.presence.rg === 'host'), h = hosts.find(p => !p.presence.busy || p.presence.busy === me);
+  if (!h) { RG.hostPeer = null; rgStatus(hosts.length ? 'The GPU computer is streaming to another screen. Stop it there first.' : 'Waiting for the GPU computer: open this page there and choose Render here.'); return; }
+  if (RG.hostPeer === h.id && RG.req) return;
+  RG.hostPeer = h.id; RG.gpu = String(h.presence.gpu || '').slice(0, 80); RG.sid = Math.random().toString(36).slice(2, 10); RG.inbox = {}; RG.answered = false;
+  RG.req = Object.assign({ to: RG.hostPeer, sid: RG.sid }, rgViewSize());
+  const send = () => { if (RG.role === 'viewer' && RG.req && !RG.pc) RG.transport.emit('rg.req', RG.req); };
+  send(); rgTimer('req', send, 3000);
+  rgStatus(`Asking the GPU computer${RG.gpu ? ' (' + RG.gpu + ')' : ''} to start…`);
+}
+function rgPlay(v) { const p = v.play(); if (p && p.catch) p.catch(() => { const once = () => { v.play().catch(() => {}); removeEventListener('pointerdown', once, true); }; addEventListener('pointerdown', once, true); rgStatus('Click anywhere to start the stream.'); }); }
+function rgWatchFrames(v) {
+  const seen = () => { RG.frames++; RG.lastFrameT = performance.now(); if (RG.role === 'viewer' && RG.pc && !RG.live) { rgSetLive(true); rgStatus(`Streaming from the GPU computer${RG.gpu ? ' (' + RG.gpu + ')' : ''}. This screen only plays the video now.`); } };
+  if ('requestVideoFrameCallback' in HTMLVideoElement.prototype) { const tick = () => { seen(); if (v.srcObject) v.requestVideoFrameCallback(tick); }; v.requestVideoFrameCallback(tick); }
+  else v.addEventListener('timeupdate', seen);
+}
+async function rgViewerAnswer(host, offer) {
+  const pc = RG.pc = new RTCPeerConnection({ iceServers: RG_ICE }); RG.gotMain = false; rgTimer('req', null);
+  pc.ontrack = e => { const mid = e.transceiver && e.transceiver.mid, isMain = mid != null ? mid === '0' : !RG.gotMain, v = $(isMain ? '#rgv' : '#rgp'); v.srcObject = (e.streams && e.streams[0]) || new MediaStream([e.track]); v.muted = true; rgPlay(v); if (isMain) { RG.gotMain = true; rgWatchFrames(v); } };
+  pc.ondatachannel = e => { const ch = e.channel; if (ch.label === 'ctl') { RG.ctl = ch; ch.onmessage = ev => rgOnCtl(ev.data); ch.onopen = () => { rgSendSize(true); RG.syncState(); }; } else if (ch.label === 'cam') RG.camCh = ch; };
+  pc.onconnectionstatechange = () => {
+    if (RG.pc !== pc) return; const s = pc.connectionState;
+    if (s === 'connected') { rgTimer('answer', null); rgTimer('vs', rgViewerStats, 1000); rgStatus(`Connected to ${RG.gpu || 'the GPU computer'}; waiting for the first picture…`); }
+    else if (s === 'failed') rgDrop('No direct video path between the two computers (their networks block it). Drawing here instead.');
+    else if (s === 'disconnected') setTimeout(() => { if (RG.pc === pc && pc.connectionState === 'disconnected') rgDrop('Lost the GPU computer. Drawing here instead.'); }, 4000);
+    rgBadge();
+  };
+  await pc.setRemoteDescription(offer); await pc.setLocalDescription(await pc.createAnswer()); await rgGathered(pc); if (RG.pc !== pc) return;
+  const pkg = await rgPack({ type: pc.localDescription.type, sdp: pc.localDescription.sdp });
+  rgSendSdp('rg.answer', host, pkg); rgTimer('answer', () => { if (RG.pc === pc && pc.connectionState !== 'connected') rgSendSdp('rg.answer', host, pkg); }, 2500);
+  rgStatus('Connecting to the GPU computer…');
+  setTimeout(() => { if (RG.pc === pc && pc.connectionState !== 'connected') rgDrop('No direct video path between the two computers (firewall or network). Drawing here instead.'); }, 25000);
+}
+async function rgViewerStats() {
+  const pc = RG.pc; if (!pc) return; let st; try { st = await pc.getStats(); } catch (err) { return; }
+  let bytes = 0, fps = 0, w = 0, h = 0, rtt = null;
+  st.forEach(r => {
+    if (r.type === 'inbound-rtp' && r.kind === 'video') { bytes += r.bytesReceived || 0; if ((r.frameWidth || 0) >= w) { w = r.frameWidth || 0; h = r.frameHeight || 0; fps = r.framesPerSecond || 0; } }
+    if (r.type === 'candidate-pair' && r.state === 'succeeded' && r.currentRoundTripTime != null && (r.nominated || rtt == null)) rtt = r.currentRoundTripTime * 1000;
+  });
+  const now = performance.now(), prev = RG.prevStat; RG.prevStat = { bytes, t: now };
+  Object.assign(RG.stats, { fps, w, h, kbps: prev ? Math.max(0, bytes - prev.bytes) * 8 / Math.max(1, now - prev.t) : 0, rtt: rtt != null ? rtt : (RG.stats.rtt || 0) });
+  RG.lag = clamp((RG.stats.rtt || 40) / 2 + 90, 60, 450); rgBadge();
+}
+const _lblCam = new THREE.PerspectiveCamera();
+function rgLabelCam(now) {   // labels follow the camera pose the video is showing, not the one just sent
+  const t = now - RG.lag, h = RG.poseHist; let s = h[0]; for (let i = h.length - 1; i >= 0; i--) if (h[i].t <= t) { s = h[i]; break; }
+  if (!s) return camera;
+  _lblCam.position.fromArray(s.p); _lblCam.quaternion.fromArray(s.q); Object.assign(_lblCam, { fov: s.f, aspect: camera.aspect, near: camera.near, far: camera.far }); _lblCam.updateProjectionMatrix(); _lblCam.updateMatrixWorld(); return _lblCam;
+}
+function rgViewerFrame(now) {
+  if (RG.camCh && RG.camCh.readyState === 'open') {
+    const p = camera.position, q = camera.quaternion, key = `${p.x.toFixed(3)},${p.y.toFixed(3)},${p.z.toFixed(3)},${q.x.toFixed(5)},${q.y.toFixed(5)},${q.z.toFixed(5)},${q.w.toFixed(5)},${camera.fov.toFixed(2)}`;
+    if (key !== RG.lastPose || now - RG.lastPoseT > 500) { RG.lastPose = key; RG.lastPoseT = now; try { RG.camCh.send('[' + key + ']'); } catch (err) { /* closing */ } }
+  }
+  RG.poseHist.push({ t: now, p: camera.position.toArray(), q: camera.quaternion.toArray(), f: camera.fov }); while (RG.poseHist.length > 2 && now - RG.poseHist[0].t > 1500) RG.poseHist.shift();
+  if (RG.live) {
+    const v = $('#rgp'); if (v.videoWidth && v.readyState >= 2) { const pv = $('#pip'); pipCtx().drawImage(v, 0, 0, pv.width, pv.height); pipFresh = true; }
+    if (now - RG.lastFrameT > 3000) { rgSetLive(false); rgStatus(RG.hostHidden ? 'The GPU computer\'s window is hidden or minimised, so it stopped drawing. Drawing here until it is back.' : 'No picture from the GPU computer for 3 s. Drawing here until it comes back.'); }
+  }
+}
+function rgSetLive(on) { if (RG.live === on) return; RG.live = on; document.body.classList.toggle('rglive', on); if (!on) { pipDirty = true; shadowDirty = true; } rgBadge(); }
+function rgDrop(reason) {
+  if (RG.role !== 'viewer') return;
+  rgCloseSession(); RG.hostPeer = null; RG.req = null; rgStatus(reason);
+  clearTimeout(RG.retryT); RG.retryT = setTimeout(() => { if (RG.role === 'viewer' && !RG.pc) rgFindHost(); }, 5000);
+}
+function rgCloseSession() {
+  ['offer', 'answer', 'req', 'hs', 'vs'].forEach(k => rgTimer(k, null));
+  const pc = RG.pc; RG.pc = null; RG.ctl = null; RG.camCh = null; RG.answered = false; RG.camPose = null; RG.offerPkg = null; RG.prevStat = null; RG.hsPrev = null;
+  if (pc) { try { pc.close(); } catch (err) { /* already closed */ } }
+  [RG.mainTrack, RG.pipTrack].forEach(t => { if (t) { try { t.stop(); } catch (err) { /* ended */ } } }); RG.mainTrack = RG.pipTrack = null;
+  ['#rgv', '#rgp'].forEach(s => { try { $(s).srcObject = null; } catch (err) { /* none */ } });
+  rgSetLive(false);
+  if (RG.role === 'host') { RG.peerOf = null; RG.sid = null; RG.hostSize = null; renderer.setPixelRatio(effectivePr()); resize(); controls.enabled = camMode === 'orbit' || camMode === 'top'; rgPresence(); }
+  rgBadge();
+}
+async function rgWake() { try { if (navigator.wakeLock && !RG.wake && !document.hidden) { RG.wake = await navigator.wakeLock.request('screen'); RG.wake.addEventListener('release', () => { RG.wake = null; }); } } catch (err) { /* not allowed in this frame */ } }
+document.addEventListener('visibilitychange', () => { if (RG.role === 'host' && !document.hidden) rgWake(); });
+async function rgStartHost() {
+  if (RG.role === 'host') { rgRenderPanel(); return; } if (RG.role) rgStop(true);
+  RG.role = 'host'; rgStatus('Starting…');
+  if (!await rgEnsure()) { RG.role = null; rgBadge(); rgRenderPanel(); return; }
+  rgPresence(); rgWake(); rgStatus('Ready. On the other computer open this simulator and choose Remote GPU → Show stream here.'); rgRenderPanel();
+}
+async function rgStartView() {
+  if (RG.role === 'viewer') { rgRenderPanel(); return; } if (RG.role) rgStop(true);
+  RG.role = 'viewer'; rgStatus('Starting…');
+  if (!await rgEnsure()) { RG.role = null; rgBadge(); rgRenderPanel(); return; }
+  rgPresence(); rgFindHost(); rgRenderPanel();
+}
+function rgStop(quiet) {
+  if (RG.transport && RG.sid) RG.transport.emit('rg.bye', { to: RG.role === 'host' ? RG.peerOf : RG.hostPeer, sid: RG.sid });
+  rgCloseSession(); clearTimeout(RG.retryT); RG.role = null; RG.hostPeer = null; RG.req = null; RG.sid = null;
+  if (RG.wake) { RG.wake.release().catch(() => {}); RG.wake = null; }
+  rgPresence(); if (!quiet) rgStatus('Off.'); rgBadge(); rgRenderPanel();
+}
+function rgRemember(role) { try { if (!role) localStorage.removeItem('eagleSim.rgpu'); else if ($('#rgRemember').checked) localStorage.setItem('eagleSim.rgpu', role); } catch (err) { /* storage blocked: nothing to remember */ } }
+let rgAimT = 0; function rgAimSoon() { const n = performance.now(); clearTimeout(rgAimSoon.t); if (n - rgAimT > 40) { rgAimT = n; RG.syncState(); } else rgAimSoon.t = setTimeout(() => RG.syncState(), 45); }
+$('#rgBtn').addEventListener('click', () => { const p = $('#rgPanel'); p.hidden = !p.hidden; if (!p.hidden) rgRenderPanel(); });
+$('#rgBadge').addEventListener('click', () => { $('#rgPanel').hidden = false; rgRenderPanel(); });
+$('#rgHost').addEventListener('click', () => { rgRemember('host'); rgStartHost(); });
+$('#rgView').addEventListener('click', () => { rgRemember('viewer'); rgStartView(); });
+$('#rgStop').addEventListener('click', () => { rgRemember(''); rgStop(); });
+addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#rgPanel').hidden) $('#rgPanel').hidden = true; });
 
 // ---------- export for Unreal ----------
 function exportScene() {
@@ -1661,31 +2173,70 @@ $('#copyJson').addEventListener('click', () => { const ta = $('#jsonOut'); const
 // ---------- pip interaction ----------
 { const cv = $('#pip'); let drag = null;
   cv.addEventListener('pointerdown', e => { drag = { x: e.clientX, y: e.clientY, yaw: pipYaw, pitch: pipPitch }; cv.setPointerCapture(e.pointerId); cv.style.cursor = 'grabbing'; });
-  cv.addEventListener('pointermove', e => { if (!drag) return; const k = (pipCam.fov * Math.PI / 180) / cv.clientHeight; pipYaw = drag.yaw + (e.clientX - drag.x) * k; pipPitch = clamp(drag.pitch + (e.clientY - drag.y) * k, -1.3, 1.3); pipDirty = true; });
+  cv.addEventListener('pointermove', e => { if (!drag) return; const k = (pipCam.fov * Math.PI / 180) / cv.clientHeight; pipYaw = drag.yaw + (e.clientX - drag.x) * k; pipPitch = clamp(drag.pitch + (e.clientY - drag.y) * k, -1.3, 1.3); pipDirty = true; rgAimSoon(); });
   cv.addEventListener('pointerup', () => { drag = null; cv.style.cursor = 'grab'; });
-  cv.addEventListener('dblclick', () => { pipYaw = 0; pipPitch = 0; pipDirty = true; }); }
-function sizePip() { const cv = $('#pip'), r = cv.getBoundingClientRect(), dpr = Math.min(devicePixelRatio || 1, 2); if (r.width < 10) return; const w = Math.round(r.width * dpr), h = Math.round(r.height * dpr); if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; } }
+  cv.addEventListener('dblclick', () => { pipYaw = 0; pipPitch = 0; pipDirty = true; RG.syncState(); }); }
+function sizePip() { if (RG.hostSize) return; const cv = $('#pip'), r = cv.getBoundingClientRect(), dpr = Math.min(devicePixelRatio || 1, 2); if (r.width < 10) return; const w = Math.round(r.width * dpr), h = Math.round(r.height * dpr); if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; } }
 
 // ---------- quality ----------
-function applyQuality(level) {
-  quality.level = level; const q = QL[level]; renderer.setPixelRatio(q.pr); resize();
-  sun.castShadow = q.shadow > 0; if (q.shadow && sun.shadow.mapSize.x !== q.shadow) { sun.shadow.mapSize.set(q.shadow, q.shadow); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } }
-  layoutIfNeeded(); setVegCounts(); postFlags(); if (typeof S !== 'undefined' && R) updateEnvironment(); $('#qOut').textContent = quality.mode === 'auto' ? `auto · ${level}${quality.stage === 1 ? ' · no AO' : quality.stage >= 2 ? ' · no AO, no bloom' : ''}` : level;
+// Auto mode starts from the GPU this browser reports, then holds ~50 fps: on high it first drops the costly effects, then it
+// lowers the render resolution (down to half), then it steps down a level; it raises the resolution again when there is room.
+function gpuName() { try { const gl = renderer.getContext(), ext = gl.getExtension('WEBGL_debug_renderer_info'); return String(ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER)); } catch (err) { return ''; } }
+function bootTier() {
+  const n = gpuName();
+  if (/swiftshader|llvmpipe|software|basic render/i.test(n)) return 'low';
+  if (/nvidia|geforce|quadro|rtx|radeon rx|radeon pro|arc\(tm\)|intel\(r\) arc|apple m\d (pro|max|ultra)/i.test(n)) return 'high';
+  if (/iris|apple|radeon|adreno 7|mali-g7/i.test(n)) return 'med';
+  if (/intel|uhd|hd graphics|mali|adreno|powervr|videocore/i.test(n)) return 'low';
+  return 'med';
 }
-$$('#quality button').forEach(b => b.addEventListener('click', () => { quality.mode = b.dataset.q; quality.stage = 0; $$('#quality button').forEach(x => x.classList.toggle('on', x === b)); applyQuality(quality.mode === 'auto' ? 'high' : quality.mode); fpsMon.n = 0; fpsMon.acc = 0; fpsMon.warm = performance.now() + 3000; }));
-const fpsMon = { acc: 0, n: 0, warm: performance.now() + 5000 };
-function autoStep() { if (quality.level === 'high' && quality.stage < 2) { quality.stage++; postFlags(); } else if (quality.level === 'high') { quality.stage = 0; applyQuality('med'); } else if (quality.level === 'med') applyQuality('low'); $('#qOut').textContent = `auto · ${quality.level}${quality.level === 'high' && quality.stage === 1 ? ' · no AO' : quality.level === 'high' && quality.stage >= 2 ? ' · no AO, no bloom' : ''}`; }
+function effectivePr() { const base = RG.hostSize ? RG.hostSize.pr : QL[quality.level].pr; return Math.max(0.35, base * (quality.mode === 'auto' ? dyn.scale : 1)); }
+function qLabel() { const st = quality.level === 'high' && quality.stage === 1 ? ' · no AO' : quality.level === 'high' && quality.stage >= 2 ? ' · no AO, no bloom' : '', sc = quality.mode === 'auto' && dyn.scale < 0.995 ? ` · ${Math.round(dyn.scale * 100)}% res` : ''; return quality.mode === 'auto' ? `auto · ${quality.level}${st}${sc}` : quality.level; }
+function applyQuality(level) {
+  quality.level = level; const q = QL[level]; renderer.setPixelRatio(effectivePr()); resize();
+  sun.castShadow = q.shadow > 0; if (q.shadow && sun.shadow.mapSize.x !== q.shadow) { sun.shadow.mapSize.set(q.shadow, q.shadow); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } }
+  layoutIfNeeded(); setVegCounts(); postFlags(); if (typeof S !== 'undefined' && R) updateEnvironment(); shadowDirty = true;
+  document.body.classList.toggle('noblur', level !== 'high'); $('#qOut').textContent = qLabel();
+}
+$$('#quality button').forEach(b => b.addEventListener('click', () => { quality.mode = b.dataset.q; quality.stage = 0; dyn.scale = 1; $$('#quality button').forEach(x => x.classList.toggle('on', x === b)); applyQuality(quality.mode === 'auto' ? bootTier() : quality.mode); Object.assign(fpsMon, { n: 0, acc: 0, good: 0, warm: performance.now() + 3000 }); RG.syncState(); }));
+const fpsMon = { acc: 0, n: 0, good: 0, fps: 0, warm: performance.now() + 5000 };
+function autoStep() { if (quality.level === 'high' && quality.stage < 2) { quality.stage++; postFlags(); } else if (quality.level === 'high') { quality.stage = 0; dyn.scale = 1; applyQuality('med'); } else if (quality.level === 'med') { dyn.scale = 1; applyQuality('low'); } $('#qOut').textContent = qLabel(); }
+function setDynScale(s) { const v = clamp(s, dyn.min, 1); if (Math.abs(v - dyn.scale) < 0.005) return; dyn.scale = v; renderer.setPixelRatio(effectivePr()); resize(); $('#qOut').textContent = qLabel(); }
+function autoQuality(rawDt, now) {
+  if (rawDt > 2) { fpsMon.acc = 0; fpsMon.n = 0; return; }   // back from a hidden tab or a long stall, not a slow frame
+  fpsMon.acc += rawDt; fpsMon.n++; if (fpsMon.acc < 1.5) return;
+  const fps = fpsMon.n / fpsMon.acc; fpsMon.fps = fps; fpsMon.acc = 0; fpsMon.n = 0;
+  if (fps < 40) {
+    fpsMon.good = 0; fpsMon.warm = now + 1500;
+    if (quality.level === 'high' && quality.stage < 2) autoStep();
+    else if (dyn.scale > dyn.min + 0.01) setDynScale(dyn.scale * (fps < 24 ? 0.78 : 0.88));
+    else if (quality.level !== 'low') autoStep();
+  } else if (fps > 55 && dyn.scale < 0.995) { if (++fpsMon.good >= 3) { fpsMon.good = 0; fpsMon.warm = now + 2000; setDynScale(dyn.scale * 1.1); } }
+  else fpsMon.good = 0;
+}
+document.addEventListener('visibilitychange', () => { fpsMon.acc = 0; fpsMon.n = 0; fpsMon.warm = performance.now() + 1500; });
+// the Eagle cam is drawn only when someone can see it, a few times a second (it reads pixels back, which stalls the GPU)
+let pipVisT = -1e9, pipVisV = true;
+function pipWanted(now) {
+  if (RG.live) return false;                          // the GPU computer draws it
+  if (RG.role === 'host' && RG.pc) return true;       // streaming: the other screen shows it
+  if (cine.on && cine.shots[cine.i].thermal) return true;
+  if (present.on) return present.vis === 'thermal';
+  if (now - pipVisT > 400) { pipVisT = now; pipVisV = getComputedStyle($('#right')).display !== 'none' && !document.body.classList.contains('nopanels'); }
+  return pipVisV;
+}
+const pipHz = () => RG.role === 'host' && RG.pc ? 10 : (QL[quality.level].pipHz || 8);
 
 // ---------- events ----------
-function resize() { const w = canvas.clientWidth, h = canvas.clientHeight; if (!w || !h) return; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); if (composer) { composer.setPixelRatio(renderer.getPixelRatio()); composer.setSize(w, h); const pr = renderer.getPixelRatio(); PASS.fxaa.material.uniforms.resolution.value.set(1 / (w * pr), 1 / (h * pr)); } sizePip(); }
+function resize() { const hs = RG.hostSize, w = hs ? hs.w : canvas.clientWidth, h = hs ? hs.h : canvas.clientHeight; if (!w || !h) return; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); if (composer) { composer.setPixelRatio(renderer.getPixelRatio()); composer.setSize(w, h); const pr = renderer.getPixelRatio(); PASS.fxaa.material.uniforms.resolution.value.set(1 / (w * pr), 1 / (h * pr)); } sizePip(); if (RG.role === 'viewer') rgSendSize(); }
 addEventListener('resize', () => { resize(); drawMap(); drawChart(); });
 $$('.viewbtns button').forEach(b => b.addEventListener('click', () => setCamMode(b.dataset.cam)));
-$$('#pipMode button').forEach(b => b.addEventListener('click', () => { pipMode = b.dataset.pip; $$('#pipMode button').forEach(x => x.classList.toggle('on', x === b)); pipDirty = true; }));
+$$('#pipMode button').forEach(b => b.addEventListener('click', () => { pipMode = b.dataset.pip; $$('#pipMode button').forEach(x => x.classList.toggle('on', x === b)); pipDirty = true; RG.syncState(); }));
 $('#run').addEventListener('click', () => { if (camMode !== 'orbit') setCamMode('orbit'); runMission(); });
 $('#hidePanels').addEventListener('click', () => { document.body.classList.toggle('nopanels'); $('#hidePanels').textContent = document.body.classList.contains('nopanels') ? 'Show panels' : 'Hide panels'; });
 $('#cineExit').addEventListener('click', () => stopCine());
 addEventListener('keydown', e => { if (e.key === 'Escape') { if (!$('#exportDlg').hidden) $('#exportDlg').hidden = true; else if (cine.on) stopCine(); } if ((e.key === 'h' || e.key === 'H') && !/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) $('#hidePanels').click(); });
-$$('#overlays input').forEach(c => c.addEventListener('change', () => updateOverlays()));
+$$('#overlays input').forEach(c => c.addEventListener('change', () => { updateOverlays(); RG.syncState(); }));
 $$('#tabs button').forEach(b => b.addEventListener('click', () => { $$('#tabs button').forEach(x => x.classList.toggle('on', x === b)); $$('[data-tabpanel]').forEach(p => p.classList.toggle('show', p.id === b.dataset.tab)); sizePip(); drawMap(); drawChart(); pipDirty = true; }));
 controls.addEventListener('start', () => { camAnim = null; idleT = 0; });
 
@@ -1694,7 +2245,8 @@ let last = performance.now(), time = 0, idleT = 0, pipT = 0;
 const _sunScreen = new THREE.Vector3();
 const MAXFPS = +window.__EAGLE_MAXFPS || 0; let lastDraw = -1e9, frameNo = 0;
 function animate(now) {
-  if (MAXFPS && now - lastDraw < 1000 / MAXFPS) { requestAnimationFrame(animate); return; } lastDraw = now;
+  if (MAXFPS && now - lastDraw < 1000 / MAXFPS) { requestAnimationFrame(animate); return; }
+  const rawDt = Math.min(1, Math.max(0.001, (now - lastDraw) / 1000)); lastDraw = now;
   const dt = Math.min(0.05, (now - last) / 1000); last = now; time += dt; wind.uTime.value = time; idleT += dt;
   const posture = operator.userData.posture || 'lying'; if (operator.userData.signalT > 0) operator.userData.signalT -= dt;
   poseHuman(operator, posture, time, operator.userData.signalT > 0 ? 'signal' : S.opState === 'unconscious' ? 'still' : 'idle');
@@ -1721,23 +2273,30 @@ function animate(now) {
     else if (camMode === 'operator') { const eye = W.op.clone(); eye.y += posture === 'standing' ? 1.65 : posture === 'sitting' ? 1.05 : 0.35; camera.position.copy(eye); camera.lookAt(W.eagle); if (camera.fov !== 70) { camera.fov = 70; camera.updateProjectionMatrix(); } }
     else { if (camera.fov !== 48) { camera.fov = 48; camera.updateProjectionMatrix(); } controls.autoRotate = camMode === 'orbit' && idleT > 12 && !camAnim && !running.on && !RM; controls.autoRotateSpeed = 0.35; controls.update(); }
   }
+  if (RG.role === 'host' && RG.pc && RG.camPose) rgApplyPose();   // streaming: the other screen owns the camera
   // light for leaf translucency (view space)
   LIGHT_U.uSunV.value.copy(KEY_DIR).transformDirection(camera.matrixWorldInverse);
-  // render
-  renderer.shadowMap.needsUpdate = true;
-  if (composer && QL[quality.level].post) {
-    const sp = _sunScreen.copy(sunDir).multiplyScalar(2000).add(camera.position).project(camera), vis = sp.z < 1 && Math.abs(sp.x) < 1.6 && Math.abs(sp.y) < 1.6;
-    PASS.rays.uniforms.uSun.value.set(sp.x * 0.5 + 0.5, sp.y * 0.5 + 0.5); PASS.rays.uniforms.uStrength.value = vis && !envLight.overcast && envLight.day > 0.2 ? (0.7 + envLight.dusk * 0.9) : 0;
-    PASS.grade.uniforms.uTime.value = time; PASS.grade.uniforms.uGrain.value = envLight.day > 0.5 ? 0.025 : 0.045;
-    composer.render(dt);
-  } else renderer.render(scene, camera);
-  frameNo++;
-  // Eagle cam ~8 Hz
-  pipT += dt; const rightShown = getComputedStyle($('#right')).display !== 'none';
-  if ((rightShown && !document.body.classList.contains('nopanels') || (cine.on && cine.shots[cine.i].thermal)) && (pipT > 0.12 || pipDirty)) { pipT = 0; pipDirty = false; try { pipRender(); throttled(); } catch (err) { console.warn(err); } }
-  updateLabels();
+  // render, unless another computer renders for this screen
+  if (!RG.live) {
+    // vegetation shadows are static (their depth pass has no wind), so the shadow map is redrawn a few times a second
+    // for whatever moves, and at once after any change
+    shadowT += dt; if (shadowDirty || shadowT >= 1 / (QL[quality.level].shadowHz || 20)) { renderer.shadowMap.needsUpdate = true; shadowT = 0; shadowDirty = false; }
+    if (composer && QL[quality.level].post) {
+      const sp = _sunScreen.copy(sunDir).multiplyScalar(2000).add(camera.position).project(camera), vis = sp.z < 1 && Math.abs(sp.x) < 1.6 && Math.abs(sp.y) < 1.6;
+      PASS.rays.uniforms.uSun.value.set(sp.x * 0.5 + 0.5, sp.y * 0.5 + 0.5); PASS.rays.uniforms.uStrength.value = vis && !envLight.overcast && envLight.day > 0.2 ? (0.7 + envLight.dusk * 0.9) : 0;
+      PASS.grade.uniforms.uTime.value = time; PASS.grade.uniforms.uGrain.value = envLight.day > 0.5 ? 0.025 : 0.045;
+      composer.render(dt);
+    } else renderer.render(scene, camera);
+    frameNo++;
+  } else { camera.updateMatrixWorld(); aimPip(); }
+  // Eagle cam, a few times a second while someone can see it
+  pipT += dt;
+  if (pipWanted(now) && (pipT > 1 / pipHz() || pipDirty)) { pipT = 0; pipDirty = false; try { pipRender(); pipFresh = true; throttled(); } catch (err) { console.warn(err); } }
+  if (RG.role === 'viewer') rgViewerFrame(now);
+  if (present.on) presentFrame(now);
+  updateLabels(RG.live ? rgLabelCam(now) : camera);
   if (now - mapPulse < 2500 && Math.floor(now / 80) !== Math.floor((now - dt * 1000) / 80)) drawMap();
-  if (quality.mode === 'auto' && now > fpsMon.warm && !cine.on) { fpsMon.acc += dt; fpsMon.n++; if (fpsMon.acc > 3) { const fps = fpsMon.n / fpsMon.acc; if (fps < 28 && !(quality.level === 'low')) autoStep(); fpsMon.acc = 0; fpsMon.n = 0; fpsMon.warm = now + 2500; } }
+  if (quality.mode === 'auto' && !RG.live && now > fpsMon.warm && !cine.on) autoQuality(rawDt, now);
   requestAnimationFrame(animate);
 }
 let thrT = 0; function throttled() { const n = performance.now(); if (n - thrT < 600) return; thrT = n; const el = $('#pxNow'); if (el) el.textContent = pipStats.opPx; const th = g(R, 'input.thermal', {}); $('#camnote').innerHTML = pipStats.opPx ? `This frame: clear line, <b>${pipStats.opPx} px</b> land on him. Model: ${num(th.pxAtOp, 1)} px across his torso (needs 3), ${Math.round((th.pLOS || 0) * 100)}% chance of a clear line at ${S.opDist_m} m. Boxes show each warm body's class and P(operator).` : `This frame: <b>no clear line</b> to him (vegetation in the way). Model: ${Math.round((th.pLOS || 0) * 100)}% chance of a clear line at ${S.opDist_m} m. Drag to pan, double-click to re-aim.`; }
@@ -1754,15 +2313,19 @@ label('RELAY', '', v => v.copy(relay.position).setY(relay.position.y + 4));
 label('macaques', 'neutral', v => v.copy(macaques[0].position).setY(macaques[0].position.y + 2), () => S.animals !== false);
 
 // ---------- test hooks ----------
-window.__sim = { S, R, apply(p) { Object.assign(S, p); activePreset = ''; syncControls(); stopMission(); update(); }, preset: applyPreset, run: runMission, cam: setCamMode, pip(m) { pipMode = m; $$('#pipMode button').forEach(x => x.classList.toggle('on', x.dataset.pip === m)); pipDirty = true; }, get pipStats() { return pipStats; }, quality(q) { quality.mode = q; quality.stage = 0; applyQuality(q === 'auto' ? 'high' : q); }, exportScene, ready: false, get cine() { return cine; }, get running() { return running; }, get frames() { return frameNo; }, dbg: () => ({ renderer, scene, camera, pipRender, composer, veg, terrain, QL, quality, sky, dome, envScene, envSky, envDome, pmrem, DOME_U }) };
+window.__sim = { S, R, apply(p) { Object.assign(S, p); activePreset = ''; syncControls(); stopMission(); update(); }, preset: applyPreset, run: runMission, cam: setCamMode, pip(m) { pipMode = m; $$('#pipMode button').forEach(x => x.classList.toggle('on', x.dataset.pip === m)); pipDirty = true; RG.syncState(); }, get pipStats() { return pipStats; }, quality(q) { quality.mode = q; quality.stage = 0; dyn.scale = 1; applyQuality(q === 'auto' ? bootTier() : q); }, exportScene, present: { start: () => presentStart(), stop: () => presentStop(), go: i => presentGo(i), auto: on => presentAuto(on), get state() { return { on: present.on, i: present.i, n: PSTEPS.length, vis: present.vis, auto: present.auto, title: $('#pTitle').textContent }; } }, rg: { host: () => rgStartHost(), view: () => rgStartView(), stop: () => rgStop(), get state() { return { role: RG.role, live: RG.live, status: RG.status, conn: RG.pc ? RG.pc.connectionState : null, stats: Object.assign({}, RG.stats), frames: RG.frames, hostSize: RG.hostSize, transport: RG.transport ? RG.transport.kind : null }; } }, get perf() { return { level: quality.level, mode: quality.mode, stage: quality.stage, scale: dyn.scale, pr: renderer.getPixelRatio(), fps: fpsMon.fps, gpu: gpuName(), tier: bootTier(), frames: frameNo }; }, ready: false, get cine() { return cine; }, get running() { return running; }, get frames() { return frameNo; }, dbg: () => ({ renderer, scene, camera, pipRender, composer, veg, terrain, QL, quality, sky, dome, envScene, envSky, envDome, pmrem, DOME_U }) };
 
 // ---------- boot ----------
 buildMapBase(); buildControls(); syncControls(); collectPip(); buildComposer();
-applyQuality(window.__EAGLE_BOOT_Q || 'high'); resize(); update();
+applyQuality(window.__EAGLE_BOOT_Q || bootTier()); resize(); update();
 camera.position.copy(W.eagle).add(new THREE.Vector3(-3, 1.5, -4)); controls.target.copy(W.op);
 setTimeout(() => { camGoal('orbit'); }, RM ? 0 : 500);
 $('#loading').remove();
 requestAnimationFrame(t => { last = t; animate(t); });
 window.__sim.ready = true;
+{ // #present starts the judges' demo; #host / #view (or the remembered choice) start the remote GPU
+  const cmd = (location.hash || '').slice(1).toLowerCase(); let rem = ''; try { rem = localStorage.getItem('eagleSim.rgpu') || ''; } catch (err) { /* storage blocked */ }
+  if (cmd === 'present') setTimeout(presentStart, RM ? 0 : 900);
+  const role = cmd === 'host' || cmd === 'view' ? cmd : rem; if (role === 'host') rgStartHost(); else if (role === 'view' || role === 'viewer') rgStartView(); }
 })();
 </script>
