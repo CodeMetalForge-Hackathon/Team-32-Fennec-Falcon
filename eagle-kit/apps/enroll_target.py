@@ -1,0 +1,163 @@
+#!/usr/bin/env python3
+"""Enroll a missing person: folder of photos (+ optional description) -> target_profile.npz.
+
+Runs on the Pi with the SAME models as the runtime matcher (eagle/identity.py), so profile and
+live embeddings are comparable:
+
+* faces: InsightFace buffalo_l (SCRFD-10G + ArcFace R50) on the CPU. Photos without a face at
+  least ``identity.face.min_width_px`` wide are logged and skipped for the face part;
+* person crops: the largest person found by fusion/models/coco_yolov8n_320.onnx (OpenCV DNN, the
+  detector fusion/app.py already uses) -> CLIP ViT-B/32 on the Hailo (hailo-apps clip HEF) + OSNet.
+  A photo with no person (e.g. the jacket they wore) is embedded whole, CLIP only;
+* description: CLIP ViT-B/32 text embeddings of the full text and of each comma/semicolon part.
+
+    python apps/enroll_target.py --photos ~/target_photos --description "red rain jacket, blue jeans, \
+        grey beanie, about 1.75 m" --out ~/eagle/target_profile.npz
+    python apps/hailo_vision.py --profile ~/eagle/target_profile.npz --jsonl ~/eagle/vision.jsonl
+
+Models must be fetched beforehand (apps/fetch_models.py); nothing is downloaded here.
+"""
+from __future__ import annotations
+
+import argparse
+import importlib.util
+import re
+import sys
+import time
+from pathlib import Path
+
+import numpy as np
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+from eagle.identity import TargetProfile, crop_box, make_runtime_embedders, merged_config  # noqa: E402
+
+IMAGE_EXT = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff"}
+PERSON_MODEL = ROOT.parent / "fusion" / "models" / "coco_yolov8n_320.onnx"
+
+
+def description_prompts(text: str) -> list:
+    """Full description + one prompt per comma/semicolon part (CLIP's text limit is 77 tokens)."""
+    text = " ".join((text or "").split())
+    if not text:
+        return []
+    parts = [p.strip() for p in re.split(r"[;,\n]", text) if len(p.strip()) > 2]
+    prompts = [f"a photo of a person: {text}"[:300]]
+    prompts += [f"a photo of a person, {p}" for p in parts if p != text]
+    return prompts
+
+
+def load_person_detector(path=PERSON_MODEL):
+    """fusion/app.py's YOLOv8 ONNX wrapper (cv2.dnn), reused rather than re-implemented."""
+    spec = importlib.util.spec_from_file_location("fusion_app", ROOT.parent / "fusion" / "app.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    yolo = mod.Yolo(path, 320)
+
+    def persons(rgb, conf=0.4):
+        dets = yolo(np.ascontiguousarray(rgb[..., ::-1]), conf=conf)
+        return sorted((d["box"] for d in dets if d["cls"] == 0),
+                      key=lambda b: -(b[2] - b[0]) * (b[3] - b[1]))
+    return persons
+
+
+def enroll(images, description: str, embedders, detect_persons, *, min_face_px: float = 40.0, log=print) -> TargetProfile:
+    """images: iterable of (name, RGB array or None). Returns the profile (not saved)."""
+    face, clip_img, osnet, skipped = [], [], [], []
+    for name, rgb in images:
+        if rgb is None:
+            log(f"SKIP   {name}: not a readable image")
+            skipped.append((name, "unreadable"))
+            continue
+        if embedders.face is not None:
+            faces = embedders.face.faces(rgb)
+            usable = [f for f in faces if f[1] >= min_face_px]
+            if not usable:
+                why = "no face found" if not faces else f"largest face {faces[0][1]:.0f} px < {min_face_px:.0f} px"
+                log(f"NOFACE {name}: {why} - skipped for face matching")
+                skipped.append((name, why))
+            else:
+                if len(usable) > 1:
+                    log(f"WARN   {name}: {len(usable)} faces, using the largest - check it is the right person")
+                face.append(usable[0][0])
+                log(f"FACE   {name}: {usable[0][1]:.0f} px wide, det {usable[0][2]:.2f}")
+        boxes = detect_persons(rgb) if detect_persons else []
+        if boxes:
+            if len(boxes) > 1:
+                log(f"WARN   {name}: {len(boxes)} people, using the largest - check it is the right person")
+            crop = crop_box(rgb, boxes[0])
+            e = {}
+            if embedders.clip is not None:
+                e["clip"] = embedders.clip.image_embedding(crop)
+            if embedders.osnet is not None:
+                e["osnet"] = embedders.osnet(crop)
+            clip_img += [e["clip"]] if "clip" in e else []
+            osnet += [e["osnet"]] if "osnet" in e else []
+            log(f"PERSON {name}: crop {crop.shape[1]}x{crop.shape[0]} -> " + (", ".join(e) or "no appearance model"))
+        elif embedders.clip is not None:
+            clip_img.append(embedders.clip.image_embedding(rgb))
+            log(f"ITEM   {name}: no person found, whole photo embedded with CLIP only (clothing/item photo)")
+    prompts = description_prompts(description)
+    text = np.zeros((0, 512), np.float32)
+    if prompts and embedders.clip is not None:
+        text = embedders.clip.text_embeddings(prompts)
+        log(f"TEXT   {len(prompts)} prompt(s) from the description")
+    elif prompts:
+        log("WARN   description given but CLIP is off: it is stored as text only")
+
+    def stack(v):
+        return np.stack(v).astype(np.float32) if v else np.zeros((0, 512), np.float32)
+    meta = {"created_unix": int(time.time()), "skipped": skipped, "prompts": prompts,
+            "models": {"face": "insightface buffalo_l (SCRFD-10G + ArcFace R50)" if embedders.face else None,
+                       "clip": "CLIP ViT-B/32 (hailo-apps clip HEFs)" if embedders.clip else None,
+                       "osnet": "torchreid OSNet (ONNX)" if embedders.osnet else None}}
+    return TargetProfile(stack(face), stack(clip_img), text, stack(osnet), description or "", meta)
+
+
+def read_images(folder: Path):
+    import cv2
+    for p in sorted(folder.iterdir()):
+        if p.suffix.lower() in IMAGE_EXT:
+            bgr = cv2.imread(str(p), cv2.IMREAD_COLOR)
+            yield p.name, None if bgr is None else bgr[..., ::-1].copy()
+        elif p.is_file():
+            print(f"SKIP   {p.name}: not an image type this tool reads ({', '.join(sorted(IMAGE_EXT))})")
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("--photos", required=True, help="folder of photos: face shots, full body, clothing worn")
+    ap.add_argument("--description", default="", help="free text, e.g. 'red rain jacket, blue jeans, grey beanie'")
+    ap.add_argument("--description-file", default=None, help="read the description from a text file")
+    ap.add_argument("--out", default="target_profile.npz")
+    ap.add_argument("--config", default=None, help="eagle config (identity: models_dir, face.min_width_px)")
+    ap.add_argument("--person-model", default=str(PERSON_MODEL))
+    a = ap.parse_args(argv)
+    from eagle.config import load_config
+    cfg = load_config(a.config).get("identity", {})
+    desc = Path(a.description_file).read_text(encoding="utf-8") if a.description_file else a.description
+    emb = make_runtime_embedders(cfg, text=True)
+    if emb.face is None and emb.clip is None and emb.osnet is None:
+        print("No identity model could be loaded: run apps/fetch_models.py (and install hailo-apps for CLIP).")
+        return 2
+    folder = Path(a.photos).expanduser()
+    if not folder.is_dir():
+        print(f"{folder} is not a folder")
+        return 2
+    prof = enroll(read_images(folder), desc, emb, load_person_detector(a.person_model),
+                  min_face_px=float(merged_config(cfg)["face"]["min_width_px"]))
+    n = prof.counts()
+    if not (n["face"] or n["clip_image"] or n["osnet"]):
+        print("Nothing usable was enrolled (see the log above); profile not written.")
+        return 1
+    out = Path(a.out).expanduser()
+    out.parent.mkdir(parents=True, exist_ok=True)
+    prof.save(out)
+    print(f"wrote {out}: {n['face']} face, {n['clip_image']} CLIP image, {n['clip_text']} CLIP text, "
+          f"{n['osnet']} OSNet embedding(s)")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
