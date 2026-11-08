@@ -33,6 +33,8 @@ import sys
 import time
 from pathlib import Path
 
+import numpy as np
+
 TUNING_DIRS = ("/usr/share/libcamera/ipa/rpi/pisp",        # Raspberry Pi 5
                "/usr/share/libcamera/ipa/rpi/vc4",         # Raspberry Pi 4 and earlier
                "/usr/local/share/libcamera/ipa/rpi/pisp",
@@ -116,6 +118,10 @@ def split_args(argv):
     ap.add_argument("--profile", default=None, help="target_profile.npz from apps/enroll_target.py (identity)")
     ap.add_argument("--config", default=None, help="eagle config (identity thresholds); default example.yaml")
     ap.add_argument("--models-dir", default="~/eagle-models", help="apps/fetch_models.py output (detection HEF)")
+    ap.add_argument("--snapshot", default=None, metavar="JPG",
+                    help="also save the latest frame (person boxes drawn) to this JPEG, e.g. ~/eagle/cam_standard.jpg "
+                         "(the field page shows it)")
+    ap.add_argument("--snapshot-hz", type=float, default=1.0, help="snapshot rate (default 1 per second)")
     ap.add_argument("--watchdog-s", type=float, default=60.0,
                     help="exit (status 4) when no camera frame arrived for this long, so systemd restarts us; 0 = off")
     ap.add_argument("--headless", choices=["auto", "yes", "no"], default="auto",
@@ -140,6 +146,41 @@ def _arg_value(argv, name: str) -> str | None:
         elif a.startswith(name + "="):
             val = a.split("=", 1)[1]
     return val
+
+
+class Snapshotter:
+    """Latest camera frame as a JPEG at most ``hz`` times a second. Written to a temp file and renamed, so
+    a reader (the field page) never sees a half-written image."""
+
+    def __init__(self, path, hz: float = 1.0, clock=time.monotonic):
+        self.path = Path(os.path.expanduser(str(path)))
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.dt = 1.0 / float(hz) if hz and hz > 0 else float("inf")
+        self.clock, self.last = clock, -float("inf")
+
+    def due(self) -> bool:
+        return self.clock() - self.last >= self.dt
+
+    def save(self, rgb, boxes=(), levels=None) -> bool:
+        """``boxes``: [x0, y0, x1, y1, score] pixels; ``levels``: identity match level per box (or None)."""
+        import cv2
+        self.last = self.clock()
+        img = np.ascontiguousarray(np.asarray(rgb)[..., :3][..., ::-1])          # RGB -> BGR for OpenCV
+        for k, b in enumerate(boxes):
+            x0, y0, x1, y1 = (int(round(v)) for v in b[:4])
+            lvl = int(levels[k]) if levels and k < len(levels) else 0
+            color = (0, 0, 255) if lvl >= 2 else (0, 200, 255) if lvl == 1 else (0, 255, 0)
+            cv2.rectangle(img, (x0, y0), (x1, y1), color, 2)
+            label = f"{b[4]:.2f}" + (f" ID{lvl}" if lvl else "") if len(b) > 4 else ""
+            if label:
+                cv2.putText(img, label, (x0, max(12, y0 - 4)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+        ok, jpg = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 80])
+        if not ok:
+            return False
+        tmp = self.path.with_name(self.path.name + ".tmp")
+        tmp.write_bytes(jpg.tobytes())
+        os.replace(tmp, self.path)
+        return True
 
 
 class FrameWatchdog:
@@ -233,6 +274,9 @@ def main(argv=None) -> None:
 
     writer = RateLimitedWriter(ours.jsonl, ours.rate)
     print(f"writing person boxes to {writer.path}", flush=True)
+    snap = Snapshotter(ours.snapshot, ours.snapshot_hz) if ours.snapshot else None
+    if snap:
+        print(f"snapshots ({ours.snapshot_hz:g}/s) to {snap.path}", flush=True)
 
     class UserData(app_callback_class):
         pass
@@ -259,11 +303,17 @@ def main(argv=None) -> None:
                          + [det.get_confidence()])
             uid = det.get_objects_typed(hailo.HAILO_UNIQUE_ID)
             ids.append(uid[0].get_id() if len(uid) == 1 else -1)
-        identity = None
+        identity, frame = None, None
         if matcher is not None and boxes:
             frame = get_numpy_from_buffer(buffer, fmt, w, h)            # RGB
             identity = [matcher.update(tid, frame, b[:4]) for tid, b in zip(ids, boxes)]
         writer.write(vision_line(time.time(), boxes, w, h, ids, identity), has_boxes=bool(boxes))
+        if snap is not None and snap.due():
+            try:
+                snap.save(get_numpy_from_buffer(buffer, fmt, w, h) if frame is None else frame, boxes,
+                          [lv for lv, _, _ in identity] if identity else None)
+            except Exception as e:                                  # never let a snapshot stop detection
+                print(f"snapshot error: {type(e).__name__}: {e}", flush=True)
 
     if is_headless(ours.headless):
         # hailo-apps ends the pipeline in autovideosink and ignores --no-display for GStreamer apps; at boot

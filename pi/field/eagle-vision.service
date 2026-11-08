@@ -1,6 +1,6 @@
 [Unit]
 StartLimitIntervalSec=0
-Description=Eagle field: NoIR camera -> Hailo person detection (+ identity) -> ~/eagle/vision.jsonl
+Description=Eagle field: Pi camera (camera.sensor) -> Hailo person detection (+ identity) -> ~/eagle/vision.jsonl
 After=hailort.service local-fs.target
 Wants=hailort.service
 Conflicts=fusion.service

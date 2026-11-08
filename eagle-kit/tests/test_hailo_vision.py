@@ -2,6 +2,7 @@
 import importlib.util
 import json
 
+import numpy as np
 import pytest
 
 from eagle.camgeo import Camera
@@ -106,3 +107,20 @@ def test_frame_watchdog(hv):
     w.check()
     assert len(fired) == 1                                   # fires once
     assert not hv.FrameWatchdog(0, fired.append, clock=lambda: 1e9).check()   # 0 = off
+
+
+def test_snapshotter_rate_and_atomic_write(hv, tmp_path):
+    cv2 = pytest.importorskip("cv2")
+    now = [0.0]
+    snap = hv.Snapshotter(tmp_path / "eagle" / "cam_standard.jpg", hz=1.0, clock=lambda: now[0])
+    rgb = np.zeros((72, 128, 3), np.uint8)
+    rgb[..., 0] = 255                                                  # red in RGB
+    assert snap.due() and snap.save(rgb, [[10, 10, 50, 60, 0.9]], levels=[3])
+    img = cv2.imread(str(snap.path))
+    assert img.shape == (72, 128, 3) and img[40, 100, 2] > 200 and img[40, 100, 0] < 60   # stored as BGR red
+    assert not list(snap.path.parent.glob("*.tmp"))
+    now[0] = 0.5
+    assert not snap.due()
+    now[0] = 1.0
+    assert snap.due()
+    assert hv.split_args(["--snapshot", "x.jpg"])[0].snapshot == "x.jpg"
