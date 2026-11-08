@@ -86,10 +86,18 @@ def array_geometry(cfg: dict, name: str | None = None, fs: int | None = None,
 
 
 def load_keys(cfg: dict) -> dict:
-    """Hex keys from cfg['keys'] -> bytes (None where absent)."""
+    """Hex keys -> bytes (None where absent). From ``keys_file`` (a YAML file written by apps/keygen.py,
+    kept outside the repo) when the config sets one, else from cfg['keys']. A ``keys_file`` that is set
+    but missing is an error: falling back to the shipped test keys would be silent and insecure."""
+    keys = cfg.get("keys") or {}
+    if cfg.get("keys_file"):
+        p = Path(os.path.expanduser(str(cfg["keys_file"])))
+        if not p.is_file():
+            raise FileNotFoundError(f"keys_file {p} not found: run apps/keygen.py --out-dir {p.parent}")
+        keys = _read_yaml(p).get("keys") or {}
     out = {}
     for k in ("tag_hmac", "fix_aes", "covert"):
-        v = (cfg.get("keys") or {}).get(k)
+        v = keys.get(k)
         out[k] = bytes.fromhex(v) if v else None
         if out[k] is not None and len(out[k]) != 32:
             raise ValueError(f"keys.{k} must be 64 hex characters")

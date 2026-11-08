@@ -18,9 +18,11 @@ its install.sh downloads the detection HEF), then run from its venv::
     python apps/hailo_vision.py --jsonl /tmp/v.jsonl --input video.mp4    # any hailo-apps --input
 
 Every other flag goes to hailo-apps (``--arch``, ``--hef-path``, ``--width``/``--height``,
-``--show-fps``, ...). Camera Module 3 Wide NoIR: libcamera cannot detect the NoIR variant, so this
-app points ``LIBCAMERA_RPI_TUNING_FILE`` at ``imx708_wide_noir.json`` before the camera opens
-(``--tuning-file`` to override, ``--tuning-file none`` to leave libcamera's default).
+``--show-fps``, ...). ``--camera SENSOR`` (default: ``camera.sensor`` in ``--config``) picks the Pi camera
+by sensor name, e.g. ``imx708`` (Camera Module 3) or ``imx708_wide_noir`` (Wide NoIR); see
+eagle/camera.py. The tuning file follows the sensor (``--tuning-file auto``): libcamera's default for
+imx708, ``imx708_wide_noir.json`` for the NoIR. Without a sensor the first camera is used with the NoIR
+tuning, as before. ``--tuning-file FILE`` / ``none`` override it.
 """
 from __future__ import annotations
 
@@ -107,7 +109,10 @@ def split_args(argv):
     ap.add_argument("--rate", type=float, default=2.0, help="max lines per second (default 2)")
     ap.add_argument("--min-score", type=float, default=0.3, help="drop person boxes below this score")
     ap.add_argument("--label", default="person", help="detector label to keep")
-    ap.add_argument("--tuning-file", default=DEFAULT_TUNING, help="libcamera tuning file name/path, or none")
+    ap.add_argument("--camera", default=None,
+                    help="Pi camera sensor name, e.g. imx708 or imx708_wide_noir (default: camera.sensor in --config)")
+    ap.add_argument("--tuning-file", default="auto",
+                    help="libcamera tuning file name/path; auto = by sensor; none = libcamera's default")
     ap.add_argument("--profile", default=None, help="target_profile.npz from apps/enroll_target.py (identity)")
     ap.add_argument("--config", default=None, help="eagle config (identity thresholds); default example.yaml")
     ap.add_argument("--models-dir", default="~/eagle-models", help="apps/fetch_models.py output (detection HEF)")
@@ -188,13 +193,27 @@ def main(argv=None) -> None:
     ours, rest = split_args(argv)
     if any(a in ("-h", "--help") for a in argv):
         print(__doc__)
-    tuning = find_tuning_file(ours.tuning_file)
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from eagle.camera import camera_num, configured_sensor, tuning_for
+    from eagle.config import load_config
+    full_cfg = load_config(ours.config)
+    rpi_input = _arg_value(rest, "--input") in ("rpi", None) and _arg_value(rest, "-i") in ("rpi", None)
+    sensor = ours.camera or configured_sensor(full_cfg)
+    cam_num = None
+    if sensor and rpi_input:
+        cam_num = camera_num(sensor)                                # raises with the camera list if absent
+        print(f"camera: {sensor} (libcamera camera {cam_num})", flush=True)
+    wanted = tuning_for(sensor if rpi_input else None, ours.tuning_file)
+    tuning = find_tuning_file(wanted) if wanted else None
+    os.environ.pop("LIBCAMERA_RPI_TUNING_FILE", None)               # never inherit another camera's tuning
     if tuning:
         os.environ["LIBCAMERA_RPI_TUNING_FILE"] = tuning           # read by libcamera when Picamera2 opens
         print(f"libcamera tuning file: {tuning}", flush=True)
-    elif ours.tuning_file and ours.tuning_file.lower() != "none":
-        print(f"WARNING: tuning file {ours.tuning_file} not found in {TUNING_DIRS}; using libcamera's default "
+    elif wanted:
+        print(f"WARNING: tuning file {wanted} not found in {TUNING_DIRS}; using libcamera's default "
               "(colours/exposure will be off on a NoIR module)", flush=True)
+    else:
+        print("libcamera tuning file: libcamera's default for the sensor", flush=True)
 
     os.environ.setdefault("GST_PLUGIN_FEATURE_RANK", "vaapidecodebin:NONE")
     import gi                                                       # noqa: E402  (Pi only)
@@ -207,10 +226,8 @@ def main(argv=None) -> None:
 
     matcher = None
     if ours.profile:
-        sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-        from eagle.config import load_config
         from eagle.identity import IdentityMatcher, TargetProfile, make_runtime_embedders
-        cfg = load_config(ours.config).get("identity", {})
+        cfg = full_cfg.get("identity", {})
         matcher = IdentityMatcher(TargetProfile.load(ours.profile), make_runtime_embedders(cfg), cfg)
         print(f"identity: matching against {ours.profile}", flush=True)
 
@@ -255,6 +272,11 @@ def main(argv=None) -> None:
         import hailo_apps.python.core.gstreamer.gstreamer_app as gst_app
         gst_app.GST_VIDEO_SINK = "fakesink"
         print("headless: video sink fakesink", flush=True)
+    if cam_num is not None:
+        # hailo-apps opens Picamera2() (camera 0) in picamera_thread; give it the selected camera instead.
+        import functools
+        import hailo_apps.python.core.gstreamer.gstreamer_app as gst_app
+        gst_app.Picamera2 = functools.partial(gst_app.Picamera2, cam_num)
     parser = get_pipeline_parser()
     sys.argv = [sys.argv[0]] + rest                                 # hailo-apps parses sys.argv itself
     user_data = UserData()

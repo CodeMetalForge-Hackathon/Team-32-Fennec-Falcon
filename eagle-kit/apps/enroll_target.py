@@ -10,7 +10,8 @@ live embeddings are comparable:
   detector fusion/app.py already uses) -> CLIP ViT-B/32 on the Hailo (hailo-apps clip HEF) + OSNet.
   A photo with no person (e.g. the jacket they wore) is embedded whole, CLIP only;
 * description: CLIP ViT-B/32 text embeddings of the full text and of each comma/semicolon part;
-* ``--live``: ~10 s face scan on the Pi camera (Picamera2, imx708_wide_noir tuning) while the person
+* ``--live``: ~10 s face scan on the Pi camera (Picamera2; ``--camera SENSOR`` or ``camera.sensor`` in
+  ``--config`` picks it by sensor name, tuning by sensor, see eagle/camera.py) while the person
   turns their head slowly left, right, up and down. Only good frames are kept (face >= 80 px, sharp,
   landmarks inside the frame, one face in view), up to 20 ArcFace embeddings spread across head
   angles (eagle/facescan.py). They go into the same ``face`` array of the same target_profile.npz,
@@ -24,6 +25,7 @@ ArcFace, at enrollment and at runtime.
     python apps/enroll_target.py --live --out ~/eagle/target_profile.npz            # face scan only
     python apps/enroll_target.py --live --photos ~/target_photos --out ~/eagle/target_profile.npz
     python apps/enroll_target.py --verify --profile ~/eagle/target_profile.npz      # live score check
+    python apps/enroll_target.py --live --camera imx708 --out ~/eagle/target_profile.npz  # standard camera
     python apps/hailo_vision.py --profile ~/eagle/target_profile.npz --jsonl ~/eagle/vision.jsonl
 
 The camera can only be used by one program: stop hailo_vision.py before --live / --verify.
@@ -163,7 +165,10 @@ def main(argv=None) -> int:
     ap.add_argument("--verify", action="store_true", help="live: print the face score vs --profile (default --out)")
     ap.add_argument("--profile", default=None, help="profile for --verify (default: --out)")
     ap.add_argument("--seconds", type=float, default=None, help="live scan / verify duration")
-    ap.add_argument("--tuning-file", default="imx708_wide_noir.json", help="libcamera tuning file, or none")
+    ap.add_argument("--camera", default=None,
+                    help="Pi camera sensor name, e.g. imx708 or imx708_wide_noir (default: camera.sensor in --config)")
+    ap.add_argument("--tuning-file", default="auto",
+                    help="libcamera tuning file; auto = by sensor; none = libcamera's default")
     ap.add_argument("--description", default="", help="free text, e.g. 'red rain jacket, blue jeans, grey beanie'")
     ap.add_argument("--description-file", default=None, help="read the description from a text file")
     ap.add_argument("--out", default="target_profile.npz")
@@ -172,10 +177,13 @@ def main(argv=None) -> int:
     a = ap.parse_args(argv)
     if not (a.photos or a.live or a.verify):
         ap.error("give --photos, --live (or both), or --verify")
+    from eagle.camera import configured_sensor, tuning_for
     from eagle.config import load_config
-    cfg = load_config(a.config).get("identity", {})
+    full_cfg = load_config(a.config)
+    cfg = full_cfg.get("identity", {})
     c = merged_config(cfg)
-    tuning = None if str(a.tuning_file).lower() == "none" else a.tuning_file
+    a.camera = a.camera or configured_sensor(full_cfg)
+    tuning = tuning_for(a.camera, a.tuning_file)
     if a.verify:
         return verify(a, cfg, c, tuning)
     prof, emb = None, None
@@ -196,8 +204,8 @@ def main(argv=None) -> int:
         if face is None:
             return 2
         live_cfg = dict(c["live"], **({"seconds": a.seconds} if a.seconds else {}))
-        from eagle.facescan import LiveFaceScan, PiCamera
-        cam = PiCamera(tuning)
+        from eagle.facescan import LiveFaceScan
+        cam = open_camera(a.camera, tuning)
         try:
             kept, summary = LiveFaceScan(cam, face, live_cfg).scan()
         finally:
@@ -215,6 +223,15 @@ def main(argv=None) -> int:
     if a.live:
         print(f"Test it now: python apps/enroll_target.py --verify --profile {out}")
     return 0
+
+
+def open_camera(sensor, tuning):
+    """PiCamera on the camera with sensor model ``sensor`` (eagle/camera.py), or camera 0 if None."""
+    from eagle.camera import camera_num
+    from eagle.facescan import PiCamera
+    num = camera_num(sensor) if sensor else 0
+    print(f"camera: {sensor or 'first camera'} (libcamera camera {num}), tuning {tuning or 'libcamera default'}")
+    return PiCamera(tuning, camera_num=num)
 
 
 def face_embedder(cfg, c):
@@ -237,8 +254,8 @@ def verify(a, cfg, c, tuning) -> int:
     face = face_embedder(cfg, c)
     if face is None:
         return 2
-    from eagle.facescan import PiCamera, live_verify
-    cam = PiCamera(tuning)
+    from eagle.facescan import live_verify
+    cam = open_camera(a.camera, tuning)
     res = []
     try:
         res = live_verify(cam, face, prof, cfg, seconds=a.seconds or 30.0)

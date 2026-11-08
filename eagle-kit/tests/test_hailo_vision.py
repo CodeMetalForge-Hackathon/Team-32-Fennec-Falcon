@@ -54,7 +54,7 @@ def test_split_args_defaults_to_pi_camera(hv, tmp_path):
     ours, rest = hv.split_args(["--jsonl", "/tmp/v.jsonl", "--arch", "hailo8l"] + md)
     assert ours.jsonl == "/tmp/v.jsonl" and rest == ["--input", "rpi", "--arch", "hailo8l"]
     ours, rest = hv.split_args(["--input", "clip.mp4", "--rate", "5"] + md)
-    assert ours.rate == 5.0 and rest == ["--input", "clip.mp4"] and ours.tuning_file == "imx708_wide_noir.json"
+    assert ours.rate == 5.0 and rest == ["--input", "clip.mp4"] and ours.tuning_file == "auto"
 
 
 def test_split_args_uses_fetched_hef_for_the_requested_arch(hv, tmp_path):

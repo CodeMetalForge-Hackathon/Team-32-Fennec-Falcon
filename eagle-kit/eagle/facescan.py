@@ -295,9 +295,10 @@ def live_verify(camera, face, profile, cfg: dict | None = None, seconds: float =
 
 
 class PiCamera:
-    """Picamera2 on the Camera Module 3 Wide NoIR with the imx708_wide_noir tuning file. RGB frames."""
+    """Picamera2 on one Pi camera (``camera_num``, see eagle/camera.py to pick it by sensor name) with an
+    optional tuning file (None = libcamera's default). RGB frames."""
 
-    def __init__(self, tuning: str | None = "imx708_wide_noir.json", size=(1280, 720)):
+    def __init__(self, tuning: str | None = "imx708_wide_noir.json", size=(1280, 720), camera_num: int = 0):
         from picamera2 import Picamera2                 # apt install python3-picamera2
         kw = {}
         if tuning:
@@ -305,7 +306,7 @@ class PiCamera:
                 kw["tuning"] = Picamera2.load_tuning_file(tuning)
             except (OSError, RuntimeError) as e:
                 print(f"WARNING: tuning file {tuning} not loaded ({e}); using libcamera's default")
-        self.cam = Picamera2(**kw)
+        self.cam = Picamera2(camera_num, **kw)
         # Picamera2's "BGR888" format stores pixels in R, G, B byte order (its docs), i.e. an RGB array.
         self.cam.configure(self.cam.create_video_configuration(main={"size": tuple(size), "format": "BGR888"}))
         self.cam.start()
