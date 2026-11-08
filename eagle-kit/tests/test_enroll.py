@@ -178,3 +178,19 @@ def test_appearance_only_from_the_target_persons_box(en):
     assert "OUTLIER other.jpg" in joined and "NOCROP other.jpg: face was an outlier" in joined
     assert prof.counts()["face"] == 3            # group, nobox (face kept, crop skipped), again; stranger dropped
     assert prof.counts()["clip_image"] == 2 and len(crops) == 3     # crops: group, other (later dropped), again
+
+
+def test_add_live_faces_appends_to_existing_profile(en):
+    import types
+    base = TargetProfile(l2n(np.random.default_rng(1).normal(size=(3, 512))),
+                         l2n(np.random.default_rng(2).normal(size=(2, 512))),
+                         l2n(np.random.default_rng(3).normal(size=(4, 512))), np.zeros((0, 512), np.float32),
+                         "navy hoodie", {"face_sources": {"photos": 3, "live": 0}})
+    cand = [types.SimpleNamespace(embedding=l2n(np.random.default_rng(9 + k).normal(size=512))[0], yaw=0.0,
+                                  pitch=0.0, gray=False) for k in range(2)]
+    p1 = en.add_live_faces(base, cand, ["frontal"])
+    p2 = en.add_live_faces(p1, cand[:1], ["down"])
+    assert p2.counts() == {"face": 6, "clip_image": 2, "clip_text": 4, "osnet": 0}
+    assert p2.description == "navy hoodie"
+    assert p2.meta["face_sources"] == {"photos": 3, "live": 3}
+    assert [s["summary"] for s in p2.meta["live_scans"]] == [["frontal"], ["down"]]

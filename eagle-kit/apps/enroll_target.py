@@ -254,10 +254,14 @@ def add_live_faces(profile, kept: list, summary: list) -> TargetProfile:
         prof = TargetProfile(np.concatenate([prof.face, live]) if n_photo else live, prof.clip_image,
                              prof.clip_text, prof.osnet, prof.description, dict(prof.meta))
     meta = dict(prof.meta)
-    meta["face_sources"] = {"photos": n_photo, "live": len(kept)}
-    meta["live_scan"] = {"kept": len(kept), "yaw_deg": [round(c.yaw, 1) for c in kept],
-                         "pitch_deg": [round(c.pitch, 1) for c in kept],
-                         "ir_gray": int(sum(bool(c.gray) for c in kept)), "summary": list(summary)}
+    prev = dict(meta.get("face_sources") or {})
+    meta["face_sources"] = {"photos": int(prev.get("photos", n_photo)), "live": int(prev.get("live", 0)) + len(kept)}
+    scan = {"kept": len(kept), "yaw_deg": [round(c.yaw, 1) for c in kept],
+            "pitch_deg": [round(c.pitch, 1) for c in kept],
+            "ir_gray": int(sum(bool(c.gray) for c in kept)), "summary": list(summary)}
+    scans = list(meta.get("live_scans") or ([meta["live_scan"]] if "live_scan" in meta else []))
+    meta["live_scans"] = scans + [scan]                     # every scan added to this profile
+    meta["live_scan"] = scan                                # the latest
     meta["models"] = dict(meta.get("models") or {}, face="insightface buffalo_l (SCRFD-10G + ArcFace R50)")
     prof.meta = meta
     return prof
@@ -277,6 +281,9 @@ def main(argv=None) -> int:
     ap.add_argument("--description", default="", help="free text, e.g. 'red rain jacket, blue jeans, grey beanie'")
     ap.add_argument("--description-file", default=None, help="read the description from a text file")
     ap.add_argument("--out", default="target_profile.npz")
+    ap.add_argument("--add-to", default=None, metavar="PROFILE",
+                    help="with --live and no --photos: append the live faces to this existing profile "
+                         "(keeps its photo faces, CLIP and description) instead of starting a new one")
     ap.add_argument("--config", default=None, help="eagle config (identity: models_dir, face.min_width_px)")
     ap.add_argument("--person-model", default=str(PERSON_MODEL))
     ap.add_argument("--same-person-cos", type=float, default=0.30,
@@ -316,6 +323,17 @@ def enroll_main(a, cfg, c, tuning, held: dict) -> int:
         prof = enroll(read_images(folder), desc, emb, load_person_detector(a.person_model),
                       min_face_px=float(c["face"]["min_width_px"]),
                       consistency=None if a.same_person_cos <= 0 else a.same_person_cos)
+    if a.add_to:
+        if a.photos:
+            print("--add-to is for a live scan only; with --photos a new profile is built")
+            return 2
+        base = Path(a.add_to).expanduser()
+        if not base.is_file():
+            print(f"no profile at {base}")
+            return 2
+        prof = TargetProfile.load(base)
+        n0 = prof.counts()
+        print(f"adding to {base}: {n0['face']} face, {n0['clip_image']} CLIP image, {n0['clip_text']} CLIP text")
     if a.live:
         face = emb.face if emb is not None and emb.face is not None else face_embedder(cfg, c)
         if face is None:
