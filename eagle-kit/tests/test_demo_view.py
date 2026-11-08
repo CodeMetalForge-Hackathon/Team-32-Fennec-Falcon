@@ -74,3 +74,22 @@ def test_target_banner_holds_briefly_then_drops(demo, tmp_path):
     assert verdict.decide(vis_0, life_0, 102.0)["key"] == "target"          # held through a turned head
     assert verdict.decide(vis_0, life_0, 104.0)["key"] == "none"
     assert [l["key"] for l in verdict.log] == ["none", "target"]
+
+
+def test_signal_sent_only_from_a_received_identity_fix(demo, tmp_path):
+    logs, eagle = _dirs(tmp_path, {"boxes": [[0, 0, 10, 20, 0.9]], "identity": [[3, 0.6, 0.55]]})
+    hhmmss = time.strftime("%H:%M:%S")
+    (logs / "nest.log").write_text(
+        f"[{hhmmss}] RX      LIFE eagle 1 seq 4 list 2 part 1/1: 1 person(s) around 25.0, 121.0 (rssi -40 dBm)\n"
+        f"[{hhmmss}] RX      FIX eagle 1 seq 5: 25.0330000, 121.5650000 alt 0 m ce 2 m class UNKNOWN+ID-FACE "
+        f"conf 0.87 tag - status [unknown] (rssi -40 dBm, snr 9.0 dB)\n")
+    s = demo.state(logs, eagle, demo.Verdict())
+    assert s["signal"]["level"] == "FACE" and s["signal"]["seq"] == 5 and s["signal"]["ce_m"] == 2
+    assert any(l["key"] == "signal" for l in s["verdict"]["log"])
+
+
+def test_no_signal_without_identity_fix(demo, tmp_path):
+    logs, eagle = _dirs(tmp_path, {"boxes": [], "identity": []})
+    (logs / "nest.log").write_text(f"[{time.strftime('%H:%M:%S')}] RX      FIX eagle 1 seq 5: 25.0, 121.0 alt 0 m "
+                                   "ce 2 m class WHISTLE conf 0.8 tag - status [unknown] (rssi -40 dBm, snr 9.0 dB)\n")
+    assert demo.state(logs, eagle, demo.Verdict())["signal"] is None

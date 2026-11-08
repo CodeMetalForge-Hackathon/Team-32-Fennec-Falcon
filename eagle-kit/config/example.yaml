@@ -216,6 +216,10 @@ life:
     on_change: true              # ... and whenever a status / flag / track changes
     min_gap_s: 5.0               # never two bursts closer than this
     max_frame_bytes: 128         # longer lists are split into several LIFE frames
+    target_fix:                  # LIFE lists carry no identity: a track verified as the missing person
+      enabled: true              # is also sent once as a FIX whose class byte holds the match level
+      min_level: 3               # 3 = face verified against the Operator Profile card
+      every_s: 60.0              # repeat at most this often while it stays verified
   audio:
     every_s: 4.0                 # analyse the last audio.window_s every N s (uses audio/doa/codes above)
   thermal:

@@ -117,3 +117,47 @@ def _cfg_file(tmp_path, d):
     p = tmp_path / "c.yaml"
     p.write_text(yaml.safe_dump(d))
     return p
+
+
+def test_life_node_sends_one_target_fix_with_identity(root, cfg, tmp_path):
+    """A track verified as the missing person (IDENTITY level 3) goes out once as a FIX whose class
+    byte carries ID-FACE; LIFE lists alone carry no identity. No repeat within report.target_fix.every_s."""
+    import numpy as np
+    from eagle.config import deep_merge, load_keys
+    from eagle.fusion import LifeDetection, iso_cov
+
+    def port():
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.bind(("127.0.0.1", 0))
+        p = s.getsockname()[1]
+        s.close()
+        return p
+    pn, pq = port(), port()
+    c = deep_merge(cfg, {"eagle": {"state_file": str(tmp_path / "ctr.json")},
+                         "radio": {"transport": "udp", "udp": {"bind": f"127.0.0.1:{pn}", "peer": f"127.0.0.1:{pq}"}},
+                         "life": {"modules": ["thermal"]}})
+    nest_rx = UdpTransport(f"127.0.0.1:{pq}", f"127.0.0.1:{pn}")
+    frames = []
+    try:
+        mod = _load_app(root, "life_node")
+        node = mod.LifeNode(c, _args(no_radio=False))
+        node.step(now=1000.0)                                    # warm body -> one track, LIFE list
+        assert node.maybe_send_target_fix(1000.5) is None        # not verified yet: no FIX
+        tr = node.life.tracks[0]
+        node.life.update([LifeDetection("IDENTITY", 1001.0, xy=np.asarray(tr.x, float), cov=iso_cov(0.5),
+                                        match_level=P.ID_FACE, match_face=0.55)], now=1001.0)
+        node.life.evaluate(1001.0)
+        assert node.maybe_send_target_fix(1001.0) is not None   # verified: one FIX
+        assert node.maybe_send_target_fix(1010.0) is None        # within every_s: no repeat
+        node.close()
+        while True:
+            f = nest_rx.recv(timeout=0.5)
+            if f is None:
+                break
+            frames.append(f.payload)
+    finally:
+        nest_rx.close()
+    fixes = [f for f in frames if f[0] != P.MSG_LIFE]
+    assert len(fixes) == 1
+    rep = P.NestSession(load_keys(cfg)["fix_aes"], None, max_age_s=10 ** 9).decrypt_fix(fixes[0])
+    assert P.identity_level(rep.body.cls) == P.ID_FACE and "ID-FACE" in P.class_name(rep.body.cls)
