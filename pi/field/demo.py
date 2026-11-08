@@ -276,6 +276,10 @@ border-radius:8px;padding:6px 10px;font-size:14px;display:none;z-index:2}
 #log{font:12px/1.45 ui-monospace,monospace;color:var(--mut);overflow:hidden;flex:1}
 #log .target{color:var(--green)}#log .possible{color:var(--amber)}#log .not_target{color:#ff8080}#log .human{color:#8ab4ff}
 .zoomable{cursor:zoom-in}
+.cap{position:absolute;left:10px;top:10px;z-index:2;padding:6px 12px;border-radius:8px;font-weight:800;
+font-size:clamp(14px,1.4vw,20px);background:rgba(37,43,51,.85);color:#cfd5db}
+.cap.on{background:rgba(34,197,94,.92);color:#04210f}
+.card.big .cap{font-size:clamp(22px,2.6vw,40px);padding:10px 18px}
 .card.big{position:fixed;inset:10px;z-index:20;cursor:zoom-out;box-shadow:0 0 0 9999px rgba(0,0,0,.85)}
 #hint{font-size:12px;color:var(--mut)}
 #rec{border:0;border-radius:8px;padding:4px 12px;font:600 13px system-ui;background:#2b3036;color:var(--fg);cursor:pointer}
@@ -289,7 +293,7 @@ border-radius:8px;font-size:14px;display:none;z-index:30;max-width:80vw}
   <div class="card"><div class="label"><span>Camera: <span id="camname">standard</span></span><span id="camage"></span></div>
     <div class="view"><img id="cam" alt="camera"><div class="stale" id="cstale"></div></div></div>
   <div class="card"><div class="label"><span>Thermal</span><span id="trange"></span></div>
-    <div class="view"><img id="thermal" alt="thermal"><div class="stale" id="tstale"></div></div></div>
+    <div class="view"><div class="cap" id="tcap">No warm body</div><img id="thermal" alt="thermal"><div class="stale" id="tstale"></div></div></div>
 </div>
 <div id="soundrow">
   <div class="card" id="sound"><div class="label"><span>Sound (last 4 s, 0 to 8 kHz)</span><span id="alevel"></span></div>
@@ -315,6 +319,8 @@ async function poll(){let s;try{s=await (await fetch('/state')).json()}catch(e){
   $('trange').textContent=f.thermal.min_c!=null?`${f.thermal.min_c} to ${f.thermal.max_c} °C`:'';
   const lv=f.audio.level_db;$('alevel').textContent=lv!=null?lv.toFixed(0)+' dBFS':'';
   $('meterbar').style.width=lv==null?'0%':Math.max(0,Math.min(100,(lv+70)/60*100))+'%';
+  const hc=s.chips.heat,tc=$('tcap');tc.className='cap'+(hc.on?' on':'');
+  tc.textContent=hc.on?('WARM BODY DETECTED: '+hc.text.replace(' warm body','')):'No warm body';
   const h=$('heard');h.textContent=s.chips.sound.on?'Heard: '+s.chips.sound.text:'no human sounds';h.className=s.chips.sound.on?'on':'';
   cam=(a.cam_standard_s!=null&&a.cam_standard_s<5)||a.cam_noir_s==null||a.cam_noir_s>5?'standard':'noir';
   $('camname').textContent=cam==='standard'?'standard':'NoIR wide';
