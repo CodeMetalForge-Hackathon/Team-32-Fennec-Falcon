@@ -100,6 +100,21 @@ Personnel recovery is a standing joint mission. Recovery units own it, Fennec fl
 </tr>
 </table>
 
+## Inside the Eagle
+
+The disguise is the mechanism. Everything that gets the bird into the space sits inside a raptor-shaped shell, and the wings fold so it can sit on a branch like the real thing.
+
+- **Flies in:** a brushless motor drives a 25:1 gearbox and a 3 Hz crank, with one pushrod per wing. Carbon lamellae carry every flight feather, and 12 tail slats steer.
+- **Perches:** servos fold the wings at the elbow and wrist. Carbon legs and metal claws hold the branch with a passive grip lock, so the motor can shut off.
+- **Senses:** an HT-203U thermal core looks out through the cere, an RGB camera sits behind the left eye, and a four-mic bar spans the pod.
+- **Decides and reports:** a Raspberry Pi 5 with a Hailo accelerator, a 915 MHz radio with its antenna in the tail, and an Iridium modem under the mantle feathers.
+
+<img src="docs/images/pitch/13-eagle-cutaway-wings-open.jpg" alt="Labelled cutaway of the Eagle drone with wings open, showing disguise, airframe, drive, sensors, compute, comms and battery.">
+
+<img src="docs/images/pitch/14-eagle-cutaway-perched.jpg" alt="Labelled cutaway of the Eagle drone perched on a branch with wings folded.">
+
+<sub>Design model, not built hardware. Span 1.60 m, length 0.75 m, estimated 1.9 kg against a 2.6 kg target. Parts and masses are estimates. <a href="https://github.com/CodeMetalForge-Hackathon/team-32/tree/eagle-drone-model/simulator/v2">Model code</a></sub>
+
 ## What runs today
 
 Built over the hackathon weekend. Every range, gain and link number is still a model; the ear A/B test will be the first measurement.
