@@ -36,7 +36,7 @@ def test_target_found_with_heat_and_voice(demo, tmp_path):
     s = demo.state(logs, eagle, demo.Verdict())
     v = s["verdict"]
     assert v["key"] == "target" and v["title"] == "TARGET FOUND: MITCH"
-    assert "face match 0.55" in v["sub"] and "34.2" in v["sub"] and "voice" in v["sub"]
+    assert "face match 0.55" in v["sub"] and "body heat" in v["sub"] and "voice" in v["sub"]
     assert all(s["chips"][k]["on"] for k in ("heat", "sound", "vision", "face"))
 
 
