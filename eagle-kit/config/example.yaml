@@ -278,11 +278,18 @@ life:
       # - {address: "AA:BB:CC:DD:EE:FF", label: TAG-7}
   vision:
     jsonl: null                  # file a person detector appends {"t":..,"boxes":[[x1,y1,x2,y2,score],..]} lines to
+                                 # (apps/hailo_vision.py --jsonl ~/eagle/vision.jsonl on the Hailo AI HAT+)
     every_s: 1.0
     min_score: 0.4
     posture: auto                # auto | upright | lying
-    camera: {hfov_deg: 66.0, width: 640, height: 480,
-             mount: {enu_m: null, heading_deg: 0.0, tilt_down_deg: 30.0, roll_deg: 0.0}}
+    camera:                      # Raspberry Pi Camera Module 3 Wide NoIR (IMX708), tuning imx708_wide_noir.json
+      hfov_deg: 102.0            # Raspberry Pi camera docs, Camera Module 3 Wide: 102 deg horizontal ...
+      vfov_deg: 67.0             # ... and 67 deg vertical
+      width: 1280                # hailo-apps default frame size; boxes from other sizes are rescaled
+      height: 720
+      mount: {enu_m: null, heading_deg: 0.0, tilt_down_deg: 30.0, roll_deg: 0.0}
+      # The pinhole model ignores lens distortion: near the edges of a 102 deg lens, floor positions
+      # are biased outward. Calibrate (checkerboard) or prefer boxes near the image centre.
   fusion:
     max_tracks: 12
     gate_chi2: 9.21              # 2 dof, 99 %
