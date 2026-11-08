@@ -1,0 +1,27 @@
+#forest-demo{margin-top:24px;border-top:1px solid var(--line-2,#36504d);padding-top:18px}
+#forest-demo p{line-height:1.55;color:var(--muted,#b0c2bd)}
+#forest-dialog{box-sizing:border-box;width:min(1380px,96vw);max-width:96vw;height:94vh;max-height:94vh;padding:24px;background:var(--bg,#091211);color:var(--fg,#e0ece7);border:1px solid var(--line-2,#36504d);border-radius:8px;overflow:auto;font-family:var(--font-ui,system-ui)}
+#forest-dialog::backdrop{background:#020807df}
+#forest-dialog header{display:flex;justify-content:space-between;align-items:center;gap:16px}
+#forest-dialog h2{font-size:25px;margin:8px 0 12px;line-height:1.2}
+#forest-dialog h3{font-size:14px;margin:20px 0 8px}
+.forest-eyebrow{font:11px monospace;letter-spacing:.15em;color:#80e0ff}
+.forest-intro{max-width:900px;font-size:14px}
+.forest-layout{display:grid;grid-template-columns:minmax(0,1fr) 310px;gap:24px}
+.forest-controls{display:flex;gap:16px;align-items:end;margin:18px 0 10px}
+.forest-controls label{display:block;font-size:12px;flex:1}.forest-controls label:last-child{flex:0 0 95px}
+#forest-dialog select{box-sizing:border-box;width:100%;background:#152824;color:#e0ece7;padding:9px;border:1px solid #36504d;margin-top:6px}
+#forest-dialog button,#forest-open{padding:9px 14px;background:#203c37;color:#e0ece7;border:1px solid #4e7569;border-radius:4px;cursor:pointer;font:inherit}
+#forest-play{background:#80e0ff!important;color:#08212a!important}
+#forest-dialog canvas{display:block;width:100%;height:auto;border:1px solid #243e40;box-sizing:border-box;margin-top:14px}
+#forest-dialog aside{font-size:12px;min-width:0}#forest-dialog a{color:#80e0ff}
+#forest-status{border-left:3px solid #80e0ff;padding:1px 14px 10px;background:#10211f}
+.forest-data{white-space:pre-line;font:12px/1.8 monospace}
+#forest-candidates p{border-bottom:1px solid #243e40;padding-bottom:8px}
+#forest-stages{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+#forest-stages span{padding:6px 8px;border:1px solid #36504d;font:10px monospace;color:#9fb5ad}
+#forest-stages .active{background:#80e0ff;color:#08212a;border-color:#80e0ff}
+.forest-readiness{padding-left:18px;line-height:1.6}.forest-readiness li{margin:9px 0}
+#forest-events{padding-left:18px;line-height:1.65;color:#b0c2bd}
+#forest-dialog footer{margin-top:20px;border-top:1px solid #36504d;padding-top:14px;font-size:12px;line-height:1.6;color:#9fb5ad}
+@media(max-width:800px){#forest-dialog{padding:14px}.forest-layout{grid-template-columns:1fr;gap:8px}#forest-dialog h2{font-size:20px}.forest-controls{gap:8px}#forest-dialog .seg{display:flex;flex-wrap:wrap;gap:6px}}

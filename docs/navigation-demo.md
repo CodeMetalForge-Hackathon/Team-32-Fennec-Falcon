@@ -1,5 +1,7 @@
 # GPS-denied navigation in the Jungle Simulator
 
+**Forest extension:** the same navigation area now includes **Open forest lab** for computed 3D routes, branch/clearing candidates, simulated attachment verification, recovery and departure. See [forest-navigation.md](forest-navigation.md) or [open the focused lab](../simulator/forest.html). It remains separate from the actual ArduPilot controller.
+
 Open `simulator/index.html` through a local HTTP server. In the right **Eagle cam** panel, scroll below the camera to **GPS-denied navigation**. Choose a scenario and press **Play navigation**. The existing perched sensor mission still runs independently with **Run mission**.
 
 ![Embedded navigation panel](images/navigation-demo.png)

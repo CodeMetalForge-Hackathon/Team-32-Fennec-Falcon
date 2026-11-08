@@ -18,6 +18,8 @@ The reference scenario is Taiwan mountain forest; the same sensing questions app
 
 ## Run the browser simulator
 
+**New: [Forest navigation & perching lab](simulator/forest.html).** Compute a route between synthetic 3D obstacles, step through branch attachment or clearing landing, and try grip failure, blocked canopy and sensor loss. Also available below the GPS-denied panel. [Implementation and current limits](docs/forest-navigation.md).
+
 Open [simulator/index.html](simulator/index.html) in Chrome, Edge, Safari or Firefox. First load needs internet for external assets. Headless model:
 
 ```
@@ -51,6 +53,7 @@ The [Unreal demo](unreal-sim/README.md) searches real Taiwan terrain through can
 | [docs/simulator.md](docs/simulator.md) | Current sensing, communication and mission reference |
 | [docs/unreal-sim.md](docs/unreal-sim.md) | Unreal geometry, scene and CoT reference |
 | [docs/navigation-demo.md](docs/navigation-demo.md) | GPS-denied navigation and separate multicopter SITL viewer |
+| [docs/forest-navigation.md](docs/forest-navigation.md) | 3D forest planning, landing/perching states and hardware integration gaps |
 | [docs/coastal-relay-sizing.md](docs/coastal-relay-sizing.md) | Assumption-based inland-to-boat relay count and deployment energy |
 | [docs/build-log.md](docs/build-log.md) | Change record and limitations |
 | [docs/how-we-document.md](docs/how-we-document.md) | Documentation workflow |
@@ -60,6 +63,7 @@ The [Unreal demo](unreal-sim/README.md) searches real Taiwan terrain through can
 ```
 node simulator/test-sensors.cjs
 node simulator/test-navigation.cjs
+node simulator/test-forest.cjs
 python -m pytest unreal-sim/tests
 ```
 

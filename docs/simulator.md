@@ -53,6 +53,8 @@ Selecting an optional mouth whistle can add acoustic evidence. It is not require
 
 ## Display and verification
 
+The navigation area also contains the [forest navigation and perching lab](forest-navigation.md): synthetic 3D A* planning, support-candidate rejection, attachment verification and injected failure recovery. It has its own state and canvas and does not drive the main scene or the separate ArduPilot SITL service.
+
 Cards separate sensing from bird-to-relay communication. People remain identity-unverified. The GPS-denied panel and multicopter SITL viewer are independent; see navigation-demo.md.
 
 Run `node simulator/test-sensors.cjs` and `node simulator/test-navigation.cjs`. Field validation remains required for sensing, visual identity, propagation, flight and perching. References retained in code include CWA climate normals, ISO 9613 acoustic absorption orders, Pearsons voice levels, ITU-R P.833, Weissberger attenuation, Semtech airtime, MR60BHA2 nominal ranges and thermal-camera specifications.
