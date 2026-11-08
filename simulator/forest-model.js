@@ -22,19 +22,23 @@
     if(scenario==='landing')candidates.splice(2,2,{id:'Clearing',kind:'ground',p:[18,2,1],approach:[18,2,4],reason:null});
     return {obstacles,candidates};
   }
+  // A world may carry its own clearance radius (simulator v2's Eagle: half its wingspan); default 0.45 m.
+  const clearance=world=>world&&Number.isFinite(world.radius)?world.radius:radius;
   function free(p,world){
-    if(p.some((v,i)=>v<radius||v>(world.bounds||bounds)[i]-radius))return false;
-    if(world.ground&&p[2]<world.ground(p[0],p[1])+radius)return false;
-    return !world.obstacles.some(o=>p.every((v,i)=>v>=o.min[i]-radius&&v<=o.max[i]+radius));
+    const R=clearance(world);
+    if(p.some((v,i)=>v<R||v>(world.bounds||bounds)[i]-R))return false;
+    if(world.ground&&p[2]<world.ground(p[0],p[1])+R)return false;
+    return !world.obstacles.some(o=>p.every((v,i)=>v>=o.min[i]-R&&v<=o.max[i]+R));
   }
   function segment(a,b,world){
+    const R=clearance(world);
     if(!free(a,world)||!free(b,world))return false;
-    if(world.ground){const n=Math.ceil(Math.hypot(...a.map((v,i)=>v-b[i]))/.25);for(let j=1;j<n;j++){const p=a.map((v,i)=>v+(b[i]-v)*j/n);if(p[2]<world.ground(p[0],p[1])+radius)return false;}}
+    if(world.ground){const n=Math.ceil(Math.hypot(...a.map((v,i)=>v-b[i]))/.25);for(let j=1;j<n;j++){const p=a.map((v,i)=>v+(b[i]-v)*j/n);if(p[2]<world.ground(p[0],p[1])+R)return false;}}
     // Exact slab intersection avoids missing a thin corner between samples.
     return !world.obstacles.some(o=>{
       let enter=0,exit=1;
       for(let i=0;i<3;i++){
-        const d=b[i]-a[i],lo=o.min[i]-radius,hi=o.max[i]+radius;
+        const d=b[i]-a[i],lo=o.min[i]-R,hi=o.max[i]+R;
         if(Math.abs(d)<1e-12){if(a[i]<lo||a[i]>hi)return false;}
         else{const t1=(lo-a[i])/d,t2=(hi-a[i])/d;enter=Math.max(enter,Math.min(t1,t2));exit=Math.min(exit,Math.max(t1,t2));if(enter>exit)return false;}
       }return enter<=exit;
@@ -79,11 +83,14 @@
     }
     s.phase='ABORTED';s.done=true;event(s,'No reachable support. Mission withheld; no blind climb or landing.');
   }
-  function create(scenario='branch',profile='baseline'){
-    const world=scene(scenario,profile),start=world.start||[2,2,3];
+  // Any world with {obstacles, candidates, bounds, cell, start, ground?, radius?, speed?, terminalSpeed?}; simulator v2 builds
+  // one from its own trees around the Eagle's perch.
+  function createFromWorld(world,scenario='branch',note='Synthetic metric pose and complete obstacle map supplied.'){
+    const start=world.start||[2,2,3];
     const s={scenario,world,p:start.slice(),t:0,age:0,phase:'INSPECT',path:[],next:1,target:null,failed:[],events:[],trail:[start.slice()],done:false,attached:false,motors:true};
-    event(s,'Synthetic metric pose and complete obstacle map supplied.');select(s);return s;
+    event(s,note);select(s);return s;
   }
+  function create(scenario='branch',profile='baseline'){return createFromWorld(scene(scenario,profile),scenario);}
   function move(s,target,dt,speed){
     const d=Math.hypot(...target.map((v,i)=>v-s.p[i])),travel=Math.min(d,dt*speed);
     if(d)s.p=s.p.map((v,i)=>v+(target[i]-v)*travel/d);
@@ -99,17 +106,17 @@
     if(s.phase==='TRANSIT'){
       if(move(s,s.path[s.next],dt,s.world.speed||2)){s.next++;if(s.next===s.path.length)change('INSPECT');}
     }else if(s.phase==='INSPECT'&&s.age>=1.5)change('APPROACH');
-    else if(s.phase==='APPROACH'&&move(s,s.target.p,dt,0.7))change('CONTACT');
+    else if(s.phase==='APPROACH'&&move(s,s.target.p,dt,s.world.terminalSpeed||0.7))change('CONTACT');
     else if(s.phase==='CONTACT'&&s.age>=1)change('VERIFY_SUPPORT');
     else if(s.phase==='VERIFY_SUPPORT'&&s.age>=2){
       if(s.scenario==='grip-failure'&&!s.failed.length){s.failed.push(s.target.id);event(s,'Injected grip failure: motors remain on; retreat before reselection.');change('RECOVER');}
       else{s.attached=true;s.motors=false;change(s.target.kind==='ground'?'LANDED':'PERCHED');}
-    }else if(s.phase==='RECOVER'&&move(s,s.target.approach,dt,0.7))select(s);
+    }else if(s.phase==='RECOVER'&&move(s,s.target.approach,dt,s.world.terminalSpeed||0.7))select(s);
     else if(['PERCHED','LANDED'].includes(s.phase)&&s.age>=4&&!s.holdPerch){s.motors=true;s.attached=false;change('RELEASE');}
     else if(s.phase==='RELEASE'&&s.age>=1)change('DEPART');
-    else if(s.phase==='DEPART'&&move(s,s.target.approach,dt,0.7)){change('COMPLETE');s.done=true;}
+    else if(s.phase==='DEPART'&&move(s,s.target.approach,dt,s.world.terminalSpeed||0.7)){change('COMPLETE');s.done=true;}
     return s;
   }
-  const api={bounds,radius,scene,free,segment,plan,create,step};
+  const api={bounds,radius,scene,free,segment,plan,create,createFromWorld,step};
   if(typeof module!=='undefined')module.exports=api;else root.EagleForest=api;
 })(globalThis);
