@@ -287,11 +287,18 @@ class ClipHailo:
     """CLIP ViT-B/32 on the Hailo, exactly the HEFs of the hailo-apps clip app (needs hailo-apps)."""
 
     def __init__(self, image_hef, text_hef=None, tokenizer=None, token_embeddings=None, text_projection=None):
-        from hailo_apps.python.core.common.hailo_inference import HailoInfer
-        self.image = HailoInfer(str(image_hef), batch_size=1, output_type="FLOAT32")
+        self.image_hef = str(image_hef)
+        self.image = None
+        self._open_image()
         self.h, self.w = self.image.get_input_shape()[:2]
         self.text_args = dict(hef_path=str(text_hef), tokenizer_path=tokenizer, embeddings_path=token_embeddings,
                               text_projection_path=text_projection) if text_hef else None
+
+    def _open_image(self):
+        if self.image is None:
+            from hailo_apps.python.core.common.hailo_inference import HailoInfer
+            self.image = HailoInfer(self.image_hef, batch_size=1, output_type="FLOAT32")
+        return self.image
 
     def image_embedding(self, crop_rgb) -> np.ndarray:
         import cv2
@@ -305,14 +312,27 @@ class ClipHailo:
 
         def done(completion_info, bindings_list):
             box["out"] = np.array(bindings_list[0].output().get_buffer(), np.float32)
-        self.image.run([x], done).wait(10000)
+        self._open_image().run([x], done).wait(10000)
         return l2n(box["out"].reshape(-1))[0]
+
+    def close(self) -> None:
+        """Release the Hailo network. Without it HailoRT is torn down during interpreter exit, which
+        segfaulted enroll_target after the profile was written (exit 139)."""
+        img, self.image = self.image, None
+        if img is not None:
+            img.close()
 
     def text_embeddings(self, texts: list) -> np.ndarray:
         if not self.text_args:
             raise RuntimeError("no CLIP text encoder HEF configured")
         from hailo_apps.python.pipeline_apps.clip.clip_text_utils import run_text_encoder_inference
-        return l2n(run_text_encoder_inference(list(texts), **self.text_args))
+        # The text encoder opens its own device: release the image network first (one Hailo, one owner;
+        # otherwise HAILO_OUT_OF_PHYSICAL_DEVICES). image_embedding reopens it when needed.
+        self.close()
+        # One prompt per call, as hailo-apps' own text_image_matcher does: the text HEF has batch size 1
+        # and a list of N prompts fails ("could not broadcast (N,77,512) into (1,77,512)").
+        rows = [np.atleast_2d(run_text_encoder_inference(t, **self.text_args)).reshape(-1) for t in texts]
+        return l2n(np.stack(rows)) if rows else np.zeros((0, 512), np.float32)
 
 
 @dataclass
@@ -322,6 +342,11 @@ class Embedders:
     osnet: object = None
     face: object = None
     log: object = print
+
+    def close(self) -> None:
+        for m in (self.clip,):
+            if m is not None and hasattr(m, "close"):
+                m.close()
 
     def embed_person(self, crop_rgb) -> dict:
         out = {}

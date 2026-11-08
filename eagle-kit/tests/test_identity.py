@@ -138,3 +138,43 @@ def test_missing_models_are_logged_never_downloaded(tmp_path, monkeypatch):
     assert e.clip is None and e.osnet is None and e.face is None
     assert len(logs) == 3 and all("off" in s for s in logs)
     assert e.embed_person(np.zeros((128, 64, 3), np.uint8)) == {}
+
+
+def test_clip_hailo_text_one_prompt_per_call_and_releases_image(monkeypatch):
+    """Text HEF has batch 1 and opens its own device: one call per prompt, image network closed first."""
+    import sys
+    import types
+    import numpy as np
+    from eagle.identity import ClipHailo
+    calls, opened, closed = [], [], []
+
+    class FakeInfer:
+        def __init__(self, hef, **kw):
+            opened.append(hef)
+
+        def get_input_shape(self):
+            return (224, 224, 3)
+
+        def close(self):
+            closed.append(1)
+
+    def fake_text(t, **kw):
+        assert isinstance(t, str)
+        calls.append(t)
+        return np.ones((1, 512)) * (len(calls))
+
+    mods = {"hailo_apps.python.core.common.hailo_inference": types.SimpleNamespace(HailoInfer=FakeInfer),
+            "hailo_apps.python.pipeline_apps.clip.clip_text_utils":
+                types.SimpleNamespace(run_text_encoder_inference=fake_text)}
+    for name, m in mods.items():
+        monkeypatch.setitem(sys.modules, name, m)
+    c = ClipHailo("img.hef", text_hef="txt.hef")
+    out = c.text_embeddings(["a", "b", "c"])
+    assert calls == ["a", "b", "c"] and out.shape == (3, 512)
+    assert np.allclose(np.linalg.norm(out, axis=1), 1.0)
+    assert closed == [1] and c.image is None                      # released before the text encoder ran
+    c._open_image()
+    assert opened == ["img.hef", "img.hef"]
+    c.close()
+    c.close()                                                     # idempotent
+    assert closed == [1, 1]

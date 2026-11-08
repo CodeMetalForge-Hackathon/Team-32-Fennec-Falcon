@@ -250,10 +250,19 @@ def main(argv=None) -> int:
     tuning = tuning_for(a.camera, a.tuning_file)
     if a.verify:
         return verify(a, cfg, c, tuning)
+    held = {}
+    try:
+        return enroll_main(a, cfg, c, tuning, held)
+    finally:
+        if held.get("emb") is not None:
+            held["emb"].close()                               # release the Hailo before interpreter exit
+
+
+def enroll_main(a, cfg, c, tuning, held: dict) -> int:
     prof, emb = None, None
     if a.photos:
         desc = Path(a.description_file).read_text(encoding="utf-8") if a.description_file else a.description
-        emb = make_runtime_embedders(cfg, text=True)
+        emb = held["emb"] = make_runtime_embedders(cfg, text=True)
         if emb.face is None and emb.clip is None and emb.osnet is None:
             print("No identity model could be loaded: run apps/fetch_models.py (and install hailo-apps for CLIP).")
             return 2
