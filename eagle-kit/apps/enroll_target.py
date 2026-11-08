@@ -321,6 +321,9 @@ def main(argv=None) -> int:
     ap.add_argument("--description", default="", help="free text, e.g. 'red rain jacket, blue jeans, grey beanie'")
     ap.add_argument("--description-file", default=None, help="read the description from a text file")
     ap.add_argument("--out", default="target_profile.npz")
+    ap.add_argument("--no-clip", action="store_true",
+                    help="faces (and OSNet) only: never open the CLIP HEF, so the Hailo is not used at all "
+                         "(eagle-vision can keep running)")
     ap.add_argument("--add-to", default=None, metavar="PROFILE",
                     help="append to this existing profile instead of starting a new one: --photos (checked against "
                          "the profile's faces, nothing existing is removed) and/or --live")
@@ -361,7 +364,7 @@ def enroll_main(a, cfg, c, tuning, held: dict) -> int:
               f"{n0['osnet']} OSNet")
     if a.photos:
         desc = Path(a.description_file).read_text(encoding="utf-8") if a.description_file else a.description
-        emb = held["emb"] = make_runtime_embedders(cfg, text=True)
+        emb = held["emb"] = make_runtime_embedders(cfg, text=True, clip=not a.no_clip)
         if emb.face is None and emb.clip is None and emb.osnet is None:
             print("No identity model could be loaded: run apps/fetch_models.py (and install hailo-apps for CLIP).")
             return 2

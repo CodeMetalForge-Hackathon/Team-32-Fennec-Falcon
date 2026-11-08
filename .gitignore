@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# Runtime output on the Pi (never commit)
+hailort.log
+**/hailort.log
+gstshark_*/
+**/gstshark_*/
+field_logs/
+*.log
+
+# Device-only data: Operator Profile cards, keys, recordings, photos of people
+target_profile*.npz
+**/keys/
+*.mp4
+*.mov
+*.MOV
+*.heic
+*.HEIC
+target_photos/
+target_video_frames/
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
