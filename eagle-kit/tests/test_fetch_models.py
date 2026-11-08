@@ -38,6 +38,18 @@ def test_s3_etag_single_and_multipart(fm, tmp_path):
     assert not fm.etag_matches(p, "0" * 32)
 
 
+def test_etag_with_non_mib_part_size(fm, tmp_path):
+    """Hailo's bucket uses 17179870-byte parts (not whole MiB): the MiB search alone never matches."""
+    part = 1000 + 7
+    data = bytes(range(256)) * 20                                  # 5120 B -> 6 parts of 1007 B
+    p = tmp_path / "f.bin"
+    p.write_bytes(data)
+    etag = fm.s3_etag(p, part)
+    assert etag.endswith("-6")
+    assert fm.etag_matches(p, etag, part_sizes=(part,))
+    assert not fm.etag_matches(p, etag, part_sizes=())
+
+
 def test_fetch_verifies_and_rejects(fm, tmp_path):
     src = tmp_path / "src" / "w.bin"
     src.parent.mkdir()
@@ -96,7 +108,9 @@ def test_manifest_is_pinned_and_licensed(fm, root):
     assert "non-commercial" in notice.lower() and "insightface" in notice.lower()
     names = {e.dest for e in fm.select("hailo8l")}
     assert "clip/hailo8l/clip_vit_b_32_image_encoder.hef" in names and not any("/hailo8/" in n for n in names)
-    assert len(fm.select("all")) == len(fm.MANIFEST)
+    for zoo in set(fm.ZOO_BY_HAILORT.values()):                   # each zoo has every HEF for both arches
+        assert len(fm.select("all", zoo=zoo)) == sum(e.zoo in (None, zoo) for e in fm.MANIFEST)
+    assert {e.zoo for e in fm.select("hailo8", zoo="v2.18.0")} == {None, "v2.18.0"}
 
 
 def test_runtime_code_never_downloads(root):

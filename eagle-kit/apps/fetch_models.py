@@ -29,6 +29,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -39,7 +40,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 MIB = 1024 * 1024
-MZ = "https://hailo-model-zoo.s3.eu-west-2.amazonaws.com/ModelZoo/Compiled/v2.19.0"   # hailo-apps' model_zoo_versions
+MZ_BASE = "https://hailo-model-zoo.s3.eu-west-2.amazonaws.com/ModelZoo/Compiled"
+# HEFs are compiled against one HailoRT minor version and do not load on another. Same mapping as
+# hailo-apps' install.sh (get_model_zoo_version): HailoRT 4.24.x -> v2.19.0, 4.23.x (default) -> v2.18.0.
+ZOO_BY_HAILORT = {"4.23": "v2.18.0", "4.24": "v2.19.0"}
+DEFAULT_ZOO = "v2.18.0"
 S3 = "https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources"                     # hailo-apps' S3_RESOURCES_BASE_URL
 TORCHREID_REPO = "https://github.com/KaiyangZhou/deep-person-reid.git"
 TORCHREID_COMMIT = "f8cd150fdf77e8d9e1ed143b7f308c2c609ded50"
@@ -58,6 +63,7 @@ class Entry:
     arch: str | None = None       # hailo8 | hailo8l (HEFs are compiled per architecture)
     extract: str | None = None    # zip: extract into this dir (relative to the models dir)
     license: str = ""             # key in eagle/data/NOTICE.md
+    zoo: str | None = None        # Hailo Model Zoo version (HEFs only; must match the installed HailoRT)
 
 
 MANIFEST = [
@@ -77,22 +83,27 @@ MANIFEST = [
           etag="255fc9f07752162e9681494527818c71", license="clip"),
     Entry("clip_token_embedding_lut", "clip", f"{S3}/npy/token_embedding_lut.npy", "clip/token_embedding_lut.npy",
           101187712, etag="7aa4f6f2194ab57e503e400c5b0d775a-6", license="clip"),
-    Entry("clip_image_hailo8", "clip", f"{MZ}/hailo8/clip_vit_b_32_image_encoder.hef",
-          "clip/hailo8/clip_vit_b_32_image_encoder.hef", 96900770, etag="9214a5606c1f158378959b776cd69af5-6",
-          arch="hailo8", license="clip"),
-    Entry("clip_text_hailo8", "clip", f"{MZ}/hailo8/clip_vit_b_32_text_encoder.hef",
-          "clip/hailo8/clip_vit_b_32_text_encoder.hef", 93856389, etag="8eb2f56f41ba2f4ac6c6f419f3b8e4b8-6",
-          arch="hailo8", license="clip"),
-    Entry("clip_image_hailo8l", "clip", f"{MZ}/hailo8l/clip_vit_b_32_image_encoder.hef",
-          "clip/hailo8l/clip_vit_b_32_image_encoder.hef", 191502011, etag="aca98707021c2e61f1c8340f188c6995-12",
-          arch="hailo8l", license="clip"),
-    Entry("clip_text_hailo8l", "clip", f"{MZ}/hailo8l/clip_vit_b_32_text_encoder.hef",
-          "clip/hailo8l/clip_vit_b_32_text_encoder.hef", 167524982, etag="fa849c696c096328de4dcba2ef90a92a-10",
-          arch="hailo8l", license="clip"),
-    Entry("detection_hailo8", "detection", f"{MZ}/hailo8/yolov5m_wo_spp.hef", "hailo/hailo8/yolov5m_wo_spp.hef",
-          18024868, etag="cf013b86c4216070a2dfdab3a6750f47-2", arch="hailo8", license="yolov5"),
-    Entry("detection_hailo8l", "detection", f"{MZ}/hailo8l/yolov5m_wo_spp.hef", "hailo/hailo8l/yolov5m_wo_spp.hef",
-          37764611, etag="2a38e748f1075b967a4c333d44dcec89-3", arch="hailo8l", license="yolov5"),
+    # (zoo, arch, group, file, size, S3 ETag): sizes and ETags as served by Hailo's S3 bucket
+]
+_HEFS = [
+    ("v2.18.0", "hailo8", "clip", "clip_vit_b_32_image_encoder", 96913864, "2d7850d5e0afddfd6c972977f336aa56-6"),
+    ("v2.18.0", "hailo8", "clip", "clip_vit_b_32_text_encoder", 93849976, "0e137ed0ca43f77b5c9d5623cfc8347b-6"),
+    ("v2.18.0", "hailo8", "detection", "yolov5m_wo_spp", 18024878, "50b3d82acad2cf2227d3fecef1be89ec-2"),
+    ("v2.18.0", "hailo8l", "clip", "clip_vit_b_32_image_encoder", 191499803, "d6bc4162642f0214b11b0fa799410081-12"),
+    ("v2.18.0", "hailo8l", "clip", "clip_vit_b_32_text_encoder", 167525195, "8469e9637d253f2fc9c1d6753c2f00f1-10"),
+    ("v2.18.0", "hailo8l", "detection", "yolov5m_wo_spp", 37763963, "ce3f55a0b84caa9ced5151c90f366a83-3"),
+    ("v2.19.0", "hailo8", "clip", "clip_vit_b_32_image_encoder", 96900770, "9214a5606c1f158378959b776cd69af5-6"),
+    ("v2.19.0", "hailo8", "clip", "clip_vit_b_32_text_encoder", 93856389, "8eb2f56f41ba2f4ac6c6f419f3b8e4b8-6"),
+    ("v2.19.0", "hailo8", "detection", "yolov5m_wo_spp", 18024868, "cf013b86c4216070a2dfdab3a6750f47-2"),
+    ("v2.19.0", "hailo8l", "clip", "clip_vit_b_32_image_encoder", 191502011, "aca98707021c2e61f1c8340f188c6995-12"),
+    ("v2.19.0", "hailo8l", "clip", "clip_vit_b_32_text_encoder", 167524982, "fa849c696c096328de4dcba2ef90a92a-10"),
+    ("v2.19.0", "hailo8l", "detection", "yolov5m_wo_spp", 37764611, "2a38e748f1075b967a4c333d44dcec89-3"),
+]
+MANIFEST += [
+    Entry(f"{'clip_' + f.split('_')[-2] if g == 'clip' else 'detection'}_{arch}_{zoo}", g,
+          f"{MZ_BASE}/{zoo}/{arch}/{f}.hef", f"{'clip' if g == 'clip' else 'hailo'}/{arch}/{f}.hef", size,
+          etag=etag, arch=arch, license="clip" if g == "clip" else "yolov5", zoo=zoo)
+    for zoo, arch, g, f, size, etag in _HEFS
 ]
 OSNET_ONNX = "osnet/osnet_x1_0_msmt17.onnx"
 LOCK = "models.lock.json"
@@ -118,7 +129,12 @@ def s3_etag(path, part_size: int) -> str:
     return f"{hashlib.md5(b''.join(md5s)).hexdigest()}-{len(md5s)}"
 
 
-def etag_matches(path, etag: str) -> bool:
+# Part size Hailo's S3 uploads use (S3 reports it: HEAD <url>?partNumber=1 -> Content-Length). It is not a
+# whole number of MiB, so it is tried before the MiB guesses below.
+KNOWN_PART_SIZES = (17179870,)
+
+
+def etag_matches(path, etag: str, part_sizes=KNOWN_PART_SIZES) -> bool:
     etag = etag.strip('"')
     size = os.path.getsize(path)
     if "-" not in etag:
@@ -128,6 +144,9 @@ def etag_matches(path, etag: str) -> bool:
                 h.update(b)
         return h.hexdigest() == etag
     parts = int(etag.rsplit("-", 1)[1])
+    for p in part_sizes:
+        if math.ceil(size / p) == parts and s3_etag(path, p) == etag:
+            return True
     lo = max(1, math.ceil(size / parts / MIB))                    # part sizes (whole MiB) giving `parts` parts
     for p_mib in range(lo, lo + 64):
         p = p_mib * MIB
@@ -249,9 +268,22 @@ def detect_arch() -> str | None:
     return None
 
 
-def select(arch: str, groups=None) -> list:
+def detect_zoo() -> tuple:
+    """(Model Zoo version, HailoRT version or None) for the HailoRT installed here."""
+    try:
+        out = subprocess.run(["hailortcli", "--version"], capture_output=True, text=True, timeout=20).stdout
+    except (OSError, subprocess.SubprocessError):
+        return DEFAULT_ZOO, None
+    m = re.search(r"(\d+)\.(\d+)\.\d+", out)
+    if not m:
+        return DEFAULT_ZOO, None
+    return ZOO_BY_HAILORT.get(f"{m[1]}.{m[2]}", DEFAULT_ZOO), m[0]
+
+
+def select(arch: str, groups=None, zoo: str = DEFAULT_ZOO) -> list:
     arches = {"all": ("hailo8", "hailo8l")}.get(arch, (arch,))
-    return [e for e in MANIFEST if (e.arch is None or e.arch in arches) and (not groups or e.group in groups)]
+    return [e for e in MANIFEST if (e.arch is None or e.arch in arches) and (not groups or e.group in groups)
+            and e.zoo in (None, zoo)]
 
 
 def read_lock(models_dir: Path) -> dict:
@@ -279,6 +311,8 @@ def main(argv=None) -> int:
     ap.add_argument("--config", default=None)
     ap.add_argument("--arch", default="auto", choices=["auto", "hailo8", "hailo8l", "all"],
                     help="Hailo architecture for the HEFs (auto: ask hailortcli)")
+    ap.add_argument("--zoo", default="auto", choices=["auto", *sorted(set(ZOO_BY_HAILORT.values()))],
+                    help="Hailo Model Zoo version of the HEFs (auto: match the installed HailoRT)")
     ap.add_argument("--only", nargs="+", choices=["face", "osnet", "clip", "detection"], help="subset of groups")
     ap.add_argument("--export-osnet", action="store_true", help="also build osnet_x1_0_msmt17.onnx (needs torch)")
     ap.add_argument("--verify", action="store_true", help="offline check against models.lock.json, no downloads")
@@ -297,7 +331,11 @@ def main(argv=None) -> int:
             print("Could not detect the Hailo (hailortcli). Pass --arch hailo8 (26 TOPS) or hailo8l (13 TOPS).")
             return 2
         print(f"Hailo architecture: {arch}")
-    entries = select(arch, a.only)
+    zoo = a.zoo
+    if zoo == "auto":
+        zoo, rt = detect_zoo()
+        print(f"HailoRT {rt or 'not found'} -> Hailo Model Zoo {zoo}")
+    entries = select(arch, a.only, zoo)
     total = sum(e.size for e in entries)
     print(f"{len(entries)} file(s), {total / 1e6:.0f} MB, into {models_dir}")
     if a.list:
