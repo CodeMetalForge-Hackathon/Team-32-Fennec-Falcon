@@ -389,11 +389,14 @@ def model_paths(cfg: dict | None) -> dict:
             "clip_text_projection": pick("clip_text_projection", d / "clip" / "text_projection.npy")}
 
 
-def make_runtime_embedders(cfg: dict | None, *, text: bool = False, log=print) -> Embedders:
-    """Load every model that is present locally; log (never download) the missing ones."""
+def make_runtime_embedders(cfg: dict | None, *, text: bool = False, clip: bool = True, log=print) -> Embedders:
+    """Load every model that is present locally; log (never download) the missing ones. ``clip=False``
+    never opens the CLIP HEF (no HailoRT Python inference at all): face + OSNet only."""
     c, p = merged_config(cfg), model_paths(cfg)
     e = Embedders(log=log)
     try:
+        if not clip:
+            raise RuntimeError("turned off (face-only)")
         if not p["clip_image_hef"].is_file():
             raise FileNotFoundError(p["clip_image_hef"])
         e.clip = ClipHailo(p["clip_image_hef"], p["clip_text_hef"] if text else None,

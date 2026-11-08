@@ -154,3 +154,7 @@ def test_target_stays_green_for_hold_after_last_face_match(hv):
     now[0] = 2.1
     assert hold.style(7, (1, 0.45, None), "MITCH") == ("possible", "POSSIBLE MITCH 0.45")
     assert hold.style(-1, (0, 0.1, None), "MITCH")[0] == "person"      # untracked boxes are never held
+
+
+def test_no_clip_flag(hv):
+    assert hv.split_args(["--no-clip"])[0].no_clip and not hv.split_args([])[0].no_clip

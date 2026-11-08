@@ -122,6 +122,9 @@ def split_args(argv):
                     help="also save the latest frame (person boxes drawn) to this JPEG, e.g. ~/eagle/cam_standard.jpg "
                          "(the field page shows it)")
     ap.add_argument("--snapshot-hz", type=float, default=3.0, help="snapshot rate (default 3 per second)")
+    ap.add_argument("--no-clip", action="store_true",
+                    help="identity without CLIP: person detection + face matching only (no HailoRT Python "
+                         "inference next to the detection pipeline; appearance-only matches are not possible)")
     ap.add_argument("--target-name", default=os.environ.get("EAGLE_TARGET_NAME", "Mitch"),
                     help="name in the snapshot labels, e.g. TARGET: MITCH (default $EAGLE_TARGET_NAME or Mitch)")
     ap.add_argument("--hold-s", type=float, default=2.0,
@@ -323,8 +326,10 @@ def main(argv=None) -> None:
     if ours.profile:
         from eagle.identity import IdentityMatcher, TargetProfile, make_runtime_embedders
         cfg = full_cfg.get("identity", {})
-        matcher = IdentityMatcher(TargetProfile.load(ours.profile), make_runtime_embedders(cfg), cfg)
-        print(f"identity: matching against {ours.profile}", flush=True)
+        matcher = IdentityMatcher(TargetProfile.load(ours.profile), make_runtime_embedders(cfg, clip=not ours.no_clip),
+                                  cfg)
+        print(f"identity: matching against {ours.profile}" + (" (face only, CLIP off)" if ours.no_clip else ""),
+              flush=True)
 
     writer = RateLimitedWriter(ours.jsonl, ours.rate)
     print(f"writing person boxes to {writer.path}", flush=True)

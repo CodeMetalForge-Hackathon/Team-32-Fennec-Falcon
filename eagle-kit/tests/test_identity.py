@@ -178,3 +178,20 @@ def test_clip_hailo_text_one_prompt_per_call_and_releases_image(monkeypatch):
     c.close()
     c.close()                                                     # idempotent
     assert closed == [1, 1]
+
+
+def test_face_only_mode_never_opens_clip_and_still_verifies(monkeypatch, tmp_path):
+    import numpy as np
+    import eagle.identity as ident
+    from eagle.identity import TargetProfile, l2n, score_embeddings
+
+    def boom(*a, **k):
+        raise AssertionError("ClipHailo must not be constructed with clip=False")
+    monkeypatch.setattr(ident, "ClipHailo", boom)
+    logs = []
+    e = ident.make_runtime_embedders({"models_dir": str(tmp_path)}, clip=False, log=logs.append)
+    assert e.clip is None and any("CLIP off" in m and "face-only" in m for m in logs)
+    face = l2n(np.random.default_rng(5).normal(size=512))[0]
+    prof = TargetProfile(face[None], l2n(np.ones((2, 512))), l2n(np.ones((1, 512))), np.zeros((0, 512), np.float32))
+    r = score_embeddings(prof, {}, face=face, face_width_px=60)        # no clip_image / osnet observed
+    assert r.level == 3

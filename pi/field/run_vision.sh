@@ -28,6 +28,10 @@ if [ -n "${EAGLE_CAMERA:-}" ]; then
 fi
 if [ -f "$PROFILE" ]; then
   args+=(--profile "$PROFILE")          # identity matching only when a target has been enrolled
+  # Face-only identity by default: CLIP through the Python HailoRT API next to the GStreamer detection
+  # pipeline preceded the Hailo dropping off PCIe (D3cold) with the 4.23 driver on kernel 6.18.
+  # EAGLE_VISION_CLIP=1 turns the appearance (CLIP) match back on.
+  [ "${EAGLE_VISION_CLIP:-0}" = "1" ] || args+=(--no-clip)
 else
   echo "no target profile at $PROFILE: person boxes only"
 fi
