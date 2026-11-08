@@ -1,0 +1,416 @@
+<title>Hawk-Eagle Drone</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Saira+Condensed:wght@500;600;700&family=Source+Sans+3:wght@400;600&display=swap">
+<style>
+/* Layout: the live flight stage is the hero across the top; a control rail sits under it; spec sheet, wing fold and reference render follow in a grid that stacks to one column on phones. */
+:root {
+  --bg: #edf1ee;          /* mountain mist */
+  --panel: #f8faf8;
+  --ink: #17211e;         /* cedar ink */
+  --muted: #56655f;
+  --line: #d2dbd5;
+  --accent: #a8660a;      /* the hawk-eagle's iris, darkened for paper */
+  --accent-soft: #f3e3c6;
+  --on-accent: #fffaf1;
+  --hud-bg: rgba(10, 17, 18, 0.62);   /* the stage is always a dusk scene, so its HUD keeps one look */
+  --hud-ink: #e9efe9;
+  --hud-dim: #9fb2aa;
+  --hud-amber: #f0b13a;
+  --f-display: "Saira Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --f-body: "Source Sans 3", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --f-data: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --r: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --bg: #0e1514; --panel: #141e1c; --ink: #e2eae5; --muted: #93a49c; --line: #263330; --accent: #e8a21c; --accent-soft: #3a2a10; --on-accent: #1b1306; color-scheme: dark; }
+}
+:root[data-theme="dark"] { --bg: #0e1514; --panel: #141e1c; --ink: #e2eae5; --muted: #93a49c; --line: #263330; --accent: #e8a21c; --accent-soft: #3a2a10; --on-accent: #1b1306; color-scheme: dark; }
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.5 var(--f-body); }
+.wrap { max-width: 1240px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 20px 40px; display: grid; gap: 18px; }
+header { display: grid; gap: 6px; }
+.eyebrow { font: 500 12px/1 var(--f-data); letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); }
+h1 { margin: 0; font: 700 clamp(34px, 5vw, 56px)/0.95 var(--f-display); letter-spacing: 0.01em; text-wrap: balance; }
+.lede { margin: 0; max-width: 68ch; color: var(--muted); }
+.lede b { color: var(--ink); font-weight: 600; }
+
+/* stage */
+.stage { position: relative; border-radius: var(--r); overflow: hidden; background: #1b2626; aspect-ratio: 16 / 9; max-height: 74vh; width: 100%; min-height: 300px; }
+.stage canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+.hud { position: absolute; left: 12px; top: 12px; display: grid; gap: 2px; padding: 10px 12px; border-radius: 8px; background: var(--hud-bg); color: var(--hud-ink); font: 12px/1.45 var(--f-data); backdrop-filter: blur(4px); pointer-events: none; min-width: 210px; }
+.hud .st { font: 600 15px/1.2 var(--f-display); letter-spacing: 0.04em; text-transform: uppercase; color: var(--hud-amber); margin-bottom: 4px; }
+.hud div span:first-child { color: var(--hud-dim); display: inline-block; width: 92px; }
+.hud .v { font-variant-numeric: tabular-nums; }
+.badge { position: absolute; right: 12px; top: 12px; padding: 6px 10px; border-radius: 999px; background: var(--hud-bg); color: var(--hud-ink); font: 500 11px/1 var(--f-data); letter-spacing: 0.08em; text-transform: uppercase; pointer-events: none; }
+.hint { position: absolute; right: 12px; bottom: 10px; color: var(--hud-dim); font: 11px/1 var(--f-data); pointer-events: none; }
+.loading { position: absolute; inset: 0; display: grid; place-items: center; color: var(--hud-dim); font: 13px var(--f-data); }
+
+/* control rail */
+.rail { display: flex; flex-wrap: wrap; gap: 14px 22px; align-items: flex-end; padding: 14px 16px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); }
+.group { display: grid; gap: 6px; min-width: 0; }
+.group > label, .group > .lbl { font: 500 11px/1 var(--f-data); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.seg { display: flex; flex-wrap: wrap; gap: 4px; }
+.seg button, .tog { appearance: none; border: 1px solid var(--line); background: var(--bg); color: var(--ink); font: 600 14px/1 var(--f-body); padding: 9px 12px; border-radius: 7px; cursor: pointer; }
+.seg button:hover:not(:disabled), .tog:hover { border-color: var(--accent); }
+.seg button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.seg button:disabled { opacity: 0.4; cursor: default; }
+.tog[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* info grid */
+.grid { display: grid; grid-template-columns: 1.15fr 1fr 1fr; gap: 18px; align-items: start; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 16px 18px 18px; display: grid; gap: 12px; min-width: 0; }
+h2 { margin: 0; font: 600 22px/1.1 var(--f-display); letter-spacing: 0.02em; text-wrap: balance; }
+.card p { margin: 0; color: var(--muted); font-size: 15px; }
+.tbl { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; padding: 7px 8px 7px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font: 500 11px/1.2 var(--f-data); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+td.n { font: 500 13px/1.4 var(--f-data); font-variant-numeric: tabular-nums; white-space: nowrap; }
+td.n.ours { color: var(--accent); }
+.facts { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; font-size: 14px; }
+.facts li { display: grid; grid-template-columns: 7.5em 1fr; gap: 10px; }
+.facts li span:first-child { font: 500 12px/1.6 var(--f-data); color: var(--muted); }
+ol.steps { margin: 0; padding: 0; list-style: none; display: grid; gap: 12px; counter-reset: s; }
+ol.steps li { display: grid; grid-template-columns: 30px 1fr; gap: 10px; counter-increment: s; font-size: 15px; }
+ol.steps li::before { content: counter(s); display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; border: 1.5px solid var(--accent); color: var(--accent); font: 600 14px/1 var(--f-display); }
+ol.steps b { font-weight: 600; }
+.num { font-family: var(--f-data); font-size: 0.92em; }
+figure { margin: 0; display: grid; gap: 8px; }
+figure img { width: 100%; height: auto; aspect-ratio: 1279 / 720; object-fit: cover; border-radius: 8px; display: block; background: #222; }
+figcaption { font-size: 13px; color: var(--muted); }
+ul.checks { margin: 0; padding: 0 0 0 18px; display: grid; gap: 6px; font-size: 15px; }
+ul.checks li::marker { color: var(--accent); }
+footer { font-size: 13px; color: var(--muted); display: grid; gap: 4px; }
+footer a { color: var(--accent); }
+@media (max-width: 980px) { .grid { grid-template-columns: 1fr 1fr; } .grid .card.wide { grid-column: 1 / -1; } }
+@media (max-width: 640px) { .grid { grid-template-columns: 1fr; } .stage { aspect-ratio: 4 / 5; max-height: 70vh; } .hud { min-width: 0; font-size: 11px; left: 8px; top: 8px; } .hud .st { font-size: 13px; } .hud div span:first-child { width: 72px; } .hint, .badge { display: none; } }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Fennec · Eagle-1 airframe · Team 32</div>
+    <h1>Hawk-Eagle Drone</h1>
+    <p class="lede">A flapping-wing drone built to a <b>Mountain Hawk-Eagle's</b> size and dressed as one. It flies in, flares onto a snag, folds its wings along its back, scans with its head, opens up and takes off again. Switch the skin to see the <b>bare airframe</b> from the reference render, or turn on x-ray to see it inside the disguise.</p>
+  </header>
+
+  <div class="stage" id="stage">
+    <div class="loading" id="loading">Painting feathers…</div>
+    <div class="hud" aria-live="polite">
+      <div class="st" id="hState">Perched</div>
+      <div><span>wingbeat</span><span class="v" id="hHz">—</span></div>
+      <div><span>wing fold</span><span class="v" id="hFold">—</span></div>
+      <div><span>airspeed</span><span class="v" id="hSpd">—</span></div>
+      <div><span>height</span><span class="v" id="hAlt">—</span></div>
+    </div>
+    <div class="badge" id="badge">Mountain Hawk-Eagle</div>
+    <div class="hint">Drag to orbit · scroll to zoom</div>
+  </div>
+
+  <div class="rail" role="toolbar" aria-label="Eagle drone controls">
+    <div class="group"><span class="lbl" id="lMan">Maneuver</span>
+      <div class="seg" aria-labelledby="lMan" id="man">
+        <button type="button" id="mLoop" data-m="loop" aria-pressed="true">Full loop</button>
+        <button type="button" id="mTake" data-m="takeoff" aria-pressed="false">Take off</button>
+        <button type="button" id="mLand" data-m="land" aria-pressed="false">Land</button>
+        <button type="button" id="mFold" data-m="fold" aria-pressed="false">Open / fold</button>
+        <button type="button" id="mFlap" data-m="fly" aria-pressed="false">Flap</button>
+        <button type="button" id="mGlide" data-m="glide" aria-pressed="false">Glide</button>
+        <button type="button" id="mSoar" data-m="soar" aria-pressed="false">Soar</button>
+      </div>
+    </div>
+    <div class="group"><span class="lbl" id="lSkin">Skin</span>
+      <div class="seg" aria-labelledby="lSkin" id="skin">
+        <button type="button" id="sHawk" data-s="hawkEagle" aria-pressed="true">Hawk-Eagle</button>
+        <button type="button" id="sSerp" data-s="serpentEagle" aria-pressed="false">Serpent Eagle</button>
+        <button type="button" id="sAir" data-s="airframe" aria-pressed="false">Bare airframe</button>
+      </div>
+    </div>
+    <div class="group"><span class="lbl" id="lX">Inside</span>
+      <button type="button" class="tog" id="xray" aria-pressed="false">X-ray</button>
+    </div>
+    <div class="group"><span class="lbl" id="lSpd">Speed</span>
+      <div class="seg" aria-labelledby="lSpd" id="speed">
+        <button type="button" id="v1" data-v="1" aria-pressed="true">1×</button>
+        <button type="button" id="v2" data-v="0.5" aria-pressed="false">½×</button>
+        <button type="button" id="v4" data-v="0.25" aria-pressed="false">¼×</button>
+      </div>
+    </div>
+    <div class="group"><span class="lbl" id="lCam">Camera</span>
+      <div class="seg" aria-labelledby="lCam" id="camseg">
+        <button type="button" id="cFollow" data-c="follow" aria-pressed="true">Follow</button>
+        <button type="button" id="cFree" data-c="free" aria-pressed="false">Free</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <section class="card">
+      <h2>Built to the bird</h2>
+      <div class="tbl">
+        <table>
+          <thead><tr><th scope="col"></th><th scope="col">Drone</th><th scope="col">Mountain Hawk-Eagle</th></tr></thead>
+          <tbody>
+            <tr><td>Wingspan</td><td class="n ours" id="tSpan">1.60 m</td><td class="n">1.34–1.75 m</td></tr>
+            <tr><td>Length</td><td class="n ours" id="tLen">0.75 m</td><td class="n">0.69–0.84 m</td></tr>
+            <tr><td>Wing, folded</td><td class="n ours" id="tFold">0.50 m</td><td class="n">0.49–0.52 m</td></tr>
+            <tr><td>Tail</td><td class="n ours">0.34 m</td><td class="n">0.34–0.36 m</td></tr>
+            <tr><td>Tarsus</td><td class="n ours">0.115 m</td><td class="n">0.113–0.118 m</td></tr>
+            <tr><td>Mass target</td><td class="n ours">2.6 kg</td><td class="n">2.2–3.9 kg</td></tr>
+            <tr><td>Wingbeat</td><td class="n ours">3.0 Hz</td><td class="n">≈3 Hz *</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Drone numbers are measured off the model in this page. * Golden eagles flap at 2.2–2.8 Hz; the lighter hawk-eagle sits near 3 Hz. Getting the wingbeat right matters as much as the paint.</p>
+    </section>
+
+    <section class="card">
+      <h2>How the wing folds</h2>
+      <ol class="steps">
+        <li><span><b>Sweep.</b> The upper arm swings back <span class="num">86°</span> at the shoulder.</span></li>
+        <li><span><b>Roll.</b> The wing plane rolls <span class="num">54°</span>, so the folded wing lies over the back and flank.</span></li>
+        <li><span><b>Z-fold.</b> Elbow closes to <span class="num">168°</span>, wrist to <span class="num">166°</span>. The primaries slide under the secondaries and their tips end over the tail.</span></li>
+      </ol>
+      <ul class="facts">
+        <li><span>per wing</span><span>10 primaries (6 fingered), 13 secondaries and tertials, 3 humerals, coverts on each</span></li>
+        <li><span>tail</span><span>12 feathers that fan to ±48° for the landing flare</span></li>
+        <li><span>rig</span><span id="rigLine">one skinned mesh per bird</span></li>
+      </ul>
+      <p>The bare airframe hangs carbon lamellae on the same joints, so it folds the same way under the disguise.</p>
+    </section>
+
+    <section class="card wide">
+      <h2>Reference airframe</h2>
+      <figure>
+        <img src="@@REF@@" alt="Render of the bare drone: dark carbon wings, a carbon pod with a chrome nose cone, silver wing linkage with orange lights, and a diamond tail" width="1279" height="720">
+        <figcaption>The bare drone the disguise goes over: carbon pod, chrome nose, wing linkage, diamond tail. Scaled here to a 1.6 m span.</figcaption>
+      </figure>
+      <ul class="checks">
+        <li>Perches upright inside the canopy and scans with quick head turns, as raptors do.</li>
+        <li>Lands with a flare: tail fanned, feet forward, two balancing beats, then folds.</li>
+        <li>Motor off on the perch, so on thermal it sits near air temperature.</li>
+      </ul>
+    </section>
+  </div>
+
+  <footer>
+    <span>Species measurements: <a href="https://www.bird-research.jp/1_shiryo/seitai/kumataka.pdf">Bird Research News (Suzuka sample)</a>, <a href="https://app.birda.org/species-guide/8267/Mountain_Hawk-Eagle">BirdA</a>, <a href="https://en.wikipedia.org/wiki/Mountain_hawk-eagle">Mountain hawk-eagle</a>, <a href="https://en.wikipedia.org/wiki/Crested_serpent_eagle">Crested serpent eagle</a>. Wingbeat: <a href="https://arxiv.org/abs/2412.00231">arXiv 2412.00231</a>.</span>
+    <span>Model: <span class="num">simulator/v2/eagle_drone.js</span> in CodeMetalForge-Hackathon/Team-32. The same bird flies in the jungle simulator.</span>
+  </footer>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script id="eagle-drone">
+/*@@EAGLE@@*/
+</script>
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+if (!window.THREE || !window.EagleDrone) { $('#loading').textContent = 'Could not load three.js. Check the connection and reload.'; return; }
+const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const stage = $('#stage');
+
+// ---------- renderer and scene: a dusk ridge in the Central Mountain Range ----------
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(2, devicePixelRatio || 1));
+renderer.outputEncoding = THREE.sRGBEncoding; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.92;
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+stage.prepend(renderer.domElement);
+const scene = new THREE.Scene();
+const HAZE = new THREE.Color(0x5f7884);
+scene.fog = new THREE.Fog(HAZE, 70, 460);
+const camera = new THREE.PerspectiveCamera(34, 16 / 9, 0.05, 900);
+
+// sky dome: deep teal overhead to a warm haze at the horizon
+const skyMat = new THREE.ShaderMaterial({ side: THREE.BackSide, depthWrite: false, fog: false, uniforms: { top: { value: new THREE.Color(0x1f3c4f) }, mid: { value: new THREE.Color(0x7d98a3) }, low: { value: new THREE.Color(0xe7b98a) } },
+  vertexShader: 'varying vec3 vP; void main(){ vP = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+  fragmentShader: 'uniform vec3 top, mid, low; varying vec3 vP; void main(){ float h = vP.y; vec3 c = h > 0.08 ? mix(mid, top, smoothstep(0.08, 0.6, h)) : mix(low, mid, smoothstep(-0.05, 0.08, h)); gl_FragColor = vec4(c, 1.0); }' });
+const sky = new THREE.Mesh(new THREE.SphereGeometry(800, 32, 16), skyMat); scene.add(sky);
+
+// ridgelines on three cylinders, nearest darkest
+function ridgeTexture(seed, col, rough) {
+  const c = document.createElement('canvas'); c.width = 2048; c.height = 256; const x = c.getContext('2d');
+  x.fillStyle = col; x.beginPath(); x.moveTo(0, 256);
+  for (let i = 0; i <= 2048; i += 4) { const u = i / 2048 * Math.PI * 2; const h = 0.45 + 0.18 * Math.sin(u * 3 + seed) + 0.1 * Math.sin(u * 7 + seed * 2.1) + rough * Math.sin(u * 23 + seed * 3.7) + 0.5 * rough * Math.sin(u * 61 + seed); x.lineTo(i, 256 - h * 220); }
+  x.lineTo(2048, 256); x.closePath(); x.fill();
+  const t = new THREE.CanvasTexture(c); t.wrapS = THREE.RepeatWrapping; t.encoding = THREE.sRGBEncoding; return t;
+}
+[[420, 70, 0x6f8792, 1.2, 0.03], [260, 46, 0x4b6470, 2.7, 0.05], [150, 26, 0x2f4550, 4.1, 0.07]].forEach(([r, h, col, seed, rough]) => {
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 96, 1, true), new THREE.MeshBasicMaterial({ map: ridgeTexture(seed, '#' + new THREE.Color(col).getHexString(), rough), transparent: true, side: THREE.BackSide, depthWrite: false, fog: false }));
+  m.position.y = h / 2 - 6; m.renderOrder = -1; scene.add(m);
+});
+// ground and forest
+const ground = new THREE.Mesh(new THREE.CircleGeometry(400, 64), new THREE.MeshStandardMaterial({ color: 0x27331f, roughness: 1, envMapIntensity: 0.15 }));
+ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+{ const n = 240, cone = new THREE.ConeGeometry(1, 1, 7), mat = new THREE.MeshStandardMaterial({ color: 0x15281a, roughness: 0.95, envMapIntensity: 0.18 }), trees = new THREE.InstancedMesh(cone, mat, n), m4 = new THREE.Matrix4();
+  let s = 7; const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < n; i++) { const a = rnd() * Math.PI * 2, d = 30 + Math.pow(rnd(), 0.7) * 110, h = 6 + rnd() * 9, w = 1.6 + rnd() * 1.6;
+    m4.compose(new THREE.Vector3(Math.cos(a) * d, h / 2, Math.sin(a) * d), new THREE.Quaternion(), new THREE.Vector3(w, h, w)); trees.setMatrixAt(i, m4); }
+  trees.castShadow = true; trees.receiveShadow = true; scene.add(trees); }
+
+// the perch: a dead snag with a side branch at 4 m
+const bark = new THREE.MeshStandardMaterial({ color: 0x5c544b, roughness: 0.95, envMapIntensity: 0.35 });
+const PERCH = new THREE.Vector3(0, 4.045, 0), HEAD = 0;   // where the toes grip; the bird faces +Z
+{ const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.17, 4.6, 12), bark); trunk.position.set(-1.0, 2.3, 0); trunk.castShadow = trunk.receiveShadow = true; scene.add(trunk);
+  const br = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.055, 1.6, 10), bark); br.rotation.z = Math.PI / 2; br.position.set(-0.25, 4.0, 0); br.castShadow = br.receiveShadow = true; scene.add(br);
+  const tip = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.03, 0.5, 6), bark); tip.position.set(-1.0, 4.85, 0.05); tip.rotation.z = 0.3; scene.add(tip); }
+
+// light: low sun from the west, cool sky fill, environment for the airframe's chrome
+scene.add(new THREE.HemisphereLight(0xbfd3e0, 0x3a3428, 0.45));
+const sun = new THREE.DirectionalLight(0xffd7a8, 2.4); sun.position.set(-30, 22, 18); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
+{ const c = sun.shadow.camera; c.left = c.bottom = -4; c.right = c.top = 4; c.near = 1; c.far = 120; } sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.02;
+scene.add(sun, sun.target);
+const rim = new THREE.DirectionalLight(0x9fc4ff, 0.6); rim.position.set(20, 8, -25); scene.add(rim);
+{ // environment for reflections: the same sky as vertex colours on a plain sphere (some GPUs return black from a shader-material capture)
+  const pm = new THREE.PMREMGenerator(renderer), es = new THREE.Scene(), sg = new THREE.SphereGeometry(10, 32, 16), pp = sg.attributes.position, cols = [];
+  const top = new THREE.Color(0x1f3c4f), mid = new THREE.Color(0x7d98a3), low = new THREE.Color(0xe7b98a), gnd = new THREE.Color(0x2c3428);
+  for (let i = 0; i < pp.count; i++) { const y = pp.getY(i) / 10; const c = y > 0.08 ? mid.clone().lerp(top, Math.min(1, (y - 0.08) / 0.5)) : y > -0.05 ? low.clone().lerp(mid, (y + 0.05) / 0.13) : gnd.clone(); c.multiplyScalar(0.8); cols.push(c.r, c.g, c.b); }
+  sg.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3)); es.add(new THREE.Mesh(sg, new THREE.MeshBasicMaterial({ side: THREE.BackSide, vertexColors: true })));
+  scene.environment = pm.fromScene(es, 0.04).texture; pm.dispose(); }
+
+// ---------- the bird ----------
+const bird = new EagleDrone({ livery: 'hawkEagle', quality: (navigator.hardwareConcurrency || 4) < 4 ? 'low' : 'high' });
+scene.add(bird.object);
+bird.object.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+bird.perch(PERCH, HEAD);
+$('#loading').hidden = true;
+
+// measure span and length off the skinned mesh in the spread flight pose
+(function measure() {
+  const saved = Object.assign({}, bird.pose); bird.setMode('fly', true); bird.flapAmp = 0; bird.pose.flap = 0.05; bird.applyPose();
+  const pos = bird.object.position.clone(); bird.object.position.set(0, 0, 0); bird.object.rotation.set(0, 0, 0); bird.object.updateMatrixWorld(true);
+  const m = bird.mesh, g = m.geometry.attributes.position, v = new THREE.Vector3(), box = new THREE.Box3(); m.skeleton.update();
+  for (let i = 0; i < g.count; i++) { v.fromBufferAttribute(g, i); if (m.boneTransform) m.boneTransform(i, v); box.expandByPoint(v); }
+  $('#tSpan').textContent = (box.max.x - box.min.x).toFixed(2) + ' m'; $('#tLen').textContent = (box.max.z - box.min.z).toFixed(2) + ' m';
+  { const L = window.EagleDroneLib; if (L) $('#tFold').textContent = Math.max(...L.PRIM.map(p => p.t * L.RIG.hand + p.L)).toFixed(2) + ' m'; }
+  $('#rigLine').textContent = `one skinned mesh per bird, ${bird.rig.bones.length} bones, ${Math.round(m.geometry.index.count / 3 / 100) / 10}k triangles`;
+  Object.assign(bird.pose, saved); bird.perch(PERCH, HEAD);
+})();
+
+// ---------- maneuvers ----------
+let simTime = 0, waits = [], token = 0, state = 'perched', loiterOn = false;
+const wait = (s, tok) => new Promise(res => waits.push({ t: simTime + s, res, tok }));
+const V = (x, y, z) => PERCH.clone().add(new THREE.Vector3(x, y, z));
+const CIRCUIT = () => [V(0, 0.4, 0), V(0.4, 1.4, 4.5), V(3, 3.6, 13), V(12, 5.5, 17), V(20, 6.5, 7), V(19, 6.5, -7), V(9, 5.5, -16), V(-5, 4, -17)];
+const LOOP = () => [V(-5, 4, -17), V(-16, 5, -8), V(-17, 6, 6), V(-8, 6.5, 15), V(6, 6.5, 16), V(17, 6, 5), V(15, 5.5, -9), V(3, 4.6, -18), V(-5, 4, -17)];
+const pathLen = pts => pts.reduce((a, p, i) => i ? a + p.distanceTo(pts[i - 1]) : 0, 0);
+const flight = (fn) => new Promise(res => fn(res));
+function setState(s, label) { state = s; $('#hState').textContent = label; syncButtons(); }
+function takeoffCircuit(tok) { const p = CIRCUIT(); return flight(res => bird.takeoff(p, { duration: pathLen(p) / 8.5, onDone: () => res(tok === token) })); }
+function landFromHere(tok) {
+  const from = bird.object.position.clone(), via = [];
+  if (from.distanceTo(V(-5, 4, -17)) > 3) via.push(V(-6, 3.4, -19));
+  const d = from.distanceTo(V(0, -2.2, -14)) + 14;
+  return flight(res => bird.land(PERCH, HEAD, from, { duration: Math.max(3.2, d / 7.5), via, onDone: () => res(tok === token) }));
+}
+async function loiter(tok) {   // laps until something else is asked for
+  loiterOn = true;
+  if (bird.object.position.distanceTo(V(-5, 4, -17)) > 2) { const p = [bird.object.position.clone(), V(-5, 4, -17)]; await flight(res => bird.follow(p, { duration: Math.max(1, pathLen(p) / 9), onDone: res })); }
+  while (tok === token) { const p = LOOP(); await flight(res => bird.follow(p, { duration: pathLen(p) / 9.5, onDone: res })); }
+  loiterOn = false;
+}
+async function fullLoop() {
+  const tok = ++token; setPressed('man', 'loop');
+  if (bird.mode !== 'perched' || bird.track) { setState('flying', 'Coming in to land'); if (!(await landFromHere(tok))) return; }
+  while (tok === token) {
+    setState('perched', 'Perched · folded · scanning'); bird.lookAt(null); if (!(await waitOk(3.4, tok))) return;
+    setState('perched', 'Mantling · wings out'); bird.spreadWings(true); if (!(await waitOk(1.6, tok))) return;
+    bird.spreadWings(false); setState('perched', 'Folding'); if (!(await waitOk(1.8, tok))) return;
+    setState('flying', 'Take off · climb'); bird.spreadWings(true); if (!(await waitOk(0.5, tok))) return;
+    if (!(await takeoffCircuit(tok))) return;
+    setState('flying', 'Approach · flare · perch'); if (!(await landFromHere(tok))) return;
+    setState('perched', 'Balance beats · fold'); if (!(await waitOk(2.6, tok))) return;
+  }
+}
+const waitOk = async (s, tok) => { await wait(s, tok); return tok === token; };
+async function takeOff() {
+  const tok = ++token; setPressed('man', 'takeoff');
+  if (bird.mode === 'perched' && !bird.track) { setState('flying', 'Take off · climb'); bird.spreadWings(true); if (!(await waitOk(0.5, tok))) return; if (!(await takeoffCircuit(tok))) return; }
+  setState('flying', 'Holding pattern · flap and glide'); loiter(tok);
+}
+async function landNow() {
+  const tok = ++token; setPressed('man', 'land');
+  if (bird.mode === 'perched' && !bird.track) return;
+  setState('flying', 'Approach · flare · perch'); if (!(await landFromHere(tok))) return;
+  setState('perched', 'Perched · folded · scanning');
+}
+function testStand(mode) {
+  ++token; setPressed('man', mode); loiterOn = false;
+  bird.stop(); bird.object.position.copy(V(0, 1.4, 3)); bird.setHeading(HEAD); bird.hover(mode);
+  setState('stand', { fly: 'Test stand · flapping', glide: 'Test stand · gliding', soar: 'Test stand · soaring' }[mode]);
+}
+function toggleFold() {
+  if (state !== 'perched' || bird.track) return; ++token; setPressed('man', 'fold');
+  const open = bird.target.fold < 0.5; bird.spreadWings(!open); setState('perched', open ? 'Folding' : 'Mantling · wings out');
+}
+
+// ---------- controls ----------
+function setPressed(groupId, val) { document.querySelectorAll('#' + groupId + ' button').forEach(b => b.setAttribute('aria-pressed', String((b.dataset.m || b.dataset.s || b.dataset.v || b.dataset.c) === String(val)))); }
+function syncButtons() {
+  const perched = state === 'perched' && !bird.track;
+  $('#mLand').disabled = perched; $('#mFold').disabled = !perched; $('#mTake').disabled = state === 'flying' && loiterOn;
+}
+$('#man').addEventListener('click', e => { const b = e.target.closest('button'); if (!b || b.disabled) return; const m = b.dataset.m;
+  if (m === 'loop') fullLoop(); else if (m === 'takeoff') takeOff(); else if (m === 'land') landNow(); else if (m === 'fold') toggleFold(); else testStand(m); });
+const LOOK = { hawkEagle: 'Mountain Hawk-Eagle', serpentEagle: 'Crested Serpent Eagle', airframe: 'Bare airframe' };
+$('#skin').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; const s = b.dataset.s;
+  bird.setLivery(s); bird.object.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } }); setPressed('skin', s);
+  $('#xray').disabled = s === 'airframe'; if (s === 'airframe' && bird.xray) { bird.setXray(false); $('#xray').setAttribute('aria-pressed', 'false'); }
+  $('#badge').textContent = LOOK[s] + (bird.xray ? ' · x-ray' : ''); });
+$('#xray').addEventListener('click', () => { const on = !bird.xray; bird.setXray(on); bird.object.traverse(o => { if (o.isMesh) o.castShadow = !o.material.length || !o.material[0].transparent; }); $('#xray').setAttribute('aria-pressed', String(on)); $('#badge').textContent = LOOK[bird.livery] + (on ? ' · x-ray' : ''); });
+let speed = 1; $('#speed').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; speed = +b.dataset.v; setPressed('speed', b.dataset.v); });
+let camMode = 'follow'; $('#camseg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; camMode = b.dataset.c; setPressed('camseg', camMode); });
+
+// ---------- camera: follows the bird and keeps the angle you drag to ----------
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.dampingFactor = 0.08; controls.minDistance = 0.8; controls.maxDistance = 60; controls.maxPolarAngle = Math.PI * 0.53;
+camera.position.copy(PERCH).add(new THREE.Vector3(1.9, 0.55, 2.1)); controls.target.copy(PERCH).add(new THREE.Vector3(0, 0.3, 0)); controls.update();
+const _t = new THREE.Vector3(), _d = new THREE.Vector3(), _prev = new THREE.Vector3().copy(bird.object.position);
+function followCam(dt) {
+  if (camMode !== 'follow') return;
+  const p = bird.object.position, flying = !!bird.track || state === 'stand' || bird.mode !== 'perched';
+  _t.copy(p).add(new THREE.Vector3(0, flying ? 0 : 0.05, 0));
+  _d.subVectors(_t, controls.target).multiplyScalar(1 - Math.exp(-(flying ? 5 : 3) * dt));
+  controls.target.add(_d); camera.position.add(_d);
+  const want = state === 'stand' ? 3.2 : flying ? 9 : 2.7, off = camera.position.clone().sub(controls.target), len = off.length();
+  off.setLength(len + (want - len) * (1 - Math.exp(-1.6 * dt))); camera.position.copy(controls.target).add(off);
+  camera.position.y = Math.max(camera.position.y, 0.6);
+}
+
+// ---------- HUD ----------
+const hz = $('#hHz'), fold = $('#hFold'), spd = $('#hSpd'), alt = $('#hAlt');
+let hudT = 0;
+function hud(dt) {
+  hudT += dt; if (hudT < 0.12) return; const v = bird.object.position.distanceTo(_prev) / hudT; _prev.copy(bird.object.position); hudT = 0;
+  hz.textContent = bird.flapAmp > 0.05 ? bird.flapHz.toFixed(1) + ' Hz' : bird.mode === 'perched' ? 'motor off' : 'gliding';
+  fold.textContent = Math.round(bird.pose.fold * 100) + ' %';
+  spd.textContent = (state === 'stand' ? (bird.mode === 'fly' ? 11 : 10) : v).toFixed(1) + ' m/s' + (state === 'stand' ? ' (stand)' : '');
+  alt.textContent = (bird.object.position.y - bird.perchOffset - PERCH.y >= 0 ? '+' : '') + (bird.object.position.y - bird.perchOffset - PERCH.y).toFixed(1) + ' m';
+}
+
+// ---------- loop ----------
+function resize() { const w = stage.clientWidth, h = stage.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+new ResizeObserver(resize).observe(stage); resize();
+let last = performance.now(), visible = true;
+document.addEventListener('visibilitychange', () => { visible = !document.hidden; last = performance.now(); });
+function frame(now) {
+  requestAnimationFrame(frame); if (!visible) return;
+  const raw = Math.min(0.1, (now - last) / 1000); last = now; const dt = raw * speed; simTime += dt;
+  for (let i = waits.length - 1; i >= 0; i--) if (simTime >= waits[i].t) { const w = waits.splice(i, 1)[0]; w.res(); }
+  bird.speedScale = 1; bird.update(dt);
+  sun.target.position.copy(bird.object.position); sun.position.copy(bird.object.position).add(new THREE.Vector3(-30, 22, 18));
+  followCam(raw); controls.update(); hud(raw); syncButtons();
+  renderer.render(scene, camera);
+}
+requestAnimationFrame(frame);
+setState('perched', 'Perched · folded · scanning');
+if (!RM) fullLoop(); else setPressed('man', '');
+})();
+</script>
