@@ -109,17 +109,40 @@ def consistent_faces(face: list, names: list, *, min_cos: float = 0.30, log=prin
     return kept, dropped
 
 
+def person_box_for_face(boxes, face_box, min_inside: float = 0.8):
+    """The person box that contains the face: at least ``min_inside`` of the face box's area inside it;
+    the tightest such box if several do (overlapping people). None if no person box contains it."""
+    fx0, fy0, fx1, fy1 = (float(v) for v in face_box[:4])
+    area = max((fx1 - fx0) * (fy1 - fy0), 1e-9)
+    best, best_area = None, None
+    for b in boxes:
+        x0, y0, x1, y1 = (float(v) for v in b[:4])
+        iw, ih = max(0.0, min(fx1, x1) - max(fx0, x0)), max(0.0, min(fy1, y1) - max(fy0, y0))
+        if iw * ih / area < min_inside:
+            continue
+        a = (x1 - x0) * (y1 - y0)
+        if best is None or a < best_area:
+            best, best_area = b, a
+    return best
+
+
 def enroll(images, description: str, embedders, detect_persons, *, min_face_px: float = 40.0,
            consistency: float = 0.30, log=print) -> TargetProfile:
-    """images: iterable of (name, RGB array or None). Returns the profile (not saved)."""
+    """images: iterable of (name, RGB array or None). Returns the profile (not saved).
+
+    Appearance (CLIP image / OSNet) comes only from the person box that contains the photo's kept face, so
+    a group photo never enrolls a bystander's clothes; photos without a kept face add no person crop.
+    Without a face model the largest person is used. Person-less photos (clothing) are embedded whole."""
     face, face_names, clip_img, osnet, skipped = [], [], [], [], []
+    appearance = []                       # (photo name, {"clip": ..., "osnet": ...}) from person crops
     for name, rgb in images:
         if rgb is None:
             log(f"SKIP   {name}: not a readable image")
             skipped.append((name, "unreadable"))
             continue
+        face_box = None
         if embedders.face is not None:
-            faces = embedders.face.faces(rgb)
+            faces = embedders.face.faces(rgb, with_boxes=True)
             usable = [f for f in faces if f[1] >= min_face_px]
             if not usable:
                 why = "no face found" if not faces else f"largest face {faces[0][1]:.0f} px < {min_face_px:.0f} px"
@@ -130,25 +153,45 @@ def enroll(images, description: str, embedders, detect_persons, *, min_face_px: 
                     log(f"WARN   {name}: {len(usable)} faces, using the largest - check it is the right person")
                 face.append(usable[0][0])
                 face_names.append(name)
+                face_box = usable[0][3]
                 log(f"FACE   {name}: {usable[0][1]:.0f} px wide, det {usable[0][2]:.2f}")
         boxes = detect_persons(rgb) if detect_persons else []
         if boxes:
-            if len(boxes) > 1:
-                log(f"WARN   {name}: {len(boxes)} people, using the largest - check it is the right person")
-            crop = crop_box(rgb, boxes[0])
+            if embedders.face is None:
+                if len(boxes) > 1:
+                    log(f"WARN   {name}: {len(boxes)} people, no face model: using the largest - check it")
+                box = boxes[0]
+            elif face_box is None:
+                log(f"NOCROP {name}: no kept face, so no person crop (appearance skipped)")
+                continue
+            else:
+                box = person_box_for_face(boxes, face_box)
+                if box is None:
+                    log(f"NOCROP {name}: the kept face is in none of the {len(boxes)} person box(es) "
+                        "(appearance skipped)")
+                    continue
+            crop = crop_box(rgb, box)
             e = {}
             if embedders.clip is not None:
                 e["clip"] = embedders.clip.image_embedding(crop)
             if embedders.osnet is not None:
                 e["osnet"] = embedders.osnet(crop)
-            clip_img += [e["clip"]] if "clip" in e else []
-            osnet += [e["osnet"]] if "osnet" in e else []
-            log(f"PERSON {name}: crop {crop.shape[1]}x{crop.shape[0]} -> " + (", ".join(e) or "no appearance model"))
+            appearance.append((name, e))
+            which = f" (the one with the face, of {len(boxes)})" if len(boxes) > 1 else ""
+            log(f"PERSON {name}: crop {crop.shape[1]}x{crop.shape[0]}{which} -> "
+                + (", ".join(e) or "no appearance model"))
         elif embedders.clip is not None:
             clip_img.append(embedders.clip.image_embedding(rgb))
             log(f"ITEM   {name}: no person found, whole photo embedded with CLIP only (clothing/item photo)")
     face, dropped = consistent_faces(face, face_names, min_cos=consistency, log=log)
     skipped += [(n, f"face does not match the other photos (cos {c:.2f})") for n, c in dropped]
+    outliers = {n for n, _ in dropped}
+    for n, e in appearance:               # a crop located by a face that turned out not to be the target: drop it
+        if n in outliers:
+            log(f"NOCROP {n}: face was an outlier, its person crop is dropped too")
+            continue
+        clip_img += [e["clip"]] if "clip" in e else []
+        osnet += [e["osnet"]] if "osnet" in e else []
     prompts = description_prompts(description)
     text = np.zeros((0, 512), np.float32)
     if prompts and embedders.clip is not None:

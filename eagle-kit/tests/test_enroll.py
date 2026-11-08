@@ -21,10 +21,13 @@ class FakeFace:
     def __init__(self, vec):
         self.vec = vec
 
-    def faces(self, rgb):
+    BOX = np.array([40.0, 20.0, 80.0, 60.0])       # inside the fake person box [10, 10, 110, 190]
+
+    def faces(self, rgb, with_boxes=False):
         k = int(rgb[0, 0, 0])
-        return {1: [(self.vec, 60.0, 0.9)], 2: [(self.vec, 20.0, 0.8)],
-                3: [(self.vec, 80.0, 0.9), (l2n(np.ones(512))[0], 50.0, 0.7)]}.get(k, [])
+        out = {1: [(self.vec, 60.0, 0.9)], 2: [(self.vec, 20.0, 0.8)],
+               3: [(self.vec, 80.0, 0.9), (l2n(np.ones(512))[0], 50.0, 0.7)]}.get(k, [])
+        return [f + (self.BOX,) for f in out] if with_boxes else out
 
 
 class FakeClip:
@@ -62,11 +65,13 @@ def test_enroll_logs_and_skips_photos_without_usable_face(en):
     prof = en.enroll([("face.jpg", img(1)), ("far.jpg", img(2)), ("group.jpg", img(3)), ("jacket.jpg", img(0)),
                       ("broken.jpg", None)], "red jacket, jeans", emb, persons, min_face_px=40, log=logs.append)
     n = prof.counts()
-    assert n == {"face": 2, "clip_image": 4, "clip_text": 3, "osnet": 3}
+    # far.jpg has a person but no kept face (20 px < 40 px): no person crop, so 3 CLIP (face, group, jacket)
+    assert n == {"face": 2, "clip_image": 3, "clip_text": 3, "osnet": 2}
     joined = "\n".join(logs)
     assert "NOFACE far.jpg: largest face 20 px < 40 px" in joined
     assert "NOFACE jacket.jpg: no face found" in joined and "SKIP   broken.jpg" in joined
     assert "WARN   group.jpg: 2 faces" in joined and "ITEM   jacket.jpg" in joined
+    assert "NOCROP far.jpg: no kept face" in joined
     assert len(clip.texts) == 3 and prof.description == "red jacket, jeans"
     assert {s[0] for s in prof.meta["skipped"]} == {"far.jpg", "jacket.jpg", "broken.jpg"}
     # the enrolled face verifies at runtime with the same (fake) model
@@ -121,3 +126,55 @@ def test_read_images_skips_duplicate_files(en, tmp_path):
     names = [n for n, _ in en.read_images(tmp_path)]
     assert names == ["IMG_1 (1).jpg", "IMG_2.png"] or names == ["IMG_1.jpg", "IMG_2.png"]
     assert len(names) == 2
+
+
+def test_person_box_for_face(en):
+    boxes = [[0, 0, 400, 600], [300, 50, 500, 600], [320, 60, 420, 300]]
+    face = [340, 80, 380, 120]
+    assert en.person_box_for_face(boxes, face) == [320, 60, 420, 300]        # tightest box holding the face
+    assert en.person_box_for_face(boxes, [450, 10, 520, 40]) is None          # mostly outside every box
+    assert en.person_box_for_face([[0, 0, 100, 100]], [90, 10, 110, 30]) is None   # only half inside (< 80 %)
+
+
+def test_appearance_only_from_the_target_persons_box(en):
+    """Group photo: the crop comes from the box holding the kept face, not the largest person; a photo whose
+    face is in no box, or whose face is an outlier, adds no CLIP/OSNet."""
+    rng = np.random.default_rng(3)
+    target = l2n(rng.normal(size=512))[0]
+    stranger = l2n(rng.normal(size=512))[0]
+
+    class Face:
+        # first pixel: 1 target face at x 300-340 (inside the small right-hand person only),
+        # 2 target face outside every person box, 3 a stranger's face (an outlier among the target's)
+        def faces(self, rgb, with_boxes=False):
+            k = int(rgb[0, 0, 0])
+            f = {1: (target, 40.0, 0.9, np.array([300.0, 40, 340, 80])),
+                 2: (target, 40.0, 0.9, np.array([560.0, 10, 600, 50])),
+                 3: (stranger, 40.0, 0.9, np.array([300.0, 40, 340, 80])),
+                 4: (target, 40.0, 0.9, np.array([300.0, 40, 340, 80]))}.get(k)
+            return [f if with_boxes else f[:3]] if f is not None else []
+
+    crops = []
+
+    class Clip:
+        def image_embedding(self, crop):
+            crops.append(crop.shape[:2])
+            return l2n(np.full(512, 1.0) + crop.shape[1])[0]
+
+    def persons(rgb):                    # largest first: a big bystander on the left, the target on the right
+        return [[0, 0, 280, 400], [290, 20, 400, 400]]
+
+    def img(k):
+        a = np.zeros((400, 620, 3), np.uint8)
+        a[0, 0, 0] = k
+        return a
+    logs = []
+    prof = en.enroll([("group.jpg", img(1)), ("nobox.jpg", img(2)), ("other.jpg", img(3)), ("again.jpg", img(4))],
+                     "", Embedders(clip=Clip(), osnet=None, face=Face()), persons, min_face_px=30,
+                     consistency=0.50, log=logs.append)       # 4 faces: the mean includes the stranger
+    joined = "\n".join(logs)
+    assert crops[0][1] < 150                     # the right-hand target box (110 px + padding), not the 280 px bystander
+    assert "NOCROP nobox.jpg: the kept face is in none of the 2 person box(es)" in joined
+    assert "OUTLIER other.jpg" in joined and "NOCROP other.jpg: face was an outlier" in joined
+    assert prof.counts()["face"] == 3            # group, nobox (face kept, crop skipped), again; stranger dropped
+    assert prof.counts()["clip_image"] == 2 and len(crops) == 3     # crops: group, other (later dropped), again

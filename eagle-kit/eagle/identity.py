@@ -276,10 +276,13 @@ class FaceEmbedder:
         obs.embedding = l2n(f.embedding)[0]
         return obs.embedding
 
-    def faces(self, rgb) -> list:
-        """-> [(normed 512-d embedding, face width px, det score)], largest face first."""
+    def faces(self, rgb, with_boxes: bool = False) -> list:
+        """-> [(normed 512-d embedding, face width px, det score)], largest face first; with ``with_boxes``
+        each tuple also carries the face box (x1, y1, x2, y2) in ``rgb`` pixels."""
         img = self.prepare(rgb)[0]
         obs = sorted(self.detect(img, prepared=True), key=lambda o: -o.width)
+        if with_boxes:
+            return [(self.embed(img, o, prepared=True), o.width, o.det_score, np.asarray(o.bbox, float)) for o in obs]
         return [(self.embed(img, o, prepared=True), o.width, o.det_score) for o in obs]
 
 
