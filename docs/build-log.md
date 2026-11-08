@@ -4,6 +4,43 @@ Every build gets an entry here: what we built, why, how it works, what we decide
 
 ---
 
+## 2026-11-07 · Transmit decision v1: what to send and how it gets home
+
+**Files:** [`eagle-kit/eagle/fennec.py`](../eagle-kit/eagle/fennec.py), [`eagle-kit/eagle/iridium.py`](../eagle-kit/eagle/iridium.py), [`eagle-kit/eagle/decide.py`](../eagle-kit/eagle/decide.py), [`eagle-kit/eagle/nest.py`](../eagle-kit/eagle/nest.py), [`eagle-kit/apps/eagle_runtime.py`](../eagle-kit/apps/eagle_runtime.py) · **Docs:** [pi-runtime.md](pi-runtime.md#what-it-sends-and-how-it-gets-home)
+
+### What
+After the gate decides, the Eagle now chooses what to say (FIX, BEARING, one MOVED, COMPROMISED; nothing otherwise), packs it into the team's 64-bit Fennec Fix, seals it to 15 bytes with AES-128-CCM, and sends it by the first path that closes for its mode: a burst to the Nest, a whisper to a relay overhead, Iridium SBD, or a courier carry. The Nest decodes it next to the 48-byte FIX and LIFE frames and crosses two Eagles' bearings.
+
+### Why
+The gate said when; the report still carried 48 bytes and one way home. The relay design asks for the least information that lets the base act, sealed, sent once, from a place and by a path that does not give the person away.
+
+### How it works
+- `eagle/fennec.py`: the reference `pack64` / `unpack64` / `seal` / `open_packet`, bit for bit, plus BEARING, a mission (key, id, reference point, start), a persisted 16-bit counter and the Nest's replay window.
+- `DecisionEngine.compose`: cue from the modalities, gate level from P, state bits (moving, briefed pattern, injured, face verified), 95 % radius = 2.45 x (track (+) the Eagle's own position error); a fix worse than 430 m or a bearing candidate becomes a BEARING.
+- `DecisionEngine.plan_path`: strict nest > whisper > courier; default nest > whisper > Iridium > courier; training nest > Iridium. `mission.contested` holds every report until the Eagle has hopped.
+- Runtime: seal once, two identical bursts, Iridium with MO status, courier hold, COMPROMISED once then wipe the key file and go silent; STATUS every 15 min in training only.
+
+### Key results (modelled)
+- **15 bytes on air:** 46.3 ms at SF7/125 kHz, 23.2 ms at SF7/250 kHz (48-byte FIX: 97.5 / 48.8 ms); one Iridium credit.
+- **Night scene end to end:** one 15-byte report, two identical bursts, the Nest keeps one; position within 2 m of the scene's (2.5 m steps), 95 % radius class 25 m, cue "several sensors", gate level P >= 0.99, state "pattern matched, injured".
+- **Two Eagles 800 m apart:** their BEARINGs cross within 10 m of the person at the Nest.
+
+### Decisions and trade-offs
+| Decision | Why | Cost |
+|---|---|---|
+| Fennec Fix as the default, 48-byte FIX kept | Least information, a third of the airtime; the modem forwards any frame | Every Eagle and the Nest share the `fennec` block |
+| Tangent-plane offsets, not UTM | Same conversion at both ends with the kit's own geodesy, no pyproj | Must never be mixed with a UTM decoder |
+| MOVED only for movement, once | The design's rule; a better identity is not worth another emission | The base learns of a later face match only from the field |
+| No ACK | The Nest stays silent; two bursts lift delivery to 99 % if one lands 90 % (modelled) | No proof of delivery except over Iridium |
+
+### Verification
+346 tests pass, 4 skip (67 new). The codec matches the design's reference code on 300 random reports; every flipped byte fails the tag; the runtime's night scene reaches the Nest over UDP and decodes; courier, COMPROMISED and Iridium paths tested with flag files and a scripted modem.
+
+### Open issues / next
+Not on hardware yet. Mission keys need a loading procedure; flags stand in for the autopilot (relocate, courier, relay on station); the Nest ACK is still the team's call.
+
+---
+
 ## 2026-11-07 · Pi runtime v1: on-board decision gate and thermal model on Hailo or CPU
 
 **Files:** [`eagle-kit/apps/eagle_runtime.py`](../eagle-kit/apps/eagle_runtime.py), [`eagle-kit/eagle/decide.py`](../eagle-kit/eagle/decide.py), [`eagle-kit/eagle/infer.py`](../eagle-kit/eagle/infer.py), [`eagle-kit/eagle/scenes.py`](../eagle-kit/eagle/scenes.py), [`eagle-kit/apps/replay_decisions.py`](../eagle-kit/apps/replay_decisions.py), [`eagle-kit/apps/export_thermal_calib.py`](../eagle-kit/apps/export_thermal_calib.py), [`pi/field/eagle-runtime.service`](../pi/field/eagle-runtime.service), [`pi/field/run_runtime.sh`](../pi/field/run_runtime.sh), [`pi/field/use_runtime.sh`](../pi/field/use_runtime.sh) · **Docs:** [pi-runtime.md](pi-runtime.md)

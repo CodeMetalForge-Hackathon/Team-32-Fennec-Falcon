@@ -15,7 +15,7 @@ apps/      eagle_node.py  nest_station.py  sim_demo.py  keygen.py  life_demo.py 
 eagle/     doa detect locate geo cot protocol airtime link sim pipeline node nest config audio_io
            camgeo thermal vitals sounds rfscan vision fusion lifesim   (signs of life, section 9)
            identity                                                     (section 10)
-           decide infer scenes                                           (section 11)
+           decide infer scenes fennec iridium                            (section 11)
 firmware/  eagle_radio/ (silent serial LoRa modem)   tag/ (the person's pellet tag)   radar_bridge/   mr60bha2_vitals/
 config/    example.yaml (all settings + array presets)      tests/ (pytest, 249 tests)
 ```
@@ -368,7 +368,8 @@ same sensors as `life_node.py`, adds the thermal person model (`eagle/infer.py`:
 onnxruntime or OpenCV on the CPU) and replaces the LIFE burst every 30 s with a decision engine
 (`eagle/decide.py`): P(him) per track from likelihood ratios, then SEND only with P >= 0.95 (strict
 0.99), the briefed-code rule or two sensor modalities, and nobody unknown within the burst's intercept
-radius. One FIX, two bursts of the same frame, then silence.
+radius. Then one 15-byte Fennec Fix (`eagle/fennec.py`: what, where to 2.5 m, how sure, when; AES-128-CCM),
+two bursts of the same frame by the safest path that closes (Nest, relay, Iridium, courier), then silence.
 
 ```bash
 python apps/eagle_runtime.py --sim night --transport udp      # with nest_station.py --transport udp --print-cot

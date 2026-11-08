@@ -1,6 +1,6 @@
 # Pi runtime: the on-board model and the decision to transmit
 
-Technical reference for `eagle-kit/apps/eagle_runtime.py`, `eagle-kit/eagle/decide.py` and `eagle-kit/eagle/infer.py`: the one process that runs on the Eagle's Raspberry Pi 5 with the Hailo AI HAT+, finds the person, decides on board when it is sure, and only then sends one sealed report.
+Technical reference for `eagle-kit/apps/eagle_runtime.py`, `eagle-kit/eagle/decide.py`, `eagle-kit/eagle/fennec.py` and `eagle-kit/eagle/infer.py`: the one process that runs on the Eagle's Raspberry Pi 5 with the Hailo AI HAT+, finds the person, decides on board when it is sure, and only then sends one sealed 15-byte report home by the safest path that closes.
 
 Every number here is labelled **modelled** (from a formula or the simulator), **assumed** (a starting value we chose) or **measured** (on this hardware). Nothing in this document has been measured on the Pi or in the field yet.
 
@@ -19,10 +19,15 @@ Every number here is labelled **modelled** (from a formula or the simulator), **
      decision engine (eagle/decide.py): P(him) per track, gates, EMCON
          WATCH ──> HOLD (+ REQUEST_RELOCATE) ──> SEND ──> REPORTED
                                    ▼
-     FIX 48 B, AES-256-GCM, lowest power that reaches the Nest,
-     two bursts of the same frame 30-120 s apart, then silence
+     what to say: FIX | BEARING | MOVED (once) | COMPROMISED, least information
                                    ▼
-            LoRa modem ──> Nest ──> Cursor on Target ──> ATAK
+     Fennec Fix: 64 bits, AES-128-CCM, 15 bytes (eagle/fennec.py)
+                                   ▼
+     which way: Nest burst (line of sight) | whisper to a relay overhead |
+                Iridium SBD (confirmed) | courier (hold, fly it out)
+     two bursts of the same frame 30-120 s apart at the lowest power, then silence
+                                   ▼
+            LoRa modem / RockBLOCK ──> Nest ──> Cursor on Target ──> ATAK
 ```
 
 On the field Pi it runs as `eagle-runtime.service` (`pi/field/run_runtime.sh`, recording toggled by the field page like `run_life.sh`) in place of `eagle-life.service`, next to Alex's `eagle-vision` (the camera on the Hailo), `eagle-nest`, `eagle-dashboard` and `eagle-hotspot` services (`pi/field/`). The runtime subclasses `apps/life_node.py`'s `LifeNode`: every sensor driver, the recorder (`--record`, `eagle/record.py`) and `--require` are reused unchanged; the LIFE broadcast every 30 s is replaced by the decision gate.
@@ -117,6 +122,62 @@ End to end over UDP (`tests/test_runtime.py`): the Nest decrypts the 48-byte FIX
 
 **False reports from the code rule (modelled).** If the code detector false-alarms lam times an hour, independently and on random bearings, the rule fires falsely about lam^3 T^2 / 2 x (20/360)^2 times an hour (T = 3 min): one per 1,350 days at lam = 2/h, 50 days at 6/h, 32 h at 20/h (`decide.false_report_rate_per_h`). Halving the detector's false alarms cuts false reports eight-fold. Real false alarms cluster (a bird repeating a call), so measure lam on night forest recordings.
 
+## What it sends, and how it gets home
+
+Once the gate decides, the Eagle sends one report per person: the team's **Fennec Fix**, 64 bits of meaning sealed to 15 bytes with AES-128-CCM (`eagle/fennec.py`, bit-exact with the relay design's reference `fennec_fix.py`). On air that is 46.3 ms at SF7/125 kHz and 23.2 ms at the kit's SF7/250 kHz, against 97.5 / 48.8 ms for the kit's 48-byte FIX, and one Iridium credit (all **modelled**, `eagle/airtime.py`). `decide.report.format: fix48` keeps the 48-byte FIX.
+
+### The final decision, in order
+
+1. **Is it him?** P(him) per track (above).
+2. **May it break silence?** P, corroboration, dwell, fix (above). No: nothing is sent.
+3. **From where?** Unknown people inside the burst's intercept radius, a briefed threat inside it, or `mission.contested: true` → HOLD and REQUEST_RELOCATE (hop 2+ km). Default mode sends an injured person's report after 15 min anyway; strict never sends from the perch it listened from.
+4. **What?** The least that lets the base act (next table).
+5. **Which way?** The first path in the mode's order that closes (paths table).
+6. **How?** Seal once; two identical bursts 30-120 s apart at the lowest power that closes (optionally the second on another channel, `report.second_burst_mhz`), or one Iridium session that confirms delivery, or hold it for the courier.
+7. **After.** The subject is REPORTED. One MOVED if he moves past max(100 m, 2 x the 95 % radius); nothing else re-sends. Strict mode wipes the fix from memory.
+
+### What it says: the least information that lets the base act
+
+| Situation | Message | Contents |
+|---|---|---|
+| Nothing passed the gate | nothing | no emission at all, no heartbeat |
+| A track passed and its 95 % radius is <= 430 m | FIX | where (2.5 m steps from the mission reference), 95 % radius class, cue, gate level, state, minutes |
+| Heard, not seen (bearing candidate), or the fix is worse than 430 m | BEARING | the Eagle's own position, compass azimuth, elevation (+45 deg = not measured), minutes; the Nest crosses two |
+| He moved past max(100 m, 2 x the 95 % radius) | MOVED | as FIX; once in default mode, never in strict |
+| Tamper or capture (`~/eagle/compromised` exists) | COMPROMISED | the Eagle's position; then the key file is wiped and the radio stays silent |
+| Training, every 15 min, UDP bench only | STATUS | the Eagle's position, best gate level, number of tracks |
+| `--sim` or training | TEST | as FIX, marked as an exercise (CoT `how="m-s"`) |
+
+Left out on purpose: audio, thermal frames and images; scores and evidence; track numbers; the target profile and match scores (one "face verified" bit instead); the Eagle's own position in a FIX; heading, altitude, battery and names.
+
+| Bits | Field | Encoding |
+|---|---|---|
+| 63-61 | type | FIX 0, BEARING 1, MOVED 2, STATUS 3, COMPROMISED 4, TEST 5 |
+| 60-45 | east | signed 2.5 m steps from the mission reference point, +-81.9 km |
+| 44-29 | north | same |
+| 28-25 | 95 % radius | 5 m x 1.5^k, 5 m to 2.2 km; 2.45 x (track 1-sigma (+) the Eagle's own 10 m, **assumed**) |
+| 24-22 | cue | briefed pattern, other sound, thermal, radio bearing, visual answer, several sensors |
+| 21-20 | gate level | 0 below the gate, 1 P >= 0.95, 2 P >= 0.99, 3 P >= 0.999 |
+| 19-16 | state | moving, briefed pattern matched, injured (briefed status), face verified |
+| 15-0 | time | minutes since `fennec.mission_start`, 45.5 days |
+
+BEARING keeps type, east and north (the Eagle's own) in place and packs azimuth (9 bits, 0.7 deg), elevation (7 bits, +-45 deg) and time (13 bits, 5.7 days).
+
+**Sealing.** Header (3 bytes: version 01, Eagle id 0-63, 16-bit counter) + 8 encrypted bytes + 4-byte tag. The 13-byte nonce is mission id + Eagle id + counter + zeros; the header is authenticated too. The counter is persisted (`~/.eagle/fennec-<mission>-<id>.json`) and never wraps: at 65,535 reports the Eagle refuses to seal until a new mission key is loaded. The Nest checks the tag, drops counters it has seen from that Eagle (so the second burst adds nothing), and plots a marker with CoT `ce` = the 95 % radius. One AES-128 key per mission (`fennec.key_file`); the key in `example.yaml` is a public test key, refused on a real radio. A report that cannot be sealed (for example `fennec.mission_start` more than 45 days back) goes out as the 48-byte FIX instead of not at all.
+
+**Offsets.** East/north in a tangent plane around `fennec.mission_ref`, the same `eagle/geo.py` conversion at the Eagle and the Nest. The design names UTM; both work as long as both ends convert the same way, and this needs no pyproj. Every Eagle and the Nest must share the same `fennec` block.
+
+### Which way home
+
+| Path | Closes when | Power / cost | Proof it landed | Order (strict / default / training) |
+|---|---|---|---|---|
+| Nest burst | a Nest BEACON was heard (line of sight), or `paths.nest_los: true`; unknown = blind burst at the modelled power when nothing else closes | path loss + margin, two bursts | none (no ACK) | 1 / 1 / 1 |
+| Whisper | a relay eagle is on station (`~/eagle/relay_overhead`) | -9 dBm radio, -29 dBm at the antenna through a 20 dB pad | none | 2 / 2 / - |
+| Iridium SBD | a RockBLOCK 9603N is configured (`paths.iridium`) | one session, one credit | MO status 0-2 = reached the gateway | - / 3 / 2 |
+| Courier | the airframe can carry it (`paths.courier`) | nothing on air over land; one burst at the Nest (`~/eagle/at_nest`) | at the Nest | 3 / 4 / - |
+
+Strict mode never uses Iridium, keeping the L band quiet too. With line of sight unknown, a configured Iridium modem goes first because it confirms delivery.
+
 ## How to run it
 
 On the Pi, from the repository, after Alex's field install (`pi/field/install.sh`, README section 10):
@@ -186,13 +247,14 @@ Left alone on purpose, to avoid conflicts with work in flight:
 - **The runtime subclasses `LifeNode`** instead of editing it: every sensor driver, the recorder and `--require` are reused, and work on `life_node.py` does not conflict. The cost: a change inside `LifeNode.step` or `step_thermal` must be mirrored in `EagleRuntime` (done for `--record`, `--require` and the recording toggle, Alex's commits a9d4945, c6c3f73 and 4fbee88).
 - **One life-list update per sensor.** In one batch, a heat blob and a sound from the same person start two tracks (the life list gives each track one detection per batch, and both kinds may start tracks), so evidence splits. The runtime updates per sensor, and the engine folds a track born within 1.5 m of a live one into it.
 - **Stillness from track history, not the life list's filter.** The filter is tuned for people who barely move, so a walker spawns new tracks; walkers never build evidence, which is what the gate wants.
-- **48-byte FIX unchanged.** The Nest, the firmware and the replay window work today. A shorter packet is a protocol change for the Nest and the firmware, not for the gate.
+- **The 15-byte Fennec Fix is the default; the 48-byte FIX stays.** The LoRa modem firmware forwards any frame, so only the Nest needed a decoder (`eagle/nest.py`). Fennec frames start 0x40-0x7F, the kit's frames 0x01-0x05, so both coexist on one channel.
 - **Identity only raises P** (LR >= 1), matching `eagle/fusion.py`'s rule that identity never suppresses a human.
 - **One status page.** Decisions go into the recording's `events.jsonl` as `decision` events and Alex's field page (`pi/field/dashboard.py`, port 8080) shows them at the top of its Verdict card; the runtime keeps writing `life_list` events so the rest of the card still works. The page's Record and Site buttons restart whichever detection service is enabled (`node_unit()`), so they never swap the runtime back to life_node.
 
 ## Verification
 
-- `python -m pytest -q` in `eagle-kit/`: 320 passed, 4 skipped, on top of `sar-integration` at 4fbee88. 41 tests are new (`test_decide.py` 24, `test_infer.py` 7, `test_runtime.py` 10). The 4 skips need pyroomacoustics, pymap3d or a YAMNet file.
+- `python -m pytest -q` in `eagle-kit/`: 346 passed, 4 skipped, on top of `sar-integration` at 4fbee88. 67 tests are new (`test_decide.py` 24, `test_fennec.py` 25, `test_infer.py` 7, `test_runtime.py` 11). The 4 skips need pyroomacoustics, pymap3d or a YAMNet file.
+- `test_fennec.py` embeds the relay design's reference code and checks the codec against it bit for bit (300 random reports), plus tamper rejection of every byte, BEARING round trips, the persisted counter, the Nest's replay window, message composition, the path order in every mode, contested ground, the RockBLOCK AT sequence (scripted modem), the courier hold, COMPROMISED (one report, key file wiped, silent after) and two Eagles' bearings crossing at the Nest.
 - `test_decide.py` reproduces simulator v2 (code: TRANSMIT after the code; coughs: 80 min; unconscious: never at P 0.92) and checks every gate, EMCON, modes, re-send, budget, bearing-only, duplicate tracks and inheritance after occlusion.
 - `test_infer.py`: both decoders on synthetic tensors, the real ONNX model on onnxruntime and OpenCV (agree to 1e-2), Hailo-to-CPU fallback.
 - `test_runtime.py`: the night scene over UDP to the Nest, two identical bursts, the second dropped as a replay; training mutes a real radio; test keys refused; thermal model scoring; record then replay gives the same SEND, and `decide.lr.code=10` gives none; a life_node recording replays; thermal frames export as calibration images; the dashboard shows the gate.
@@ -202,6 +264,8 @@ Left alone on purpose, to avoid conflicts with work in flight:
 - Nothing of this has run on the Pi, the Hailo, the HT-203U or the XVF3800. First run: the bring-up list above.
 - Every LR is assumed. Calibrate with recordings and `replay_decisions.py`.
 - The thermal model needs perch-view fine-tuning data, then a HEF (`compile_thermal_hef.sh` is unverified).
-- Relocation is a flag file; the autopilot hook (MAVLink) is not written.
+- Relocation, relay-on-station and courier arrival are flag files; the autopilot hook (MAVLink) is not written.
+- No ACK from the Nest (the relay design leaves it open): two bursts instead, and Iridium when delivery must be confirmed.
+- The RockBLOCK driver follows Iridium's AT command reference but has only run against a scripted modem.
 - The intercept radius uses the kit's log-distance model with no terrain; `site.dem` is not used for it yet.
 - Briefed-code events carry no detector confidence yet, so the code rule's 0.9 mean-confidence test is skipped until `step_audio` passes one.

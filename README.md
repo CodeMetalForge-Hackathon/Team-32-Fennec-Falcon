@@ -151,7 +151,7 @@ Same place and perch. He is injured, carries nothing and taps the briefed code; 
 | Mission simulator v2 (no tag) | Working: heat and sound, evidence gate, four ways out, search time; 5 presets; scene export to Unreal |
 | Eagle starter kit | v2 in simulation: find loop, encrypted messages, ATAK output, signs of life for up to 10 people; 183 tests pass; not yet on hardware |
 | Thermal camera probe | v1 tested with a simulated camera; not yet run with the HTI imager |
-| Pi runtime + decision gate | v1 in simulation: simulator v2 cases reproduced, FIX end to end to the Nest over UDP; not yet on the Pi or the Hailo |
+| Pi runtime + decision gate | v1 in simulation: simulator v2 cases reproduced; one 15-byte sealed report (Fennec Fix) end to end to the Nest over UDP; paths: Nest, relay whisper, Iridium, courier; not yet on the Pi or the Hailo |
 | Hardware (Eagle, tag, relay) | Not in this repo yet |
 | Field validation | Not started |
 
