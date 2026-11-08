@@ -11,9 +11,11 @@ every hardware choice is in `config/example.yaml`.
 ```
 apps/      eagle_node.py  nest_station.py  sim_demo.py  keygen.py  life_demo.py  life_node.py
            hailo_vision.py  enroll_target.py  fetch_models.py   (section 10)
+           eagle_runtime.py  replay_decisions.py  export_thermal_calib.py   (section 11)
 eagle/     doa detect locate geo cot protocol airtime link sim pipeline node nest config audio_io
            camgeo thermal vitals sounds rfscan vision fusion lifesim   (signs of life, section 9)
            identity                                                     (section 10)
+           decide infer scenes                                           (section 11)
 firmware/  eagle_radio/ (silent serial LoRa modem)   tag/ (the person's pellet tag)   radar_bridge/   mr60bha2_vitals/
 config/    example.yaml (all settings + array presets)      tests/ (pytest, 249 tests)
 ```
@@ -358,6 +360,26 @@ suppresses or delays a track (`tests/test_fusion.py` checks this on random scene
 
 Licences of the fetched weights: `eagle/data/NOTICE.md`. **InsightFace buffalo_l weights are for
 non-commercial research only**; the OSNet weights are trained on MSMT17 (research terms).
+
+## 11. Pi runtime: decide on board, then send once
+
+`apps/eagle_runtime.py` is the field process (with `apps/hailo_vision.py` for the camera). It runs the
+same sensors as `life_node.py`, adds the thermal person model (`eagle/infer.py`: Hailo HEF, else
+onnxruntime or OpenCV on the CPU) and replaces the LIFE burst every 30 s with a decision engine
+(`eagle/decide.py`): P(him) per track from likelihood ratios, then SEND only with P >= 0.95 (strict
+0.99), the briefed-code rule or two sensor modalities, and nobody unknown within the burst's intercept
+radius. One FIX, two bursts of the same frame, then silence.
+
+```bash
+python apps/eagle_runtime.py --sim night --transport udp      # with nest_station.py --transport udp --print-cot
+python apps/eagle_runtime.py --sim crowded --no-radio --speed 0   # night | cough | patrol | unconscious | bearing | crowded
+python apps/eagle_runtime.py --config ../pi/field/field.yaml --mode training --require audio thermal --record
+python apps/replay_decisions.py ~/field_logs/latest --set decide.lr.code=30   # what the gate would have done
+bash ../pi/field/use_runtime.sh                               # field Pi: eagle-runtime.service instead of eagle-life
+```
+
+Settings: `decide:` and `life.thermal.model:` in `config/example.yaml`. Decisions go into the recording's
+`events.jsonl` and the field dashboard (port 8080). Full reference: [`../docs/pi-runtime.md`](../docs/pi-runtime.md).
 
 ## Sources
 

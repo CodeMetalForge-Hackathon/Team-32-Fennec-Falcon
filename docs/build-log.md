@@ -4,6 +4,49 @@ Every build gets an entry here: what we built, why, how it works, what we decide
 
 ---
 
+## 2026-11-07 · Pi runtime v1: on-board decision gate and thermal model on Hailo or CPU
+
+**Files:** [`eagle-kit/apps/eagle_runtime.py`](../eagle-kit/apps/eagle_runtime.py), [`eagle-kit/eagle/decide.py`](../eagle-kit/eagle/decide.py), [`eagle-kit/eagle/infer.py`](../eagle-kit/eagle/infer.py), [`eagle-kit/eagle/scenes.py`](../eagle-kit/eagle/scenes.py), [`eagle-kit/apps/replay_decisions.py`](../eagle-kit/apps/replay_decisions.py), [`eagle-kit/apps/export_thermal_calib.py`](../eagle-kit/apps/export_thermal_calib.py), [`pi/field/eagle-runtime.service`](../pi/field/eagle-runtime.service), [`pi/field/run_runtime.sh`](../pi/field/run_runtime.sh), [`pi/field/use_runtime.sh`](../pi/field/use_runtime.sh) · **Docs:** [pi-runtime.md](pi-runtime.md)
+
+### What
+One process for the Eagle's Pi 5 + Hailo AI HAT+: every sensor of the kit, the thermal person model (Hailo HEF when compiled, else the CPU), the life list, and a decision engine that keeps P(him) per track and transmits nothing until one track passes every gate. Then one 48-byte FIX goes out as two bursts of the same sealed frame. It runs as `eagle-runtime.service` in Alex's field setup (in place of `eagle-life`), records with his recorder, shows in his field page's Verdict card, and comes with a replay tool for calibration and six synthetic scenes for bench tests.
+
+### Why
+The kit transmitted on detection (`eagle_node.py`) or every 30 s (`life_node.py`), and the simulator v2 evidence gate existed only in JavaScript. A perched Eagle near an isolated person must stay silent until it is sure, and must be sure for the right reasons.
+
+### How it works
+- `eagle/decide.py`: prior 1 / (1 + people expected); one likelihood ratio per clue (thermal shape, camera box, identity level, briefed code, coughs, radar, alone / group, still, moving, search area). SEND needs P >= 0.95 (strict 0.99), the briefed-code rule or 2 sensor modalities, 20 s dwell, a fix, and EMCON (nobody unknown inside the burst's intercept radius, no briefed threat inside it); otherwise HOLD and ask to relocate.
+- `eagle/infer.py`: Alex's `thermal_person.onnx` through hailo-apps' `HailoInfer` (HEF), onnxruntime or OpenCV, with the preprocessing of `fusion/app.py`; boxes score the warm blobs they cover.
+- `apps/eagle_runtime.py` subclasses `LifeNode`: same sensors, recorder and `--require`, one life-list update per sensor, the gate instead of LIFE bursts, training / default / strict modes, a refusal to transmit with the public test keys. Decisions go into `events.jsonl`; the field dashboard shows them.
+- `apps/replay_decisions.py` re-runs any recording (runtime or life_node) with other settings; `apps/export_thermal_calib.py` turns recorded thermal frames into calibration images for the Hailo compiler.
+- `pi/field/use_runtime.sh` swaps `eagle-life` for `eagle-runtime` (self-test first) and back.
+
+### Key results (modelled, synthetic scenes)
+- **Briefed code + warm body:** SEND at the third tap, P 0.990, false-alarm risk LOW.
+- **Coughs only:** SEND at 80 min, P 0.970, MEDIUM; same as simulator v2.
+- **Unconscious, thermal only:** never sends; P 0.923 after 2.5 h (simulator v2: 0.92).
+- **Patrol of three:** P <= 0.13. **Stranger 10 m from the perch:** HOLD with REQUEST_RELOCATE; default mode sends after 15 min.
+- **Intercept radius** of a perch burst: ~1,100 m at the planned 8 dBm, ~300 m at -9 dBm (log-distance n = 3, listener -115 dBm): anyone the Eagle can see can hear it.
+- **False reports from the code rule:** one per 1,350 / 50 days / 32 h at 2 / 6 / 20 detector false alarms per hour (Poisson; scales with the cube).
+- **Thermal model** (measured, desktop CPU, synthetic frames): 0.55 on aerial-style figures, 0.002 on a perch-view lying body. Trained on aerial footage; needs perch data.
+
+### Decisions and trade-offs
+| Decision | Why | Cost |
+|---|---|---|
+| Subclass `LifeNode`, do not edit it | Reuse every driver, the recorder and `--require`; no conflict with work on `life_node.py` | Changes inside `LifeNode.step` must be mirrored |
+| Corroboration rule on top of P | One detector's false alarm cannot report alone | An unconscious person seen only by thermal is never reported without a second sensor |
+| EMCON radius from the planned power | Same model the radio uses for power control | No terrain yet; conservative in the open, may be optimistic on a ridge |
+| Thermal model on the CPU until a HEF exists | NPU carries the camera models; 0.5 frames/s is enough | Compile step on an x86 PC |
+| Keep the 48-byte FIX | Nest, firmware, replay window work today | 48.8 ms at SF7/BW250 instead of a shorter packet |
+
+### Verification
+320 tests pass, 4 skip (41 new), on top of `sar-integration` 4fbee88. Simulator v2 cases reproduced; end to end over UDP the Nest decrypts the FIX and drops the second burst as a replay; record then replay reproduces the SEND. See [pi-runtime.md](pi-runtime.md#verification).
+
+### Open issues / next
+Not run on the Pi, the Hailo or the sensors yet; every likelihood ratio is assumed; HEF compile unverified; relocation is a flag file (no autopilot hook); no terrain in the intercept radius.
+
+---
+
 ## 2026-11-07 · Eagle Jungle Simulator v2: the person carries nothing
 
 **Files:** [`simulator/v2/`](../simulator/v2/) · **Docs:** [simulator-v2.md](simulator-v2.md), [simulator/v2/unreal/README.md](../simulator/v2/unreal/README.md)

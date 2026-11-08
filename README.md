@@ -65,6 +65,18 @@ python apps/life_demo.py   # signs of life for several people
 
 Hardware, calibration and the five-minute demo: [`eagle-kit/README.md`](eagle-kit/README.md). To get a USB thermal camera working: [`thermal-probe/`](thermal-probe/).
 
+## Run it on the Pi
+
+`eagle-kit/apps/eagle_runtime.py` is the one process for the Eagle's Raspberry Pi 5 + Hailo AI HAT+: the kit's sensors, the thermal person model on the Hailo or the CPU, and an on-board decision gate that transmits nothing until it is sure, then sends one sealed FIX:
+
+```bash
+python eagle-kit/apps/nest_station.py --transport udp --print-cot     # bench, terminal 1
+python eagle-kit/apps/eagle_runtime.py --sim night --transport udp    # bench, terminal 2: gate -> FIX -> Nest
+bash pi/field/use_runtime.sh                                          # field Pi: eagle-runtime instead of eagle-life
+```
+
+How it decides, which model runs where, bring-up and calibration: [`docs/pi-runtime.md`](docs/pi-runtime.md).
+
 ## Results so far
 
 Model estimates from the simulator, not field measurements. Operator lying injured 20 m from an Eagle on an 8 m sub-canopy branch, carrying the tag:
@@ -116,11 +128,14 @@ Same place and perch. He is injured, carries nothing and taps the briefed code; 
 | [`simulator/v2/`](simulator/v2/) | Eagle Jungle Simulator v2: the person carries nothing (heat and sound, evidence gate, four ways out), with an Unreal scene import |
 | [`eagle-kit/`](eagle-kit/) | Eagle starter kit: perch and Nest software, encrypted LoRa messages, ATAK output, signs of life, radio firmware ([setup](eagle-kit/README.md)) |
 | [`thermal-probe/`](thermal-probe/) | Finds, views and streams a USB thermal camera |
+| [`eagle-kit/apps/eagle_runtime.py`](eagle-kit/apps/eagle_runtime.py) | Pi runtime: sensors, thermal model (Hailo or CPU), on-board decision gate, one sealed burst ([reference](docs/pi-runtime.md)) |
+| [`pi/`](pi/) | Pi setup: thermal camera quirk and RTSP stream, field services and dashboard (`pi/field/`), Hailo compile script |
 | [`docs/simulator.md`](docs/simulator.md) | Technical reference: architecture, every equation and constant with its source, message protocol, limitations |
 | [`docs/unreal-sim.md`](docs/unreal-sim.md) | Technical reference for the Unreal demo: architecture, detection model, thermal view, CoT messages, verification |
 | [`docs/simulator-v2.md`](docs/simulator-v2.md) | Technical reference for simulator v2: model, sources, results, export to Unreal, limitations |
 | [`docs/eagle-kit.md`](docs/eagle-kit.md) | Technical reference for the kit: find loop, messages and keys, signs of life, verification |
 | [`docs/thermal-probe.md`](docs/thermal-probe.md) | Technical reference for the thermal camera probe |
+| [`docs/pi-runtime.md`](docs/pi-runtime.md) | Technical reference for the Pi runtime: models and where they run, the decision gate, EMCON, bring-up, repository map |
 | [`docs/build-log.md`](docs/build-log.md) | Dated record of every build: what, why, decisions, verification, open issues |
 | [`docs/how-we-document.md`](docs/how-we-document.md) | Our documentation process, commit format and pre-push privacy checklist |
 | [`docs/images/`](docs/images/) | Screenshots |
@@ -136,6 +151,7 @@ Same place and perch. He is injured, carries nothing and taps the briefed code; 
 | Mission simulator v2 (no tag) | Working: heat and sound, evidence gate, four ways out, search time; 5 presets; scene export to Unreal |
 | Eagle starter kit | v2 in simulation: find loop, encrypted messages, ATAK output, signs of life for up to 10 people; 183 tests pass; not yet on hardware |
 | Thermal camera probe | v1 tested with a simulated camera; not yet run with the HTI imager |
+| Pi runtime + decision gate | v1 in simulation: simulator v2 cases reproduced, FIX end to end to the Nest over UDP; not yet on the Pi or the Hailo |
 | Hardware (Eagle, tag, relay) | Not in this repo yet |
 | Field validation | Not started |
 
