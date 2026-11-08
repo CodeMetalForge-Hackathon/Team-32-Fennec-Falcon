@@ -217,7 +217,7 @@ class Verdict:
             if vis["face_not_target"] is not None and key == "not_target":
                 parts.append(f"face seen, match {vis['face_not_target']:.2f} (below threshold)")
             if heat is not None:
-                parts.append(f"body heat {heat:.1f} °C")
+                parts.append("human body heat")
             if sounds:
                 parts.append("heard " + ", ".join(HUMAN_SOUNDS[c] for c in sounds))
             if vis["people"]:
@@ -278,7 +278,7 @@ def state(logs: Path, eagle_dir: Path, verdict: Verdict) -> dict:
     best = vis["best"]
     chips = {
         "heat": {"on": life["heat_c"] is not None,
-                 "text": f"{life['heat_c']:.1f} °C warm body" if life["heat_c"] is not None else "no warm body"},
+                 "text": "human body heat" if life["heat_c"] is not None else "no human body"},
         "sound": {"on": bool(life["sounds"]),
                   "text": ", ".join(HUMAN_SOUNDS[c] for c in life["sounds"]) if life["sounds"] else "no human sounds"},
         "vision": {"on": bool(vis["people"]),
@@ -361,7 +361,7 @@ border-radius:8px;font-size:14px;display:none;z-index:30;max-width:80vw}
   <div class="card"><div class="label"><span>Camera: <span id="camname">standard</span></span><span id="camage"></span></div>
     <div class="view"><img id="cam" alt="camera"><div class="stale" id="cstale"></div></div></div>
   <div class="card"><div class="label"><span>Thermal</span><span id="trange"></span></div>
-    <div class="view"><div class="cap" id="tcap">No warm body</div><img id="thermal" alt="thermal"><div class="stale" id="tstale"></div></div></div>
+    <div class="view"><div class="cap" id="tcap">No human body</div><img id="thermal" alt="thermal"><div class="stale" id="tstale"></div></div></div>
 </div>
 <div id="soundrow">
   <div class="card" id="sound"><div class="label"><span>Sound (last 4 s, 0 to 8 kHz)</span><span id="alevel"></span></div>
@@ -388,12 +388,12 @@ async function poll(){let s;try{s=await (await fetch('/state')).json()}catch(e){
   const f=s.feeds,a=s.ages;
   stale('tstale',f.thermal.age_s,5,'THERMAL PAUSED: life_node stopped or recording off');
   stale('astale',f.audio.age_s,5,'SOUND PAUSED: life_node stopped or recording off');
-  $('trange').textContent=f.thermal.min_c!=null?`${f.thermal.min_c} to ${f.thermal.max_c} °C`:'';
+  $('trange').textContent='';   // no temperatures on screen: the imager's absolute reading is not accurate
   const lv=f.audio.level_db;$('alevel').textContent=lv!=null?lv.toFixed(0)+' dBFS':'';
   $('meterbar').style.width=lv==null?'0%':Math.max(0,Math.min(100,(lv+70)/60*100))+'%';
   const hc=s.chips.heat,tc=$('tcap');tc.className='cap'+(hc.on?' on':'');
   const corro=hc.on&&(s.chips.sound.on||s.chips.vision.on);
-  tc.textContent=!hc.on?'No warm body':corro?('HUMAN DETECTED (heat + '+[s.chips.sound.on?'voice/sound':'',s.chips.vision.on?'camera':''].filter(Boolean).join(' + ')+')'):'WARM BODY DETECTED';
+  tc.textContent=!hc.on?'No human body':corro?('HUMAN DETECTED (heat + '+[s.chips.sound.on?'voice/sound':'',s.chips.vision.on?'camera':''].filter(Boolean).join(' + ')+')'):'HUMAN BODY DETECTED';
   const h=$('heard');h.textContent=s.chips.sound.on?'Heard: '+s.chips.sound.text:'no human sounds';h.className=s.chips.sound.on?'on':'';
   cam=(a.cam_standard_s!=null&&a.cam_standard_s<5)||a.cam_noir_s==null||a.cam_noir_s>5?'standard':'noir';
   $('camname').textContent=cam==='standard'?'standard':'NoIR wide';

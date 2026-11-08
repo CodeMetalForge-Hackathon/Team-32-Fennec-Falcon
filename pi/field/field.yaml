@@ -17,6 +17,14 @@ life:
   thermal:
     source: hti
     camera: {width: 256, height: 192, hfov_deg: 50.0}
+    every_s: 0.5                 # detect twice a second (default 2 s)
+    detector:
+      abs_window_c: null         # the HT-203U reads about 20 C high, so no absolute skin window:
+                                 # warm = clearly above the fitted background (delta_c) only
+      delta_c: 2.5
+      min_area_m2: 0.03          # wide size gate: in the demo a person is close and often only
+      max_area_m2: 1.0e9         # partly in frame, so the floor-footprint size is not meaningful
+      max_width_m: 1.0e9         # (keep the site tilt at 25 deg or more so the view stays below the horizon)
   vision:
     jsonl: ~/eagle/vision.jsonl  # written by eagle-vision.service (apps/hailo_vision.py)
     camera:                      # must match camera.sensor: example.yaml describes the Wide (102 x 67 deg)
