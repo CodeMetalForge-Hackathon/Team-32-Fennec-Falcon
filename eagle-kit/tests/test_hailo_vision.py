@@ -83,3 +83,26 @@ def test_vision_camera_is_camera_module_3_wide(cfg):
     assert (c["hfov_deg"], c["vfov_deg"], c["width"], c["height"]) == (102.0, 67.0, 1280, 720)
     cam = Camera.from_config(dict(c, mount=dict(c["mount"], enu_m=[0, 0, 3])))
     assert cam.hfov_deg == pytest.approx(102.0, abs=0.1) and cam.vfov_deg == pytest.approx(67.0, abs=0.1)
+
+
+def test_headless_auto_follows_display_env(hv):
+    assert hv.is_headless("auto", env={}) and not hv.is_headless("auto", env={"DISPLAY": ":0"})
+    assert not hv.is_headless("auto", env={"WAYLAND_DISPLAY": "wayland-0"})
+    assert hv.is_headless("yes", env={"DISPLAY": ":0"}) and not hv.is_headless("no", env={})
+    assert hv.split_args(["--headless", "yes"])[0].headless == "yes"
+
+
+def test_frame_watchdog(hv):
+    now, fired = [0.0], []
+    w = hv.FrameWatchdog(10.0, fired.append, clock=lambda: now[0])
+    now[0] = 9.0
+    assert not w.check()
+    w.kick()
+    now[0] = 18.0
+    assert not w.check()
+    now[0] = 19.5
+    assert w.check() and fired == [pytest.approx(10.5)]
+    now[0] = 40.0
+    w.check()
+    assert len(fired) == 1                                   # fires once
+    assert not hv.FrameWatchdog(0, fired.append, clock=lambda: 1e9).check()   # 0 = off

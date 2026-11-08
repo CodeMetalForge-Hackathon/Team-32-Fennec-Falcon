@@ -34,6 +34,11 @@ from eagle.config import deep_merge, load_config, load_keys        # noqa: E402
 from eagle.fusion import LifeDetection, LifeList, iso_cov          # noqa: E402
 
 ALL_MODULES = ("audio", "thermal", "vitals", "rf", "vision")
+MAX_REQUIRED_FAILS = 10          # consecutive step errors of a --require'd module before life_node exits
+
+
+class RequiredModuleError(RuntimeError):
+    """A --require'd module is missing or keeps failing: exit non-zero so systemd restarts us."""
 
 
 def log(msg: str) -> None:
@@ -61,8 +66,11 @@ class LifeNode:
         self.mods: dict = {}
         self.next_t: dict = {}
         self.unavailable: dict = {}
+        self.required = set(getattr(args, "require", None) or [])
+        self.fail_count: dict = {}
         self._th_cache = None
         self.rec = None
+        self.radio, self.session = None, None
         if getattr(args, "record", None):
             from eagle.record import Recorder
             r = L.get("record", {})
@@ -80,6 +88,12 @@ class LifeNode:
                 log(f"MODULE  {name}: unavailable ({type(e).__name__}: {e})")
                 self.unavailable[name] = f"{type(e).__name__}: {e}"
         log(f"MODULES running: {', '.join(self.mods) or 'none'} (perch ENU {self.perch.tolist()})")
+        missing = sorted(m for m in self.required if m not in self.mods)
+        if missing:
+            if self.rec:
+                self.rec.event("required_missing", modules=missing, unavailable=self.unavailable)
+            self.close()
+            raise RequiredModuleError(f"required module(s) unavailable: {', '.join(missing)}")
         if self.rec:
             self.rec.event("run_start", modules=list(self.mods), unavailable=self.unavailable, perch=self.perch,
                            config={k: cfg.get(k) for k in ("site", "perch", "audio", "life", "identity") if k in cfg})
@@ -268,8 +282,14 @@ class LifeNode:
                 continue
             try:
                 dets += getattr(self, f"step_{name}")(now)
+                self.fail_count[name] = 0
             except Exception as e:
                 log(f"{name.upper():<7} error: {type(e).__name__}: {e}")
+                self.fail_count[name] = self.fail_count.get(name, 0) + 1
+                if name in self.required and self.fail_count[name] >= MAX_REQUIRED_FAILS:
+                    if self.rec:
+                        self.rec.event("required_failed", module=name, error=f"{type(e).__name__}: {e}")
+                    raise RequiredModuleError(f"required module {name} failed {MAX_REQUIRED_FAILS} times in a row")
         if dets:
             if self.rec:
                 self.rec.detections(dets)
@@ -369,6 +389,9 @@ def main(argv=None) -> int:
     ap.add_argument("--no-radio", action="store_true", help="never transmit; log only")
     ap.add_argument("--duration", type=float, help="stop after N seconds (default: run until Ctrl-C)")
     ap.add_argument("--step", type=float, default=0.5, help="loop period, s")
+    ap.add_argument("--require", nargs="+", choices=ALL_MODULES, metavar="MODULE",
+                    help="exit with status 3 if any of these modules is unavailable at start or fails "
+                         f"{MAX_REQUIRED_FAILS} steps in a row (systemd then restarts life_node)")
     ap.add_argument("--record", nargs="?", const="~/field_logs", default=None, metavar="DIR",
                     help="save thermal frames, raw mic channels and every detection to DIR/<timestamp>/ "
                          "(default DIR ~/field_logs)")
@@ -385,8 +408,12 @@ def main(argv=None) -> int:
     def _term(signum, frame):              # systemd stop: unwind through run()'s finally (closes the recording)
         raise SystemExit(0)
     signal.signal(signal.SIGTERM, _term)
-    node = LifeNode(cfg, args)
-    node.run(args.duration, args.step)
+    try:
+        node = LifeNode(cfg, args)
+        node.run(args.duration, args.step)
+    except RequiredModuleError as e:
+        log(f"EXIT    {e}")
+        return 3
     return 0
 
 

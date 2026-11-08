@@ -111,6 +111,11 @@ def split_args(argv):
     ap.add_argument("--profile", default=None, help="target_profile.npz from apps/enroll_target.py (identity)")
     ap.add_argument("--config", default=None, help="eagle config (identity thresholds); default example.yaml")
     ap.add_argument("--models-dir", default="~/eagle-models", help="apps/fetch_models.py output (detection HEF)")
+    ap.add_argument("--watchdog-s", type=float, default=60.0,
+                    help="exit (status 4) when no camera frame arrived for this long, so systemd restarts us; 0 = off")
+    ap.add_argument("--headless", choices=["auto", "yes", "no"], default="auto",
+                    help="no video window (fakesink). auto: headless when neither DISPLAY nor WAYLAND_DISPLAY is set "
+                         "(systemd at boot)")
     ours, rest = ap.parse_known_args(argv)
     if not any(a in ("-i", "--input") or a.startswith("--input=") for a in rest):
         rest = ["--input", "rpi"] + rest
@@ -130,6 +135,41 @@ def _arg_value(argv, name: str) -> str | None:
         elif a.startswith(name + "="):
             val = a.split("=", 1)[1]
     return val
+
+
+class FrameWatchdog:
+    """Calls ``on_stall`` once if ``kick`` was not called for ``timeout_s`` (a hung camera pipeline otherwise
+    stays 'running' while writing nothing)."""
+
+    def __init__(self, timeout_s: float, on_stall, clock=time.monotonic):
+        self.timeout, self.on_stall, self.clock = float(timeout_s), on_stall, clock
+        self.last = clock()
+        self.fired = False
+
+    def kick(self) -> None:
+        self.last = self.clock()
+
+    def check(self) -> bool:
+        if self.timeout > 0 and not self.fired and self.clock() - self.last > self.timeout:
+            self.fired = True
+            self.on_stall(self.clock() - self.last)
+        return self.fired
+
+    def start(self, every_s: float = 1.0):
+        import threading
+
+        def loop():
+            while not self.check():
+                time.sleep(every_s)
+        threading.Thread(target=loop, daemon=True, name="frame-watchdog").start()
+        return self
+
+
+def is_headless(mode: str, env=None) -> bool:
+    env = os.environ if env is None else env
+    if mode in ("yes", "no"):
+        return mode == "yes"
+    return not (env.get("DISPLAY") or env.get("WAYLAND_DISPLAY"))
 
 
 def local_detection_hef(models_dir: str, arch: str | None = None) -> str | None:
@@ -180,9 +220,16 @@ def main(argv=None) -> None:
     class UserData(app_callback_class):
         pass
 
+    def stalled(dt):
+        print(f"watchdog: no camera frame for {dt:.0f} s - exiting so the service restarts", flush=True)
+        writer.close()
+        os._exit(4)                                                 # the GStreamer main loop may be stuck
+    watchdog = FrameWatchdog(ours.watchdog_s, stalled).start()
+
     def callback(element, buffer, user_data):
         if buffer is None:
             return
+        watchdog.kick()
         fmt, w, h = get_caps_from_pad(element.get_static_pad("src"))
         if not w or not h:
             return
@@ -201,6 +248,13 @@ def main(argv=None) -> None:
             identity = [matcher.update(tid, frame, b[:4]) for tid, b in zip(ids, boxes)]
         writer.write(vision_line(time.time(), boxes, w, h, ids, identity), has_boxes=bool(boxes))
 
+    if is_headless(ours.headless):
+        # hailo-apps ends the pipeline in autovideosink and ignores --no-display for GStreamer apps; at boot
+        # with no display server that sink can fail or grab the HDMI output. GStreamerApp reads this global
+        # in __init__, before the pipeline string is built.
+        import hailo_apps.python.core.gstreamer.gstreamer_app as gst_app
+        gst_app.GST_VIDEO_SINK = "fakesink"
+        print("headless: video sink fakesink", flush=True)
     parser = get_pipeline_parser()
     sys.argv = [sys.argv[0]] + rest                                 # hailo-apps parses sys.argv itself
     user_data = UserData()

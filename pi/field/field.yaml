@@ -1,0 +1,24 @@
+# Field config for the auto-started services (pi/field/install.sh). Overrides eagle-kit/config/example.yaml.
+# Hardware: Pi 5 + Hailo AI HAT+, HTI HT-203U (USB), reSpeaker XVF3800 (6-channel firmware),
+# Camera Module 3 Wide NoIR. life_node and nest_station run on the same Pi and talk over loopback UDP,
+# so nothing here needs a network. Keys are still the TEST KEYS from example.yaml.
+
+audio:
+  preset: respeaker_xvf3800
+  device: XVF3800                # name substring, so a changed ALSA card number does not matter
+
+life:
+  modules: [audio, thermal, vision]
+  thermal:
+    source: hti
+    camera: {width: 256, height: 192, hfov_deg: 50.0}
+  vision:
+    jsonl: ~/eagle/vision.jsonl  # written by eagle-vision.service (apps/hailo_vision.py)
+  record:
+    thermal_hz: 2.0
+    chunk_s: 60.0
+    min_free_gb: 2.0
+
+radio:
+  transport: udp                 # nest_station swaps bind/peer
+  udp: {bind: "127.0.0.1:47001", peer: "127.0.0.1:47002"}

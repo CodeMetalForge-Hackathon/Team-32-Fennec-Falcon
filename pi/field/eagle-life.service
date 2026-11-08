@@ -1,0 +1,24 @@
+[Unit]
+StartLimitIntervalSec=0
+Description=Eagle field: life_node (thermal + audio + vision -> life list -> Nest, recorded to ~/field_logs)
+After=eagle-nest.service sound.target
+Wants=eagle-nest.service
+# These open the same thermal camera / microphone.
+Conflicts=thermal.service fusion.service
+
+[Service]
+User=@USER@
+WorkingDirectory=@REPO@/eagle-kit
+Environment=PYTHONUNBUFFERED=1
+ExecStartPre=/bin/mkdir -p @HOME@/field_logs @HOME@/eagle
+# Exit 3 if the thermal camera or the mic array is missing (USB still enumerating at boot): systemd retries.
+ExecStart=@HOME@/hailo-apps/venv_hailo_apps/bin/python apps/life_node.py --config @REPO@/pi/field/field.yaml --transport udp --require audio thermal --record @HOME@/field_logs
+StandardOutput=append:@HOME@/field_logs/life.log
+StandardError=append:@HOME@/field_logs/life.log
+KillSignal=SIGTERM
+TimeoutStopSec=15
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

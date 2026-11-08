@@ -38,7 +38,7 @@ def test_life_demo_ten_people():
 
 
 def _args(**kw):
-    a = dict(modules=None, no_radio=True, vitals_port=None)
+    a = dict(modules=None, no_radio=True, vitals_port=None, require=None, record=None)
     a.update(kw)
     return argparse.Namespace(**a)
 
@@ -92,3 +92,28 @@ def test_life_node_sends_life_over_udp(root, cfg, tmp_path):
     from eagle.config import load_keys
     rep = P.NestSession(load_keys(cfg)["fix_aes"], None, max_age_s=600).decrypt_life(frames[0])
     assert len(rep.persons) == 1 and rep.persons[0].evidence & P.EV_HEAT
+
+
+def test_life_node_require(root, cfg, tmp_path):
+    import pytest
+    mod = _load_app(root, "life_node")
+    c = {**cfg, "audio": {**cfg["audio"], "device": "eagle-test-no-such-device"}}
+    with pytest.raises(mod.RequiredModuleError, match="audio"):
+        mod.LifeNode(c, _args(require=["audio", "thermal"]))
+    node = mod.LifeNode(c, _args(modules=["thermal"], require=["thermal"]))
+    try:
+        node.mods["thermal"][0].read = lambda: (_ for _ in ()).throw(OSError("unplugged"))
+        with pytest.raises(mod.RequiredModuleError, match="thermal failed"):
+            for k in range(mod.MAX_REQUIRED_FAILS * 2 + 2):
+                node.step(now=100.0 + 2.0 * k)
+    finally:
+        node.close()
+    assert mod.main(["--modules", "audio", "--require", "audio", "--no-radio", "--duration", "0",
+                     "--config", str(_cfg_file(tmp_path, {"audio": {"device": "eagle-test-no-such-device"}}))]) == 3
+
+
+def _cfg_file(tmp_path, d):
+    import yaml
+    p = tmp_path / "c.yaml"
+    p.write_text(yaml.safe_dump(d))
+    return p
