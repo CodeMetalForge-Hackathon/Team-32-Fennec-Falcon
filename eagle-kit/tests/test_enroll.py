@@ -89,3 +89,35 @@ def test_person_detector_reuses_fusion_yolo(en):
         pytest.skip("fusion/models/coco_yolov8n_320.onnx not present")
     detect = en.load_person_detector()
     assert detect(np.full((240, 320, 3), 127, np.uint8)) == []          # flat grey: nobody there
+
+
+def test_consistent_faces_drops_a_different_person(en):
+    rng = np.random.default_rng(0)
+    mitch = l2n(rng.normal(size=512))[0]
+    same = [l2n(mitch + 0.5 * l2n(rng.normal(size=512))[0])[0] for _ in range(6)]   # cos ~0.9 to centre
+    other = l2n(rng.normal(size=512))[0]                                            # cos ~0 to centre
+    faces = same[:3] + [other] + same[3:]
+    names = [f"p{i}.jpg" for i in range(len(faces))]
+    logs = []
+    kept, dropped = en.consistent_faces(faces, names, min_cos=0.30, log=logs.append)
+    assert len(kept) == 6 and [n for n, _ in dropped] == ["p3.jpg"]
+    assert any(l.startswith("OUTLIER p3.jpg") for l in logs)
+
+
+def test_consistent_faces_keeps_small_sets_and_can_be_disabled(en):
+    rng = np.random.default_rng(1)
+    faces = list(l2n(rng.normal(size=(2, 512))))
+    assert len(en.consistent_faces(faces, ["a", "b"], min_cos=0.3, log=lambda *_: None)[0]) == 2
+    faces = list(l2n(rng.normal(size=(4, 512))))
+    assert len(en.consistent_faces(faces, list("abcd"), min_cos=None, log=lambda *_: None)[0]) == 4
+
+
+def test_read_images_skips_duplicate_files(en, tmp_path):
+    import cv2
+    img = np.zeros((20, 20, 3), np.uint8)
+    cv2.imwrite(str(tmp_path / "IMG_1.jpg"), img)
+    (tmp_path / "IMG_1 (1).jpg").write_bytes((tmp_path / "IMG_1.jpg").read_bytes())
+    cv2.imwrite(str(tmp_path / "IMG_2.png"), img + 5)
+    names = [n for n, _ in en.read_images(tmp_path)]
+    assert names == ["IMG_1 (1).jpg", "IMG_2.png"] or names == ["IMG_1.jpg", "IMG_2.png"]
+    assert len(names) == 2

@@ -48,7 +48,7 @@ sys.path.insert(0, str(ROOT))
 
 from eagle.identity import TargetProfile, crop_box, make_runtime_embedders, merged_config  # noqa: E402
 
-IMAGE_EXT = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff"}
+IMAGE_EXT = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff", ".heic", ".heif"}
 PERSON_MODEL = ROOT.parent / "fusion" / "models" / "coco_yolov8n_320.onnx"
 
 
@@ -77,9 +77,42 @@ def load_person_detector(path=PERSON_MODEL):
     return persons
 
 
-def enroll(images, description: str, embedders, detect_persons, *, min_face_px: float = 40.0, log=print) -> TargetProfile:
+def consistent_faces(face: list, names: list, *, min_cos: float = 0.30, log=print):
+    """Keep only faces that look like the same person as the rest. -> (kept faces, [(name, cos)] dropped).
+
+    A photo whose largest face is someone else (a group shot, a person in the background) would
+    otherwise teach the matcher a second identity. With 3+ faces: centre = mean of the normalised
+    embeddings, refined once on the faces that agree with it; a face whose cosine to that centre is
+    below ``min_cos`` is dropped. ArcFace (buffalo_l) same-person pairs usually score well above 0.4 and
+    different people below 0.2, so 0.30 leaves margin on both sides. Fewer than 3 faces: kept as is."""
+    if len(face) < 3 or min_cos is None:
+        return face, []
+    e = np.stack(face).astype(np.float32)
+    e /= np.linalg.norm(e, axis=1, keepdims=True) + 1e-9
+    centre = e.mean(0)
+    for _ in range(2):
+        centre /= np.linalg.norm(centre) + 1e-9
+        agree = e @ centre >= min_cos
+        if agree.sum() >= max(2, len(e) // 2):
+            centre = e[agree].mean(0)
+    centre /= np.linalg.norm(centre) + 1e-9
+    cos = e @ centre
+    kept, dropped = [], []
+    for f, n, c in zip(face, names, cos):
+        if c >= min_cos:
+            kept.append(f)
+        else:
+            dropped.append((n, float(c)))
+            log(f"OUTLIER {n}: face cos {c:.2f} to the other photos < {min_cos:.2f} - not the same person? dropped")
+    log(f"CHECK  {len(kept)}/{len(face)} faces agree with each other (min cos {min_cos:.2f}, "
+        f"lowest kept {min((c for c in cos if c >= min_cos), default=float('nan')):.2f})")
+    return kept, dropped
+
+
+def enroll(images, description: str, embedders, detect_persons, *, min_face_px: float = 40.0,
+           consistency: float = 0.30, log=print) -> TargetProfile:
     """images: iterable of (name, RGB array or None). Returns the profile (not saved)."""
-    face, clip_img, osnet, skipped = [], [], [], []
+    face, face_names, clip_img, osnet, skipped = [], [], [], [], []
     for name, rgb in images:
         if rgb is None:
             log(f"SKIP   {name}: not a readable image")
@@ -96,6 +129,7 @@ def enroll(images, description: str, embedders, detect_persons, *, min_face_px: 
                 if len(usable) > 1:
                     log(f"WARN   {name}: {len(usable)} faces, using the largest - check it is the right person")
                 face.append(usable[0][0])
+                face_names.append(name)
                 log(f"FACE   {name}: {usable[0][1]:.0f} px wide, det {usable[0][2]:.2f}")
         boxes = detect_persons(rgb) if detect_persons else []
         if boxes:
@@ -113,6 +147,8 @@ def enroll(images, description: str, embedders, detect_persons, *, min_face_px: 
         elif embedders.clip is not None:
             clip_img.append(embedders.clip.image_embedding(rgb))
             log(f"ITEM   {name}: no person found, whole photo embedded with CLIP only (clothing/item photo)")
+    face, dropped = consistent_faces(face, face_names, min_cos=consistency, log=log)
+    skipped += [(n, f"face does not match the other photos (cos {c:.2f})") for n, c in dropped]
     prompts = description_prompts(description)
     text = np.zeros((0, 512), np.float32)
     if prompts and embedders.clip is not None:
@@ -130,12 +166,38 @@ def enroll(images, description: str, embedders, detect_persons, *, min_face_px: 
     return TargetProfile(stack(face), stack(clip_img), text, stack(osnet), description or "", meta)
 
 
-def read_images(folder: Path):
+def _read_rgb(p: Path):
+    """RGB array, upright per EXIF, or None. HEIC/HEIF (iPhone) needs pillow-heif."""
+    if p.suffix.lower() in (".heic", ".heif"):
+        try:
+            from PIL import Image, ImageOps
+            from pillow_heif import register_heif_opener
+        except ImportError:
+            print(f"SKIP   {p.name}: HEIC needs `pip install pillow-heif` (or convert it to JPG)")
+            return None
+        register_heif_opener()
+        try:
+            with Image.open(p) as im:
+                return np.asarray(ImageOps.exif_transpose(im).convert("RGB")).copy()
+        except Exception as e:  # corrupt or unsupported file
+            print(f"SKIP   {p.name}: {e}")
+            return None
     import cv2
+    bgr = cv2.imread(str(p), cv2.IMREAD_COLOR)          # applies EXIF orientation for JPEG
+    return None if bgr is None else bgr[..., ::-1].copy()
+
+
+def read_images(folder: Path):
+    import hashlib
+    seen = {}
     for p in sorted(folder.iterdir()):
         if p.suffix.lower() in IMAGE_EXT:
-            bgr = cv2.imread(str(p), cv2.IMREAD_COLOR)
-            yield p.name, None if bgr is None else bgr[..., ::-1].copy()
+            digest = hashlib.sha256(p.read_bytes()).hexdigest()
+            if digest in seen:                         # the same photo uploaded twice would count double
+                print(f"DUP    {p.name}: same file as {seen[digest]} - skipped")
+                continue
+            seen[digest] = p.name
+            yield p.name, _read_rgb(p)
         elif p.is_file():
             print(f"SKIP   {p.name}: not an image type this tool reads ({', '.join(sorted(IMAGE_EXT))})")
 
@@ -174,6 +236,8 @@ def main(argv=None) -> int:
     ap.add_argument("--out", default="target_profile.npz")
     ap.add_argument("--config", default=None, help="eagle config (identity: models_dir, face.min_width_px)")
     ap.add_argument("--person-model", default=str(PERSON_MODEL))
+    ap.add_argument("--same-person-cos", type=float, default=0.30,
+                    help="drop photo faces whose ArcFace cosine to the others is below this (0 = keep all)")
     a = ap.parse_args(argv)
     if not (a.photos or a.live or a.verify):
         ap.error("give --photos, --live (or both), or --verify")
@@ -198,7 +262,8 @@ def main(argv=None) -> int:
             print(f"{folder} is not a folder")
             return 2
         prof = enroll(read_images(folder), desc, emb, load_person_detector(a.person_model),
-                      min_face_px=float(c["face"]["min_width_px"]))
+                      min_face_px=float(c["face"]["min_width_px"]),
+                      consistency=None if a.same_person_cos <= 0 else a.same_person_cos)
     if a.live:
         face = emb.face if emb is not None and emb.face is not None else face_embedder(cfg, c)
         if face is None:
