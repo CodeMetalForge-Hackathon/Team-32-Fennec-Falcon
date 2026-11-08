@@ -36,16 +36,17 @@
   function rebuild(w){
    disposeGroup(terrainGroup);disposeGroup(canopy);disposeGroup(colliders);world=w;
    const bounds=w.bounds||root.EagleForest.bounds,ground=w.ground||(()=>0),[W,H]=bounds;
-   const terrain=new T.PlaneGeometry(W,H,64,56),pos=terrain.attributes.position;
+   const margin=w.contextTrees?20:0,terrain=new T.PlaneGeometry(W+margin*2,H+margin*2,80,72),pos=terrain.attributes.position;
    const colors=[];
    for(let i=0;i<pos.count;i++){const x=pos.getX(i)+W/2,y=pos.getY(i)+H/2,z=ground(x,y);pos.setXYZ(i,x,y,z);const c=new T.Color(C.earth),near=Math.min(3,...(w.trees||[]).map(t=>Math.hypot(t.x-x,t.y-y)));c.multiplyScalar((.85+.18*Math.sin(x*1.7+y*.7)+.08*Math.cos(y*2))*(.6+near*.13));colors.push(c.r,c.g,c.b);}
    terrain.setAttribute('color',new T.Float32BufferAttribute(colors,3));terrain.computeVertexNormals();terrainGroup.add(new T.Mesh(terrain,new T.MeshStandardMaterial({vertexColors:true,roughness:1,side:T.DoubleSide})));
-   const woody=[];for(const t of w.trees||[]){woody.push({a:[t.x,t.y,t.z],b:[t.x,t.y,t.z+t.h],r:t.r});woody.push(...t.branches);}woody.push(...w.logs||[]);tubes(woody,terrainGroup,C.bark);
+   const trees=[...w.trees||[],...w.contextTrees||[]];
+   const woody=[];for(const t of trees){woody.push({a:[t.x,t.y,t.z],b:[t.x,t.y,t.z+t.h],r:t.r});woody.push(...t.branches);}woody.push(...w.logs||[]);tubes(woody,terrainGroup,C.bark);
    // Leaf clusters use instancing: a varied evergreen crown, not one solid block.
-   const trees=w.trees||[],leafGeometry=new T.IcosahedronGeometry(1,2),leafMaterial=new T.MeshStandardMaterial({color:C.leaf,roughness:1,flatShading:true});
-   const crowns=new T.InstancedMesh(leafGeometry,leafMaterial,trees.length*7),dummy=new T.Object3D();
-   let k=0;for(const t of trees)for(let j=0;j<7;j++){
-    const a=j*Math.PI*2/6,sz=t.crownScale;dummy.position.set(t.x+Math.cos(a)*sz[0]*.32,t.y+Math.sin(a)*sz[1]*.32,t.crown[2]+(j===6?sz[2]*.2:-.3));dummy.scale.set(sz[0]*.65,sz[1]*.65,sz[2]*(j===6?.65:.7));dummy.rotation.set(0,0,j*.7);dummy.updateMatrix();crowns.setMatrixAt(k,dummy.matrix);crowns.setColorAt(k,new T.Color(j%3?C.leaf:C.leafLight));k++;
+   const leafGeometry=new T.IcosahedronGeometry(1,2),leafMaterial=new T.MeshStandardMaterial({color:C.leaf,roughness:1,flatShading:true});
+   const crowns=new T.InstancedMesh(leafGeometry,leafMaterial,trees.length*9),dummy=new T.Object3D();
+   let k=0;for(const t of trees)for(let j=0;j<9;j++){
+    const a=j*Math.PI/4,sz=t.crownScale;dummy.position.set(t.x+Math.cos(a)*sz[0]*.40,t.y+Math.sin(a)*sz[1]*.40,t.crown[2]+(j===8?sz[2]*.2:Math.sin(j*2.7)*.35));dummy.scale.set(sz[0]*.57,sz[1]*.57,sz[2]*(j===8?.65:.64));dummy.rotation.set(0,0,j*.7);dummy.updateMatrix();crowns.setMatrixAt(k,dummy.matrix);crowns.setColorAt(k,new T.Color(j%3?C.leaf:C.leafLight));k++;
    }if(trees.length)canopy.add(crowns);
    // Individual broadleaf silhouettes break up crown edges; distribution is procedural.
    const leafShape=new T.Shape();leafShape.moveTo(0,-1);leafShape.quadraticCurveTo(-.7,-.1,0,1);leafShape.quadraticCurveTo(.7,-.1,0,-1);
@@ -54,18 +55,19 @@
    k=0;for(const t of trees)for(let j=0;j<100;j++){
     const a=j*2.399963,zz=2*(j+.5)/100-1,rr=Math.sqrt(1-zz*zz);dummy.position.set(t.x+Math.cos(a)*rr*t.crownScale[0]*.93,t.y+Math.sin(a)*rr*t.crownScale[1]*.93,t.crown[2]+zz*t.crownScale[2]*.9);dummy.rotation.set(Math.sin(j)*1.8,Math.cos(j*3)*2,a);dummy.scale.set(.22,.30,.22);dummy.updateMatrix();leaves.setMatrixAt(k++,dummy.matrix);
    }if(trees.length)canopy.add(leaves);
-   const shrubs=(w.ferns||[]).filter((_,i)=>i%3===0);tubes(shrubs.map(f=>({a:[f.x,f.y,f.z],b:[f.x,f.y,f.z+f.h*.9],r:.025})),terrainGroup,C.bark);
+   const shrubs=(w.ferns||[]).filter((f,i)=>f.layer==='sapling'||(f.layer!=='ground'&&i%4===0));tubes(shrubs.map(f=>({a:[f.x,f.y,f.z],b:[f.x,f.y,f.z+f.h*.9],r:.025})),terrainGroup,C.bark);
    const understory=new T.InstancedMesh(leafGeo.clone(),leafMat.clone(),shrubs.length*36);k=0;
    for(const f of shrubs)for(let j=0;j<36;j++){const a=j*2.4,h=(j%9)/9*f.h,rr=.25+.45*Math.sin(h/f.h*Math.PI);dummy.position.set(f.x+Math.cos(a)*rr,f.y+Math.sin(a)*rr,f.z+h+.2);dummy.rotation.set(.3*Math.sin(j),.7*Math.cos(j),a);dummy.scale.set(.18,.32,.18);dummy.updateMatrix();understory.setMatrixAt(k++,dummy.matrix);}if(shrubs.length)terrainGroup.add(understory);
    const fernVerts=[];for(const f of w.ferns||[]){for(let j=0;j<8;j++){
     const a=f.angle+j*Math.PI/4,dx=Math.cos(a),dy=Math.sin(a);
-    for(let n=1;n<7;n++){const u=n/7,l=f.h*.6*u,zz=f.z+f.h*Math.sin(u*Math.PI*.75)*.6,wide=f.h*.13*(1-u);
-     for(const side of [-1,1])fernVerts.push(f.x+dx*l,f.y+dy*l,zz,f.x+dx*(l+.2)-dy*wide*side,f.y+dy*(l+.2)+dx*wide*side,zz-.08,f.x+dx*(l+.32),f.y+dy*(l+.32),zz-.03);
+    for(let n=1;n<9;n++){const u=n/9,spread=f.spread||f.h*.6,l=spread*1.3*u,zz=f.z+f.h*Math.sin(u*Math.PI*.9)*.65,wide=spread*.26*(1-u);
+     for(const side of [-1,1])fernVerts.push(f.x+dx*l,f.y+dy*l,zz,f.x+dx*(l+.12)-dy*wide*side,f.y+dy*(l+.12)+dx*wide*side,zz-.04,f.x+dx*(l+.22),f.y+dy*(l+.22),zz-.02);
     }
    }}const fg=new T.BufferGeometry();fg.setAttribute('position',new T.Float32BufferAttribute(fernVerts,3));fg.computeVertexNormals();terrainGroup.add(new T.Mesh(fg,new T.MeshStandardMaterial({color:C.fern,side:T.DoubleSide,roughness:1})));
    // Fallen leaves and rocks provide local scale; decorative, not a surface survey.
-   const pebbles=new T.InstancedMesh(new T.IcosahedronGeometry(1,0),new T.MeshStandardMaterial({color:C.moss,roughness:1}),450);
-   for(let i=0;i<450;i++){const x=(Math.sin(i*78.23)*234.7%1+1)%1*W,y=(Math.sin(i*21.78)*921.3%1+1)%1*H;dummy.position.set(x,y,ground(x,y)+.03);dummy.rotation.set(0,0,i*1.6);dummy.scale.set(.12+(i%4)*.08,.06+(i%3)*.05,.035);dummy.updateMatrix();pebbles.setMatrixAt(i,dummy.matrix);}terrainGroup.add(pebbles);
+   const litterCount=w.trees?2400:450,pebbles=new T.InstancedMesh(new T.IcosahedronGeometry(1,0),new T.MeshStandardMaterial({color:C.moss,roughness:1}),litterCount);
+   for(let i=0;i<litterCount;i++){const x=(Math.sin(i*78.23)*234.7%1+1)%1*W,y=(Math.sin(i*21.78)*921.3%1+1)%1*H;dummy.position.set(x,y,ground(x,y)+.03);dummy.rotation.set(0,0,i*1.6);dummy.scale.set(.12+(i%4)*.08,.06+(i%3)*.05,.035);dummy.updateMatrix();pebbles.setMatrixAt(i,dummy.matrix);}terrainGroup.add(pebbles);
+   if(w.contextTrees){const outline=[];for(const [a,b] of [[[0,0],[W,0]],[[W,0],[W,H]],[[W,H],[0,H]],[[0,H],[0,0]]])for(let i=0;i<=24;i++){const x=a[0]+(b[0]-a[0])*i/24,y=a[1]+(b[1]-a[1])*i/24;outline.push(new T.Vector3(x,y,ground(x,y)+.08));}terrainGroup.add(new T.LineLoop(new T.BufferGeometry().setFromPoints(outline),new T.LineBasicMaterial({color:C.route,transparent:true,opacity:.25})));}
    for(const o of w.obstacles){
     const size=o.max.map((a,i)=>a-o.min[i]),geo=new T.BoxGeometry(...size),edges=new T.EdgesGeometry(geo);geo.dispose();const line=new T.LineSegments(edges,new T.LineBasicMaterial({color:C.wire,transparent:true,opacity:.35}));line.position.set(...o.min.map((a,i)=>(a+o.max[i])/2));colliders.add(line);
     if(!w.trees&&o.kind!=='boundary'){const mesh=new T.Mesh(new T.BoxGeometry(...size),new T.MeshStandardMaterial({color:o.kind==='foliage'?C.leaf:C.bark,transparent:true,opacity:.65}));mesh.position.copy(line.position);terrainGroup.add(mesh);}

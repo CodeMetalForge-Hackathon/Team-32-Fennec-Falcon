@@ -7,6 +7,7 @@ const assert=require('node:assert/strict');
  assert(await page.locator('#forest-dialog').evaluate(d=>d.open));
  assert.equal(await page.evaluate(()=>__forestDemo.renderer),'webgl');
  assert.equal(await page.locator('#forest-site').inputValue(),'fushan');
+ assert(await page.locator('#forest-cover-note').innerText().then(t=>t.includes('78%')&&t.includes('911')));
  assert(await page.locator('#forest-evidence').innerText().then(t=>t.includes('600–733')));
  const camera=()=>page.evaluate(()=>__forestDemo.camera);
  const canvas=page.locator('#forest-map'),box=await canvas.boundingBox();

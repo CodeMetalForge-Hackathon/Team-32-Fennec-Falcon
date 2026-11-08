@@ -1,5 +1,11 @@
 # Build log
 
+## 2026-11-07 · Dense understory and overlapping canopy
+
+Expanded Fushan crown envelopes and layered meshes from isolated crowns into overlapping cover. A 1 m sample grid reports about 78% modeled crown-footprint coverage; the interface explicitly distinguishes this from measured canopy closure. Added 911 retained low-cover, fern and sapling placements, removing the broad ground-level vegetation exclusions while retaining immediate launch/landing/contact footprints. Taller represented understory affects collision checks. One hundred context trees and extended rendered ground outside the active flight bounds remove the bare diorama edge. Added denser litter and wider, more detailed fern fronds, with instanced leafy shrubs.
+
+Enlarged crowns blocked the old ridge terminal descent; lowered the approach to enter beneath them instead of removing geometry. All 18 baseline/valley/ridge scenarios passed their termination, clearance, support and recovery checks. Density checks require over 850 understory placements and projected crown coverage between 70% and 90%. Camera, display layers and mobile/browser checks are in check-forest.cjs. Updated screenshots document the result. All density/coverage settings remain procedural, not a surveyed Fushan reconstruction.
+
 ## 2026-11-07 · Fushan evidence and ecological reconstruction
 
 Replaced the default generic block display with a Fushan-informed perspective forest. Added primary-source context from TFRI and published canopy, understory-light and typhoon studies. The site analysis explicitly separates historical measurements, engineering inferences and invented local geometry; actual tree census and topographic stake data have not been obtained. A coarse DEM spot check was not adopted because registration to the surveyed plot was unresolved.

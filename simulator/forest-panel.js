@@ -18,6 +18,7 @@
         <div class="seg"><button id="forest-play">Play mission</button><button id="forest-step">Step 1 second</button><button id="forest-reset">Reset</button></div>
         <div class="forest-view-controls" aria-label="Camera controls"><button id="forest-view-orbit">Overview</button><button id="forest-view-top">Top</button><button id="forest-view-side">Side</button><button id="forest-view-reset">Reset view</button><button id="forest-view-pov">Drone view</button><label><input id="forest-follow" type="checkbox"> Follow drone</label></div>
         <div class="forest-layer-controls"><label><input id="forest-cutaway" type="checkbox"> Canopy cutaway</label><label><input id="forest-collision" type="checkbox"> Collision envelopes</label><label><input id="forest-mist" type="checkbox"> Mist visualization</label><span id="forest-renderer-state"></span></div>
+        <p id="forest-cover-note" class="hint"></p>
         <canvas id="forest-map" width="900" height="490" tabindex="0" aria-label="Interactive 3D forest. Drag to orbit; scroll to zoom; right-drag or shift-drag to pan. Arrow keys orbit; plus and minus zoom; Home resets."></canvas>
         <p class="hint">Drag: orbit · scroll/pinch: zoom · right/shift-drag: pan. Cyan: route · cream: trail · gold: support. Route overlays show through foliage for explanation. Cutaway changes visibility, not collision geometry. Full synthetic map supplied.</p>
         <canvas id="forest-profile" width="900" height="140" aria-label="Flight altitude over elapsed simulated time"></canvas>
@@ -31,7 +32,7 @@
         <details><summary>Open-source building blocks</summary><p><a href="https://github.com/ZJU-FAST-Lab/ego-planner-swarm">EGO-Swarm</a>: navigation candidate (GPL-3.0). <a href="https://github.com/stephansturges/OpenLander">OpenLander</a>: clearing perception (MIT). <a href="https://github.com/JuliaDi/Tree-Perching-Code">SLAP code</a>: trunk perch/recovery reference (MIT; motion capture/operator inputs). <a href="https://github.com/YassinBaraa/Diplomski_rad">Pi/Hailo branch prototype</a>: close hardware match; motion capture and unresolved license. None is bundled in this model.</p></details>
         <h3>Mission decisions</h3><ol id="forest-events"></ol>
       </aside></div>
-      <footer>Fushan is one Taiwanese forest type, not a proxy for every altitude or region. Local 48 × 40 m terrain, 54 major stems and understory are a seeded reconstruction; individual tree locations, support strength, wet grip and wind response are not measured. Mist is a visual sensitivity control, not a calibrated visibility model. <a href="../docs/taiwan-forest-analysis.md">Site analysis & evidence</a> · <a href="../docs/forest-navigation.md">Model contract</a></footer>
+      <footer>Fushan is one Taiwanese forest type, not a proxy for every altitude or region. The 48 × 40 m active patch, 54 major stems and dense understory are a seeded reconstruction. Surrounding trees are visual context outside the bounded flight model. Individual tree locations, support strength, wet grip and wind response are not measured. Mist is a visual sensitivity control, not a calibrated visibility model. <a href="../docs/taiwan-forest-analysis.md">Site analysis & evidence</a> · <a href="../docs/forest-navigation.md">Model contract</a></footer>
     </dialog>`;
   const el=id=>document.getElementById('forest-'+id),profile=el('profile').getContext('2d');
   let renderer=null;try{renderer=window.EagleForestRenderer.create(el('map'));}catch(error){console.warn('Forest WebGL fallback:',error.message);}
@@ -54,6 +55,8 @@
   function line(points,color,width=2,dash=[]){ctx.strokeStyle=color;ctx.lineWidth=width;ctx.setLineDash(dash);ctx.beginPath();points.forEach((p,i)=>{const q=project(p);i?ctx.lineTo(...q):ctx.moveTo(...q);});ctx.stroke();ctx.setLineDash([]);ctx.lineWidth=1;}
   function draw(){
     dirty=false;
+    const density=s.world.metrics;
+    el('cover-note').textContent=density?`Modeled crown footprints cover ${(density.crownProjection*100).toFixed(0)}% of the active patch · ${density.understory} understory placements · these are reconstruction settings, not measured canopy closure.`:'Original sparse block baseline.';
     if(renderer)renderer.render(s,view,{follow:el('follow').checked,cutaway:el('cutaway').checked,collision:el('collision').checked,mist:el('mist').checked,pov});
     if(ctx){
     ctx.fillStyle='#0b1718';ctx.fillRect(0,0,900,490);ctx.font='13px monospace';

@@ -22,6 +22,9 @@ assert(F.scene().candidates.find(c=>c.id==='Leaves').reason);
 for(const site of ['fushan','fushan-ridge'])for(const scenario of ['branch','moving','grip-failure','landing','blocked','sensor-loss']){
  const s=F.create(scenario,site);let recovered=false;
  assert.equal(s.world.trees.length,54);assert(s.world.ground(40,30)>s.world.ground(4,4));
+ assert(s.world.metrics.crownProjection>.7&&s.world.metrics.crownProjection<.9);
+ assert(s.world.ferns.length>850);assert.equal(s.world.contextTrees.length,100);
+ assert(s.world.obstacles.filter(o=>o.kind==='understory').length>300);
  for(let i=0;i<5000&&!s.done;i++){
   F.step(s,.05);if(s.phase==='RECOVER')recovered=true;
   assert(F.free(s.p,s.world));assert(s.p[2]>=s.world.ground(s.p[0],s.p[1])+F.radius);
