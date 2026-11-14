@@ -15,7 +15,10 @@ measured.
 | `index.html` | The app in one file: 3D scene, panels and model. Built from the two files below; do not edit it by hand |
 | `index.src.html` | Page source (scene, interface, mission player) with a `/*@@MODEL@@*/` marker where the model goes |
 | `model.js` | Physics and decision model. Plain JavaScript, no dependencies; runs in Node (`require`) or the browser (`window.EagleModel`) |
-| `build.js` | `node build.js` inlines `model.js` into `index.src.html` and writes `index.html` |
+| `build.js` | `node build.js` inlines `model.js` and `eagle_drone.js` into `index.src.html` and writes `index.html`; also builds `eagle_viewer.html` |
+| `eagle_drone.js` | The Eagle as a 3D model: a flapping-wing drone at Mountain Hawk-Eagle size with three skins (hawk-eagle, serpent eagle, bare airframe) and its flight, landing, wing-fold and take-off animation. Reference: [eagle-drone.md](eagle-drone.md) |
+| `eagle_viewer.src.html` | Standalone viewer for the model, built into `eagle_viewer.html` |
+| `assets/` | The model as `.glb` files with animation clips, for Unreal or Blender; rebuilt by `tools/export_glb.js` |
 | `model_table.js` | `node model_table.js` prints every preset and what-if case in the results below |
 | `serve.mjs` | `node serve.mjs` serves the page on the local network and passes the connection setup between a GPU computer and a laptop for [remote GPU](#remote-gpu). Node 18 or newer, no packages |
 | `tests/` | Headless browser checks: `test_present.js` (presenter, live numbers against the model) and `test_remote.js` (remote GPU). Run `npm install` in that folder first |
@@ -27,7 +30,13 @@ measured.
    the file in Chrome, Edge, Safari or Firefox. It needs internet on first load for three.js r128
    and fonts.
 2. Pick a scenario on the left; every panel updates at once. **Run mission** plays the timeline.
-3. **Cinematic** plays a five-shot flythrough. **Export to Unreal** gives the scene as JSON.
+3. **Cinematic** plays a ten-shot flythrough, about 76 s, along the team's decision chain (letters
+   D to Z): the delivery craft offshore launching the five eagles one by one; dawn over the canopy;
+   the five circling his predicted path as a pentagon; Eagle-1 dropping out of the circle onto its
+   branch, up close; a close orbit on the perch; its thermal view of him, outlined, then zoomed 2.5×;
+   the other four flying in to look, with their votes (3 of 5 must agree); the take-off out over the
+   valley; the burst far from him (or, for the courier, the coast); and the craft forwarding the
+   report by satellite. **Craft** shows the boat at sea; **Export to Unreal** gives the scene as JSON.
 4. **Present ▶** (or **P**) runs the judges' demo: ten cards with live numbers from the model
    ([Presenter mode](#presenter-mode); run sheet in [demo-runbook.md](demo-runbook.md)).
 
@@ -54,13 +63,41 @@ A downed aviator in Taiwan's Central Mountain Range, about 1,000 m up, in July, 
 injured and lying 20 m from the Eagle, which perches on an 8 m branch under a 15 m canopy (leaf
 area index 4.5, understory visibility 20 m). He carries nothing that transmits. He was briefed to
 tap a code on a tree trunk (3-3-1) every 30 minutes after dark. A patrol is 250 m from him and
-230 m from the perch. Eight Eagles search a 1 km circle around his parachute, 30 minutes per
-perch. Each Eagle has a 256 × 192 thermal camera, six microphones and a Hailo-8 accelerator on a
+230 m from the perch. Five Eagles, launched from an uncrewed boat offshore, search a 1 km circle
+around his parachute, 30 minutes per perch. Each Eagle has a 256 × 192 thermal camera, six microphones and a Hailo-8 accelerator on a
 Raspberry Pi 5, and no GPS.
 
 Presets: `night` (default), `cicadaDay` (14:00, 300 m), `typhoon` (16:00, heavy rain),
 `preDawn` (05:30, mist), `target` (inside the target area, troops 120 m away). `M.defaults()`
 lists all 32 settings.
+
+### The craft and the five birds
+
+The team's decision chain (operator down to a signal at base, steps A to Z) sets what the scene
+shows beyond Eagle-1:
+
+- **D, F, G · the craft.** SOCOM sends an autonomous delivery craft; the project docs assume a
+  Saronic-type uncrewed boat. It is drawn to the Corsair class's published size (24 ft, 7.3 m;
+  vendor figures: 1,000 lb payload, more than 1,000 nmi range, more than 35 kn) as a generic
+  low-freeboard boat, not the vendor's design, with a sensor mast: radome, satcom dome, an EO/IR
+  ball and two whips (one listens on 915 MHz). It holds station about 20 km offshore and launches
+  the five birds off a rack on its after deck, one by one, each with its prey in its talons (what
+  the prey is, is still open). **Craft** in the view bar shows it.
+- **J · the pentagon.** Over the search area the five fly one circle 150 m in radius, about 35 m
+  over the crowns and 72° apart, so they always stand on the corners of a pentagon. It is centred
+  40 m short of him on his predicted path (from the parachute, the way he was heading). Eagle-1's
+  corner stays empty while it is down on its perch. One lap takes 86 s at 11 m/s.
+- **K-O · Eagle-1** drops to its branch, searches and sees him: the rest of this document.
+- **Q-S · the other four** fly in over him and circle 14-25 m out to look. The cinematic shows
+  their answers (two of the four get a clear line, so 3 of 5 agree); these votes are illustrative.
+  **Run mission** sends the four in at the decision step, and they rejoin the pentagon afterwards.
+- **Eagle-2** is also the model's relay bird: in whisper mode it circles right over Eagle-1, and
+  **Run mission** flies it away with the report.
+- **X-Z.** The cinematic ends at the craft: the report comes in over the water, the craft checks the
+  tag (its lamp blinks cyan) and forwards it by satellite.
+
+The direction-finding mast that stood at the outpost is gone. A burst the enemy can hear now
+draws its red bearing line from the patrol's receiver.
 
 ## How the model works
 
@@ -154,20 +191,20 @@ signal carries, times 30 minutes per stop, shared across the birds.
 From `node simulator/v2/model_table.js`. Unless stated: 02:00, 1,000 m, injured, 20 m from an 8 m
 perch, taps the briefed code.
 
-| Case | Heat | Sound | Decision | Way out | Marker on ATAK | Error | Search, 8 birds |
+| Case | Heat | Sound | Decision | Way out | Marker on ATAK | Error | Search, 5 birds |
 |---|---|---|---|---|---|---|---|
-| 02:00 night (default) | 23 m | tap code 94 m | TRANSMIT at 10 min | fly 3 km, then burst | 14.5 min | 10.1 m | 114 stops, 8.3 h |
-| 14:00 cicada chorus, 300 m | fails | tap code 26 m | TRANSMIT at 10 min | fly 3 km | 14.5 min | 10.5 m | 1,480 stops, 107.9 h |
-| Typhoon rain | 23 m | tap code 21 m | TRANSMIT at 10 min | fly 3 km | 14.5 min | 10.1 m | 1,891 stops, 137.9 h |
-| 05:30 pre-dawn mist | 23 m | tap code 133 m | TRANSMIT at 10 min | fly 3 km | 14.5 min | 10.1 m | 57 stops, 4.2 h |
-| Inside the target, troops 120 m | 23 m | tap code 94 m | TRANSMIT at 10 min | fly 3 km | 14.5 min | 10.1 m | 114 stops, 8.3 h |
-| Injured, silent (coughs) | 23 m | cough 30 m | TRANSMIT at 80 min (false alarm MEDIUM) | fly 3 km | 84.5 min | 10.1 m | 1,891 stops, 137.9 h |
+| 02:00 night (default) | 23 m | tap code 94 m | TRANSMIT at 10 min | fly 3 km, then burst | 14.5 min | 10.1 m | 114 stops, 13.3 h |
+| 14:00 cicada chorus, 300 m | fails | tap code 26 m | TRANSMIT at 10 min | fly 3 km | 14.5 min | 10.5 m | 1,480 stops, 172.7 h |
+| Typhoon rain | 23 m | tap code 21 m | TRANSMIT at 10 min | fly 3 km | 14.5 min | 10.1 m | 1,891 stops, 220.6 h |
+| 05:30 pre-dawn mist | 23 m | tap code 133 m | TRANSMIT at 10 min | fly 3 km | 14.5 min | 10.1 m | 57 stops, 6.7 h |
+| Inside the target, troops 120 m | 23 m | tap code 94 m | TRANSMIT at 10 min | fly 3 km | 14.5 min | 10.1 m | 114 stops, 13.3 h |
+| Injured, silent (coughs) | 23 m | cough 30 m | TRANSMIT at 80 min (false alarm MEDIUM) | fly 3 km | 84.5 min | 10.1 m | 1,891 stops, 220.6 h |
 | Unconscious, silent | 23 m | none | KEEP WATCHING (P 0.92 after 2 h) | – | not sent | – | – |
 | Unconscious, radar pellet dropped | 23 m | none | TRANSMIT at 120 min (false alarm HIGH) | fly 3 km | 124.5 min | 10.1 m | – |
-| Conscious, hiding, taps the code | 23 m | tap code 94 m | TRANSMIT at 10 min | courier | 50 min | 10.1 m | 114 stops, 8.3 h |
-| Perch 60 m away | no clear line | tap code 92 m | TRANSMIT at 10 min | fly 3 km | 14.5 min | 14.9 m | 119 stops, 8.7 h |
+| Conscious, hiding, taps the code | 23 m | tap code 94 m | TRANSMIT at 10 min | courier | 50 min | 10.1 m | 114 stops, 13.3 h |
+| Perch 60 m away | no clear line | tap code 92 m | TRANSMIT at 10 min | fly 3 km | 14.5 min | 14.9 m | 119 stops, 13.9 h |
 | Perch 100 m away | no clear line | not heard | KEEP WATCHING | – | not sent | – | – |
-| Magnetometer heading, no visual odometry | 23 m | tap code 94 m | TRANSMIT at 10 min | fly 3 km | 14.5 min | 30.1 m | 114 stops, 8.3 h |
+| Magnetometer heading, no visual odometry | 23 m | tap code 94 m | TRANSMIT at 10 min | fly 3 km | 14.5 min | 30.1 m | 114 stops, 13.3 h |
 
 What the model says:
 
@@ -183,8 +220,8 @@ What the model says:
 - **The Eagle's own position is the error budget.** 10 of the 10.1 m come from flying without
   GPS. Visual-inertial odometry with map matching meets the 30 m target; a magnetometer alone does
   not.
-- **Search time depends on how far his signal carries:** 4.2 hours for eight birds before dawn,
-  8.3 hours at night, 108-138 hours by day or in a typhoon.
+- **Search time depends on how far his signal carries:** 6.7 hours for five birds before dawn,
+  13.3 hours at night, 173-221 hours by day or in a typhoon.
 
 ![Unconscious and silent: the gate holds at P 0.92 after two hours, so no report is sent](images/sim-v2-unconscious.jpg)
 
@@ -198,9 +235,11 @@ the default night scene with 25 actors.
   fog: density, colour, thicker below 60 m), `canopy`, `terrain`, `camera` (position, target, field
   of view) and `model` (status, decision, chosen way out, error).
 - `actors`: `id`, `kind`, `x`, `y`, `z`, `yaw_deg` and `heading_deg` (compass), plus `perch` and
-  `perch_h_m` for the Eagle, `posture`, `state` and `carries` for him, `altitude_m` for the relay.
-  Kinds: `eagle_perched`, `eagle_flying`, `operator`, `patrol`, `troop`, `outpost`, `df_mast`,
-  `relay_bird`, `parachute_lkl`, `local`, `muntjac`, `macaque`, `wild_boar`, `sambar`.
+  `perch_h_m` for the Eagle, `posture`, `state` and `carries` for him, `altitude_m` for the relay
+  (Eagle-2), `pentagon_slot` for Eagles 3-5. Kinds: `eagle_perched`, `eagle_flying`, `operator`,
+  `patrol`, `troop`, `outpost`, `relay_bird`, `parachute_lkl`, `local`, `muntjac`, `macaque`,
+  `wild_boar`, `sambar`. The importer still accepts `df_mast` from older exports. The craft is not
+  exported: it sits outside the 800 m map.
 
 [`unreal/ue_import_scene.py`](../simulator/v2/unreal/ue_import_scene.py) places the actors in an
 Unreal Engine 5 level as engine shapes until you map your own assets. It converts the axes
@@ -219,7 +258,7 @@ moment, so changing a setting changes the story.
 |---|---|---|---|
 | 1 | Find a downed aviator who carries nothing | Overview of the valley | |
 | 2 | Anything that transmits gets found | Perch and patrol, with a pulsing red ring: how far a burst beside him carries (246 m) | |
-| 3 | Perch, motor off, listen | Close on the Eagle | |
+| 3 | Perch, motor off, listen | The Eagle flies in, flares onto the perch and folds its wings | |
 | 4 | Body heat through a gap in the leaves | The Eagle and its camera cone | Eagle cam, thermal |
 | 5 | 6 microphones hear his tap code | Close on him, with sound rings | |
 | 6 | It only talks when it is sure | Orbit | P(operator) over time |
@@ -326,6 +365,7 @@ Display → Graphics → Google Chrome → **High performance** gives it the dis
 | `rg.host()`, `.view()`, `.stop()`, `.state` | Remote GPU: role, live, connection, stats |
 | `perf` | Level, mode, effects stage, resolution scale, pixel ratio, measured fps, GPU name |
 | `ready`, `frames`, `running`, `cine`, `pipStats`, `dbg()` | State for tests |
+| `eagle`, `relay`, `flock`, `pent`, `craft`, `atSea` | Eagle-1; Eagle-2 (the relay); Eagles 2-5; the pentagon's centre and radius; the boat; whether the view is at sea |
 
 Set before the page loads: `window.__EAGLE_BOOT_Q` (starting level), `__EAGLE_MAXFPS` (frame cap)
 and `__EAGLE_VEG` (vegetation multiplier; the tests use it to keep software rendering fast). URL
@@ -369,8 +409,11 @@ hashes: `#present` starts the presenter; `#host` and `#view` start remote GPU.
 - **The 3D scene illustrates the model; it is not Unreal-grade.** The canopy reads as dense jungle
   from above and at dawn, but leaves look game-like up close, and people are simple shapes. The
   map is 800 m square, so the outpost sits about 500 m from him rather than 700 m. In whisper mode
-  the relay is drawn at most 140 m overhead (the model uses 300 m). A small clearing around the
-  perch keeps the Eagle in view; the model's 34 % chance of a clear line is unchanged. The
+  the relay is drawn at most 140 m overhead (the model uses 300 m). The line from the perch to him
+  is cut clear and the brush round him cleared, so the Eagle cam always sees him; the model's 34 %
+  chance of a clear line is unchanged. The craft sits in its own patch of sea 3 km west of the map
+  (the plan puts it about 20 km offshore), and the pentagon is 300 m across so it fits the map. The
+  votes in the cinematic are illustrative: the model does not simulate the other four birds. The
   cinematic always plays in dawn light.
 - **Performance** has only been measured with software rendering. Auto quality trades effects and
   render resolution for frame rate ([Performance and quality](#performance-and-quality)); frame
@@ -396,3 +439,4 @@ hashes: `#present` starts the presenter; `#host` and `#view` start remote GPU.
 - Iridium 9603 (SBD messages of 340 B out and 270 B in, latency under a minute).
 - Seeed MR60BHA2 wiki (breathing and heart rate to 1.5 m, presence to 6 m).
 - HTI HT-203U-i specifications (256 × 192 thermal core).
+- Saronic Corsair, vendor figures as reported by Army Recognition (2024) and drone-warfare.com: 24 ft, 1,000 lb payload, 1,000+ nmi range, 35+ kn, diesel, low freeboard.

@@ -27,6 +27,13 @@ What the script does:
   script leaves the light alone, so set your level's moonlight by hand. Fog density is the
   simulator's value × 5, capped at 0.05; tune `FOG_SCALE` by eye.
 
+**The Eagle model:** `../assets/eagle_drone_hawkEagle.glb` (also `_serpentEagle`, `_airframe`) is the
+simulator's bird as a skinned mesh with clips `flap`, `glide`, `soar`, `perch_idle`, `fold`, `unfold`,
+`land` and `takeoff` (metres, +Y up, origin at the body centre when perched). Drag it into the Content
+Browser to get a Skeletal Mesh, Skeleton and Animation Sequences, wrap it in a Blueprint that plays
+`perch_idle` (perched) or `flap` (flying), and map `eagle_perched` and `eagle_flying` to that Blueprint
+in `ASSETS`. Details: [eagle-drone.md](../../../docs/eagle-drone.md#gltf-for-unreal-and-blender).
+
 **Live link (next step):** the Remote Control API plugin accepts HTTP on port 30010
 (`PUT /remote/object/property`, `PUT /remote/object/call`) and WebSocket on port 30020. A local
 bridge can push time of day, weather and positions into the running level. Epic recommends using

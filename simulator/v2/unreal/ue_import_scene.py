@@ -42,14 +42,14 @@ FOG_MAX = 0.05                              # top of Unreal's usual Fog Density 
 # kind -> your asset (a Blueprint class or a Static Mesh). Unlisted kinds use STAND_INS.
 ASSETS = {
     # "operator": "/Game/MetaHumans/Pilot/BP_Pilot.BP_Pilot",
-    # "eagle_perched": "/Game/Birds/SM_SerpentEagle.SM_SerpentEagle",
+    # "eagle_perched": "/Game/Birds/BP_EagleDrone.BP_EagleDrone",   # Blueprint around ../assets/eagle_drone_hawkEagle.glb
 }
 
 SHAPE = "/Engine/BasicShapes/{0}.{0}"        # engine basic shapes are 1 m across, pivot at the centre
 # kind -> (shape, size in metres (x, y, z), pitch in degrees, anchor). The anchor is where the
 # exported point sits on the object: "base" (feet or ground), "center" or "top".
 STAND_INS = {
-    "eagle_perched": ("Sphere",   (0.4, 0.4, 0.7),   0.0,   "base"),
+    "eagle_perched": ("Sphere",   (0.4, 0.4, 0.7),   0.0,   "center"),   # exported at the body centre, 0.26 m above the branch (the .glb origin too)
     "eagle_flying":  ("Sphere",   (0.7, 1.8, 0.3),   0.0,   "center"),
     "relay_bird":    ("Sphere",   (0.8, 2.0, 0.3),   0.0,   "center"),
     "operator":      ("Cylinder", (0.5, 0.5, 1.8),   90.0,  "base"),    # replaced by POSTURE

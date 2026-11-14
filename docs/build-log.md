@@ -4,6 +4,245 @@ Every build gets an entry here: what we built, why, how it works, what we decide
 
 ---
 
+## 2026-11-08 · Simulator v2: the craft, the five birds and the pentagon; DF mast removed; cinematic follows the decision chain; published
+
+**Files:** [`simulator/v2/index.src.html`](../simulator/v2/index.src.html) (built into `index.html`), [`simulator/v2/model.js`](../simulator/v2/model.js) (five birds by default), [`simulator/v2/tests/test_present.js`](../simulator/v2/tests/test_present.js) · **Docs:** [simulator-v2.md](simulator-v2.md#the-craft-and-the-five-birds), [eagle-drone.md](eagle-drone.md#in-simulator-v2)
+
+### What
+- **The craft.** A Saronic-type autonomous boat, drawn to the Corsair class's published size (24 ft), at sea about 20 km off the coast. It carries the five birds on a rack on its after deck and launches them one by one, each with its prey in its talons. **Craft** in the view bar shows it.
+- **Five birds.** Eagles 2-5 join Eagle-1. Over the search area they fly a circle round his predicted path, 72° apart, so the five make a pentagon; Eagle-1's corner is empty while it is down on its perch. The pentagon and the predicted path are drawn in the 3D view (overlay *Pentagon, 5 birds*) and on the map.
+- **Call the other four.** At the decision step of **Run mission** the other four fly in over him to look, then rejoin the pentagon.
+- **DF mast removed** from the outpost. A burst the enemy hears now draws its bearing line from the patrol's receiver; captions, the presenter's threat card and the export follow.
+- **Cinematic, ten shots, about 76 s**, along the decision chain (steps D to Z):
+  1. The craft launches the five.
+  2. Dawn over the canopy.
+  3. The pentagon, from behind one bird and then from about 330 m up.
+  4. Eagle-1 drops onto its branch.
+  5. It sits on the perch.
+  6. Its thermal view of him, outlined and zoomed.
+  7. The other four fly in to look, and their votes come in (3 of 5 must agree).
+  8. The take-off.
+  9. The burst.
+  10. The craft forwards the report by satellite.
+- **Five birds in the model** (was eight), so the search-time numbers follow the plan.
+
+### Why
+- Mitch asked for the radio tower to go (it is not part of the plan) and for the Saronic-type boat and the five birds from the project's decision chain: the craft is sent with 5 birds (D), releases them about 20 km off (F) one by one with prey (G), and they form a pentagon round the radius with his path predicted (J), call the other four (Q, R) and need 3 of 5 to agree (S).
+
+### How it works
+- **Pentagon.** Five slots on one circle, 150 m in radius, 72° apart, turning at 11 m/s (one lap in 86 s). The centre sits 40 m short of him on the line from the parachute through his position. The height is 35 m over the crowns, taken round the circle with a running maximum and then averaged, so the birds climb and sink slowly. Eagle-2 doubles as the model's relay bird.
+- **Converge and rejoin.** Each of the four flies in over the crowns to its own circle round him, 14-25 m out and 14-26 m over the crowns, and does three laps. It then flies to where its pentagon slot will be when it gets there, timed so it hands back to the circle without a jump.
+- **Craft.** Chined deep-V hull lofted from 30 stations, low freeboard, a chamfered deck cover, and a sensor mast with radome, satcom dome, EO/IR ball, whips and lights. It rides a three-wave swell (heave, pitch, roll). The sea is a 3.6 km plane with a tiling normal map in three scales, smoother with distance, plus foam round the hull and the coast's mountains as a haze silhouette. It sits 3 km west of the map and is drawn only in the Craft view and the cinematic's first and last shots; the island is put away meanwhile, and the Eagle cam still draws it. The sky, stars and moon now follow the camera.
+- **Votes.** Illustrative: two of the four get a clear line, so 3 of 5 agree. The model does not simulate the other birds.
+
+### Key results
+- The five birds together in the cinematic's pentagon shot; four circling in the orbit view while Eagle-1 is perched. Published as version 10.
+- Search time with five birds: 13.3 h at night, 6.7 h before dawn, 173-221 h by day or in a typhoon (was 8.3, 4.2 and 108-138 h with eight).
+
+### Verification
+- Every shot captured in headless Chromium under a fixed-step clock (jumping straight to it); no console errors.
+- The page script parses (`node --check` on the built page's script). `tests/test_present.js` passes on this build with its two search numbers updated for five birds (step 8: 13.3 h; step 9: 173 h): 10 steps, 12 numbers, no console errors.
+
+### Open issues / next
+- The craft sits 3 km west of the map in the scene; the plan puts it about 20 km offshore. The pentagon is 300 m across to fit the 800 m map.
+- The prey's role is still open in the chain (supplies, relay node or thermal camera); it is drawn as a small decoy.
+- Watch the full cinematic at frame rate on the demo laptop.
+
+---
+
+## 2026-11-08 · Simulator v2: the Eagle cam sees him (sight line cleared, silhouette outlined); published
+
+**Files:** [`simulator/v2/index.src.html`](../simulator/v2/index.src.html) (built into `index.html`) · **Docs:** [simulator-v2.md](simulator-v2.md)
+
+### What
+In Cinematic's thermal shot the operator is in view and outlined. The Eagle cam traces his silhouette in cyan instead of boxing him, and the shot zooms in 2.5× on him (digital zoom: the same 256×192 pixels, drawn bigger).
+
+### Why
+- Mitch could not see the person in the thermal shot. At High quality the full vegetation is drawn and a tree crown stood between the default perch and his spot, so the frame held 0 px of him. Medium and Low draw fewer trees and showed 59 px.
+
+### How it works
+- **Sight line.** `clearSightLine()` cuts every tree, tree fern, shrub, ground fern, bamboo clump, log and rock that reaches into a cone from the bird's eye to him. The cone is 0.3 m wide at the eye and 1.6 m at him, and each plant is tested as capsules round its trunk and each leaf clump. It also clears the understory within 4.5 m of him.
+- **When it reruns.** Whenever the perch, his spot, the canopy height or the quality level changes; the earlier cuts grow back first.
+- **Flights.** Cut crowns no longer count when flights check the crown height (`canopyTopAt`), and no lianas hang from the trees on that line.
+- **Outline.** Marching squares over his pixels in the ID pass, grown by one pixel so the line sits just outside his warm pixels.
+- **Frame rate.** During the thermal shot the Eagle cam runs at 24 frames a second, and the 3D view it covers is not drawn.
+
+### Key results
+- Default scenario (8 m perch, 20 m from him): 59 px on him at High, Medium and Low (was 0 at High).
+
+### Verification
+- Headless Chromium at High quality, jumping to the thermal shot: 59 px on him, outline drawn, 2.5× zoom on him; no console errors.
+- `tests/test_present.js` passes.
+
+### Open issues / next
+- The model's chance of a clear line (`pLOS`, 34% at 20 m) is unchanged; the scene now always shows the case where the line is clear.
+
+## 2026-11-08 · Simulator v2: the realistic eagle up close in Cinematic; flights clear of the hillside; published
+
+**Files:** [`simulator/v2/index.src.html`](../simulator/v2/index.src.html) (built into `index.html`), [`simulator/v2/eagle_drone.js`](../simulator/v2/eagle_drone.js) (v1.2) · **Docs:** [simulator-v2.md](simulator-v2.md), [eagle-drone.md](eagle-drone.md#in-simulator-v2)
+
+### What
+Cinematic mode now shows the Hawk-Eagle model up close and at its real speed, and every Eagle flight in the simulator keeps clear of the hillside and the tree crowns. From 3 m beside the branch, Eagle-1 glides in over the valley towards the lens, swoops up, flares, hops round to face the operator and folds its wings; the camera orbits it at 1.75–2.5 m; it drops off the branch and flies out over the valley; then a cut finds it flying head-on at a camera just past the send point, and the intercept ring spreads as the camera rises 40 m and follows its front edge inland (for the courier it passes over a camera at the coast and is gone). Run mission and presenter card 3 use the same arrival. The published Eagle Jungle Simulator page now runs this build.
+
+### Why
+- Mitch was still seeing the old block eagle in the simulator he runs in the browser: the realistic model was in simulator v2 on the `eagle-drone-model` branch, but the published page had not been updated, and the cinematic only saw the bird from 9–60 m.
+- Seen up close, two faults showed. The arrival came in from behind the perch and passed through the hillside above it: its path was laid out as if the ground were flat, but the default perch sits inside the forest on a slope of 25–35°, with crowns up to 60 m above it within 60 m uphill. And the old fly-away crossed the 472 m to the send point in under 11 s (over 40 m/s).
+
+### How it works
+- **Open side.** `openDir()` samples the crowns (`canopyTopAt`) and the ground around the branch, 48 directions from 4 to 52 m, and picks the direction whose crowns stay lowest under a 1-in-4 glide slope. Arrivals glide in from 70 m out and about 22 m up on that side, at least 3 m over the crowns (`overCrowns()` points), then `land()` swoops up onto the branch.
+- **Hop-turn.** A bird lands facing the way it flew in, so `land(..., { faceAfter })` turns it on the branch afterwards: wings half open, a 4.5 cm hop, about 0.85 s. The simulator keeps `flight.hold` until `eagleD.settling` clears, so the Eagle cam's aim does not snap the bird round.
+- **Take-off.** A drop on the open side to pick up speed, a climb-out, then on to the destination at least 9 m over the crowns, climbing early before a rise and sinking slowly after it.
+- **Camera.** Tracking shots aim at the bird each frame, eased (time constant about 0.18 s). Shots can set the lens from the bird's distance: it narrows to 8° while the bird is far off, so the bird stays about a fifth of the frame. A follow shot behind the bird was tried and dropped: over this terrain it showed a small bird against a busy slope. A first arrival camera beside the perch looked through the white snag's trunk; the camera now sits on the side of the branch away from both trunks.
+- **Nothing sped up.** 12 m/s in level flight. The burst is a cut, which stands in for the rest of the flight: the bird is placed 60 m short of the send point and flies it, and the ring fires when it gets there (checked each frame in `stepCine`, so it cannot fire after the cinematic stops). In the cinematic the ring spreads over 3.2 s instead of 1.4 s, and the crane aims at the ring as drawn (it runs slower on a slow frame rate); the crane stays low and looks inland, so the frame never shows past the edge of the map.
+- **One clock.** The shots and the bird advance by the same frame time (up to 1 s a frame; the bird in 0.1 s steps). Before, the shots ran on `performance.now()` and the bird at most 0.25 s a frame; in Chrome on a laptop, with the window in the background, the shots ran about 2.5 s ahead and cut away before the landing.
+
+### Key results
+- Seven shots (six without an enemy), 51.2 s (44.2 s): dawn crane, arrival, perch orbit, thermal, the target, the release, the burst (or the coast).
+- Arrival path in the default scenario: at least 2.6 m over the crowns until it reaches the perch tree (the old path passed about 2 m below the hillside surface on its way in).
+
+### Verification
+- Cinematic in headless Chromium under a fixed-step clock, jumping straight to each shot: frames of the arrival, landing and hop-turn, perch orbit, take-off and burst checked by eye, with the bird's and camera's heights logged against the crowns and the ground; no console errors.
+- `tests/test_present.js` and `tests/test_remote.js` pass.
+- Published page opened in Chrome on a laptop GPU: the glide-in against the sky and the landing play as in the headless frames.
+
+### Open issues / next
+- Watch the whole cinematic at full frame rate on the demo laptop; tune the tracking offsets if the bird turns tighter than modelled.
+- The send point `W.away` is clamped to the corner of the 800 m map; the model puts it 3.0 km out.
+
+---
+
+## 2026-11-08 · Eagle: airframe refitted inside the disguise; cutaway with every part
+
+**Files:** [`simulator/v2/eagle_drone.js`](../simulator/v2/eagle_drone.js), [`simulator/v2/cutaway.js`](../simulator/v2/cutaway.js) (new), [`simulator/v2/eagle_viewer.src.html`](../simulator/v2/eagle_viewer.src.html), [`simulator/v2/build.js`](../simulator/v2/build.js), [`simulator/v2/assets/`](../simulator/v2/assets/) (re-exported) · **Docs:** [eagle-drone.md](eagle-drone.md#fit-the-airframe-inside-the-disguise)
+
+![Cutaway, wings open](images/eagle-drone-cutaway.jpg)
+
+### What
+The airframe now fits inside the eagle disguise in every pose, and the viewer has a cutaway: a still, to-scale section through the bird with 24 numbered parts (disguise layers, airframe, drive, sensors, compute, radios, power) and a parts list with sizes and estimated masses. It opens in its own window from **Cutaway view ↗**.
+
+### Why
+Mitch's x-ray screenshot showed the airframe poking out of the eagle: the chrome nose above the head, the diamond tail out to the sides, the wing panels past the feathers. A disguise only works if the drone fits inside it, and the team needs to see what goes where and whether the real parts fit.
+
+### How it works
+- One envelope for everything: the eagle's body and head rings are shared constants. The pod is the body less the disguise stack (feathers 9 mm, skin 1 mm, foam 5 mm); the sensor head is the head less 5 mm; each lamella and tail slat is its feather's core (14 mm shorter, vanes 85 % as wide).
+- Nose cone → chrome sensor head on the neck (it turns with the head); fixed diamond tail → 12 tail slats on the tail joints (they close with the feathers). The disguise gained a feathered ankle that covers the leg joint when the legs tuck.
+- 20 internal parts are rigid meshes on the bones at real or placeholder sizes; the pushrods re-aim at the humerus horns every pose. Skin and foam are extra lofts from the same envelope.
+- The cutaway renders once with clipping planes in the body frame: the near side is cut back in steps so each layer shows. An ID render (surface and body region per pixel) moves each numbered dot onto the part it names, or drops it if that part is hidden from that side. Labels sit in two columns; leader crossings are reduced by swapping label slots. The 3D context is released after the still.
+
+### Key results
+- Airframe outside the disguise, worst over 8 views and 9 poses (measured, silhouette test): tail 92 → ≤ 2 mm, head 54 → 0 mm, wings 37 → ≤ 2.5 mm, legs 4.3 → ≤ 1 mm; 2 mm is one pixel. One 3.5 mm sliver remains mid-fold.
+- All 20 parts (23 with mirrored pairs) fit their spaces with no overlaps; tightest 0.8 mm (grip servos).
+- Estimated mass 1.90 kg against the 2.6 kg target.
+- Findings: the HT-203U phone housing (68.6 × 45.7 × 12.7 mm, listing) does not fit the head, so the core comes out; a Pi Camera 3 board is too big for behind an eye; the 110 mm mic bar fits only across the pod's widest point; the Iridium patch has to sit outside the carbon, partly under the folded wings when perched.
+
+### Decisions and trade-offs
+| Decision | Why | Cost |
+|---|---|---|
+| Change the reference airframe's nose and tail | Neither can fit inside a perched eagle | The bare airframe looks less like the render |
+| Lamellae as feather cores, not wider panels | The feather film wraps them, so they never show | Less carbon area per wing than the render suggests |
+| Mic bar across the pod, ports through the wall | The only place a 110 mm bar fits | Needs acoustic windows; motor noise is close |
+| Masses as estimates, labelled per row | Most parts are not chosen yet | The total is a budget, not a weight |
+
+### Verification
+- Silhouette fit test (headless, `render/fit.js`, not in the repo): numbers above, both skins.
+- Parts fit test (`render/partfit.js`, not in the repo): every part inside its space, no overlaps.
+- Cutaway in headless Chromium at desktop width and phone width, light and dark: both poses render (10 s and 22 s on SwiftShader), 24 parts labelled, no console errors, no sideways page scroll.
+- Viewer: the context-loss tests and the desktop/phone layout check still pass. `.glb` files re-exported; Khronos validator 0 errors. `tests/test_present.js` passes.
+
+### Open issues / next
+- Choose the real motor, gearbox, servos, battery and flight controller, then replace the placeholders.
+- Measure the HT-203U core out of its housing; pick the RGB camera module.
+- Acoustic windows for the mic bar; whether the folded wings block the Iridium patch.
+
+---
+
+## 2026-11-08 · Eagle viewer: bring the 3D view back when the browser drops it
+
+**Files:** [`simulator/v2/eagle_viewer.src.html`](../simulator/v2/eagle_viewer.src.html) (built into `eagle_viewer.html`), [`simulator/v2/build.js`](../simulator/v2/build.js) · **Docs:** [eagle-drone.md](eagle-drone.md#viewer)
+
+### What
+The viewer now recovers when the browser takes away its WebGL context: it rebuilds the 3D view on its own, and if the browser keeps refusing it shows still renders of the model with a **Restart 3D view** button. It also uses less graphics memory.
+
+### Why
+On a team laptop the viewer's 3D stage turned white with a small broken-image icon in the corner while the readout kept updating. That is what a page looks like after the browser drops its WebGL context to free graphics memory (several 3D tabs open, the simulator in another tab, a laptop GPU). The page never asked for the view back, so it stayed blank until reloaded.
+
+### How it works
+- The renderer is built by a function. On a lost context the stage shows a short notice; if the browser restores the context, the page rebuilds the reflection map and shadow map and carries on.
+- If the browser has not restored it after 2.5 s, the page builds a new renderer and canvas, keeping the camera angle and the bird's place in the loop.
+- After three tries it stops and shows the still renders (`docs/images/eagle-drone-model.jpg`, embedded at build time) and **Restart 3D view**; 20 s of good frames resets the count.
+- Less graphics memory: pixel density capped at 1.5× (was 2×), shadow map 1024 px (was 2048), default GPU choice instead of asking for the discrete GPU, no drawing while the stage is scrolled out of view.
+
+### Key results
+- Measured in headless Chromium (SwiftShader): after a context the browser never restores, the view was back when checked 6 s later (rebuild set at 2.5 s); after a restored one, back when checked 2.5 s later.
+- Estimated graphics memory on a 1280×720 stage: about 220 MB at 2× (drawing buffer about 150 MB of it), about 110 MB now (drawing buffer about 85 MB at 1.5×, shadow map 8 MB instead of 33 MB).
+
+### Decisions and trade-offs
+| Decision | Why | Cost |
+|---|---|---|
+| Rebuild after 2.5 s instead of waiting for the browser | Browsers never hand back a context dropped for "too many contexts" | A rebuild can push another 3D tab over the browser's limit |
+| Stop after three tries and show a button | A browser that keeps refusing is not asked forever | One click to restart |
+| Pixel density 1.5× | The drawing buffer is most of the page's graphics memory (estimate above) | Slightly softer edges on high-density screens |
+
+### Verification
+- `recover.js` (headless Chromium, not in the repo): context lost then restored → same canvas, live, notice gone; context lost and never restored → new canvas after 2.5 s, live; lost four times in a row → final notice and Restart button, Restart brings it back; no WebGL at all → still renders and Restart, no uncaught errors. All pass, no page errors.
+- Viewer at desktop and phone width, light and dark: no console errors, no horizontal scroll.
+
+### Open issues / next
+- Simulator v2 has the same weakness (no recovery from a lost context); the same change would carry over.
+
+---
+
+## 2026-11-08 · The Eagle as a 3D model: hawk-eagle size, folding wings, flight and perching
+
+**Files:** [`simulator/v2/eagle_drone.js`](../simulator/v2/eagle_drone.js), [`simulator/v2/index.src.html`](../simulator/v2/index.src.html) (built into `index.html`), [`simulator/v2/eagle_viewer.src.html`](../simulator/v2/eagle_viewer.src.html) (built into `eagle_viewer.html`), [`simulator/v2/assets/`](../simulator/v2/assets/), [`simulator/v2/tools/export_glb.js`](../simulator/v2/tools/export_glb.js) · **Docs:** [eagle-drone.md](eagle-drone.md)
+
+![The model: bare airframe, Mountain Hawk-Eagle disguise in flight, perched with wings folded](images/eagle-drone-model.jpg)
+
+### What
+A 3D model of the Eagle: a flapping-wing drone built to a Mountain Hawk-Eagle's size, with the bare airframe from the team's [reference render](images/eagle-drone-reference.jpg) underneath and a full bird disguise on top (Mountain Hawk-Eagle by default, Crested Serpent Eagle as an option). It flaps, glides, soars, lands on a perch with a flare, folds its wings along its back like a perched eagle, scans with its head and takes off again. It replaces the primitive birds in simulator v2, runs in a standalone viewer, and exports as glTF with eight animation clips for Unreal or Blender.
+
+### Why
+The demo needs to show what the Eagle is: an eagle-sized drone that perches in the canopy and passes as a bird. The old perched and flying models were separate shapes with no wings that moved. The disguise only works if size, wingbeat, perching posture and wing fold match the real bird, so those are set from published measurements.
+
+### How it works
+- One skeleton (95 bones) with shoulder, elbow and wrist joints; every flight feather is a bone that rotates with the fold, so the wing spreads for flight and stacks for perching. Fold: shoulder sweeps 86° and rolls 54°, elbow closes to 168°, wrist to 166°.
+- Three skins on that skeleton, painted at load into one texture: hawk-eagle, serpent eagle, bare airframe (carbon lamellae on the same joints). X-ray shows the airframe through the disguise.
+- Procedural animation from a small set of pose numbers: stroke at 3.0 Hz with upstroke wrist flex and primary slots; take-off (crouch, spring, unfold, hard strokes); landing (swoop below the perch and up, flare, feet forward, two balancing beats, fold); head scanning on the perch.
+- Simulator v2: one bird perches and flies; **Run mission**, presenter card 3 and the cinematic open with the arrival and landing; take-offs climb forward off the perch; the relay banks and flaps in its orbit; a disguise selector; Eagle cam at the bird's eye; the thermal and ID passes pose the skinned bird.
+- `tools/export_glb.js` runs the same code in headless Chromium and writes one `.glb` per skin.
+
+Full detail: [eagle-drone.md](eagle-drone.md).
+
+### Key results
+- Measured on the model: span 1.60 m, length 0.75 m, folded wing 0.51 m, tail 0.34 m, tarsus 0.115 m, all inside the published Mountain Hawk-Eagle ranges (1.34–1.75, 0.69–0.84, 0.49–0.52, 0.34–0.36, 0.113–0.118 m).
+- Wingbeat 3.0 Hz, modelled from golden eagles' measured 2.2–2.8 Hz scaled to a lighter bird. Eyes sit 0.40 m above the branch when perched, body centre 0.258 m.
+- One skinned mesh per bird, 10.7k–12.6k triangles, one draw call per material (two or three); animation update 0.07 ms a frame per bird (measured, headless CPU).
+- `.glb` files 2.4–2.8 MB each; Khronos glTF validator: 0 errors. Reloaded with three.js's GLTFLoader, all eight clips play with correct poses.
+
+### Decisions and trade-offs
+| Decision | Why | Cost |
+|---|---|---|
+| Mountain Hawk-Eagle size and plumage by default, serpent eagle kept as a skin | The size the team asked for; the old livery stays one click away | Hawk-eagles are less common than serpent eagles, so the better cover may be the serpent eagle; that is a mission call |
+| Every feather a bone, rotating with the fold | A real fan fold that reads as a bird from any angle, and the same mechanism on the airframe | 95 bones per bird |
+| Procedural animation, not keyframes | Flights follow any path the simulator gives and react to turns and climbs | Looks only: no lift or stall model |
+| Textures painted in code at load | No image files to ship; skins stay editable as code | 30–120 ms per skin at load (measured, headless) |
+| One bird for perched and flying | The arrival, perch and take-off are continuous | Simulator code that hid one model and showed the other had to change |
+| Bird animated on wall-clock frame time | Flights keep pace with the mission on slow GPUs | Choppy flapping below 4 frames a second |
+
+### Verification
+- Render sheets of every pose and skin from a headless harness (perched, spread, mid-fold, upstroke, downstroke, flare, landing filmstrip, take-off); fixed what they showed (a flat tail seen edge-on, primaries drooping below the tail, inside-out eyes and tubes, legs tucked through the back).
+- Simulator v2 in headless Chromium: loads and runs with no console errors; the mission goes from arrival to perched and folded, to take-off and fly-away; `tests/test_present.js` passes (10 steps, 12 numbers checked against the model).
+- Viewer at desktop and phone width, light and dark: no console errors, no horizontal scroll; measured span 1.60 m.
+- `.glb` files: Khronos glTF validator 0 errors; round-trip load and playback of every clip.
+
+### Open issues / next
+- Watch the arrival and landing on the team's laptops at full frame rate (headless ran at about 1 frame a second).
+- Import the `.glb` into Unreal 5.8 and swap it into the scene importer and the live thermal demo.
+- The airframe's lamella wing, linkage and legs are placeholders for the real mechanism.
+- Disguise choice: hawk-eagle (the size we built to) or serpent eagle (the more common bird) for the mission.
+
+---
+
 ## 2026-11-07 · Eagle Jungle Simulator v2: presenter, adaptive quality, remote GPU
 
 **Files:** [`simulator/v2/index.src.html`](../simulator/v2/index.src.html) (built into `index.html`), [`simulator/v2/serve.mjs`](../simulator/v2/serve.mjs), [`simulator/v2/tests/`](../simulator/v2/tests/) · **Docs:** [simulator-v2.md](simulator-v2.md#presenter-mode), [demo-runbook.md](demo-runbook.md)

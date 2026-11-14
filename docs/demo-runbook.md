@@ -18,7 +18,7 @@ For a live demo to judges or partners, about five minutes with the presenter. Ev
 |---|---|---|---|
 | 1 | Find a downed aviator who carries nothing | He is hiding in the jungle with nothing that transmits, because anything that transmits can be found. | 0 emitters on him |
 | 2 | Anything that transmits gets found | The red ring is how far one radio burst beside him would carry; the patrol is inside it. | 246 m |
-| 3 | Perch, motor off, listen | The Eagle lands under the canopy and goes silent. | 0 W while it listens |
+| 3 | Perch, motor off, listen | A drone the size of a Mountain Hawk-Eagle, dressed as one, lands, folds its wings and goes silent. | 1.6 m wings, 0 W while it listens |
 | 4 | Body heat through a gap in the leaves | Its thermal camera sees him through a gap; each box is a warm body with the odds that it is him. | 5.5 px, +6.6 °C |
 | 5 | 6 microphones hear his tap code | He taps a briefed code; the array hears it over the insects and takes a bearing. | 25 dB above the noise |
 | 6 | It only talks when it is sure | Every clue multiplies the odds; it sends only above 0.95, so it never gives itself away for a sleeping farmer. | 0.14 → 0.99 in 10 min |
